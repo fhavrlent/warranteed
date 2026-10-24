@@ -1,13 +1,15 @@
 import { addMonths, isAfter } from "date-fns";
-import { FileText, Plus, Upload, X } from "lucide-react";
+import { Plus, Upload, X } from "lucide-react";
 import { useRef, useState, type SubmitEvent } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { api, errorMessage, type AttachmentKind, type Warranty, type WarrantyInput } from "@/lib/api";
+import { api, errorMessage, type Warranty, type WarrantyInput } from "@/lib/api";
 import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
 import { useInvalidate, usePrefs } from "@/lib/queries";
-import { CURRENCIES, cn, formatBytes } from "@/lib/utils";
+import { toPending, type PendingFile } from "@/lib/documents";
+import { CURRENCIES, cn } from "@/lib/utils";
 import { DateInput } from "./DateInput";
+import { PendingFileList } from "./PendingFiles";
 import { TagInput } from "./Tags";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -16,11 +18,6 @@ import { Segmented, Switch } from "./ui/misc";
 
 type Mode = "duration" | "date" | "lifetime";
 type Unit = "years" | "months";
-interface PendingFile {
-  id: string;
-  file: File;
-  kind: AttachmentKind;
-}
 interface Serial {
   id: string;
   value: string;
@@ -56,14 +53,6 @@ const initial = (w: Warranty | undefined, currency: string) => {
     serials: w?.serialNumbers.length ? w.serialNumbers.map((v) => serial(v)) : [serial()],
     tags: w?.tags.map((t) => t.name) ?? [],
   };
-};
-
-const guessKind = (f: File): AttachmentKind => {
-  const n = f.name.toLowerCase();
-  if (f.type.startsWith("image/") && !/(receipt|invoice|bill|uctenka|faktura)/.test(n)) return "photo";
-  if (/(invoice|faktura|rechnung)/.test(n)) return "invoice";
-  if (/(manual|guide|navod|handbuch)/.test(n)) return "manual";
-  return "receipt";
 };
 
 interface FormProps {
@@ -118,6 +107,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
         e.endDate = "Ends before the purchase date";
     }
     if (f.price && !Number.isFinite(Number(f.price.replace(",", ".")))) e.price = "Not a number";
+    if (files.some((p) => p.kind === null)) e.files = "Choose a type for each file";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -146,7 +136,8 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
     try {
       const saved = editing ? await api.updateWarranty(warranty.id, input) : await api.createWarranty(input);
       let failed = 0;
-      for (const p of files) {
+      const typed = files.flatMap((p) => (p.kind ? [{ ...p, kind: p.kind }] : []));
+      for (const p of typed) {
         try {
           await api.upload(saved.id, p.file, p.kind, toPaperless && p.kind !== "photo" ? "paperless" : "local");
         } catch (err) {
@@ -169,7 +160,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
-    setFiles((prev) => [...prev, ...Array.from(list).map((file) => ({ id: newId(), file, kind: guessKind(file) }))]);
+    setFiles((prev) => [...prev, ...toPending(list)]);
   };
 
   return (
@@ -398,7 +389,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
           <section>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[13px] font-medium">
-                Receipts, photos &amp; manuals <span className="font-normal text-fg-subtle">optional</span>
+                Documents &amp; photos <span className="font-normal text-fg-subtle">optional</span>
               </span>
               {paperless && (
                 <label className="flex cursor-pointer items-center gap-2 text-[13px] text-fg-muted">
@@ -423,43 +414,11 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               <input ref={fileRef} type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />
             </div>
             {files.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1.5">
-                {files.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
-                  >
-                    <FileText className="size-4 shrink-0 text-fg-subtle" />
-                    <span className="min-w-0 flex-1 truncate">{p.file.name}</span>
-                    <span className="text-xs text-fg-subtle">{formatBytes(p.file.size)}</span>
-                    <Select
-                      aria-label="Document type"
-                      value={p.kind}
-                      onChange={(e) =>
-                        setFiles(
-                          files.map((x) => (x.id === p.id ? { ...x, kind: e.target.value as AttachmentKind } : x)),
-                        )
-                      }
-                      className="h-7 w-28 text-xs"
-                    >
-                      <option value="receipt">Receipt</option>
-                      <option value="invoice">Invoice</option>
-                      <option value="manual">Manual</option>
-                      {p.file.type.startsWith("image/") && <option value="photo">Photo</option>}
-                      <option value="other">Other</option>
-                    </Select>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Remove file"
-                      onClick={() => setFiles(files.filter((x) => x.id !== p.id))}
-                    >
-                      <X />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-2">
+                <PendingFileList files={files} onChange={setFiles} showMissing={errors.files !== undefined} />
+              </div>
             )}
+            {errors.files && <p className="mt-1.5 text-xs text-bad">{errors.files}</p>}
           </section>
         )}
       </form>

@@ -31,7 +31,23 @@ const (
 	StatusFailed     = "failed"
 )
 
-var AttachmentKinds = map[string]bool{"receipt": true, "invoice": true, "manual": true, "photo": true, "other": true}
+// AttachmentKinds maps each document type to its display name, which is
+// also used in Paperless document titles.
+var AttachmentKinds = map[string]string{
+	"purchase": "Proof of purchase",
+	"terms":    "Warranty terms",
+	"card":     "Warranty card",
+	"extended": "Extended warranty",
+	"claim":    "Repair & claims",
+	"manual":   "Manual",
+	"photo":    "Product photo",
+	"other":    "Other",
+}
+
+func ValidKind(kind string) bool {
+	_, ok := AttachmentKinds[kind]
+	return ok
+}
 
 const attachmentCols = `a.id, a.warranty_id, a.kind, a.storage, a.filename, a.mime_type, a.size, a.local_path,
 	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at`

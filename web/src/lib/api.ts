@@ -19,7 +19,7 @@ export interface Attachment {
   createdAt: string;
 }
 
-export type AttachmentKind = "receipt" | "invoice" | "manual" | "photo" | "other";
+export type AttachmentKind = "purchase" | "terms" | "card" | "extended" | "claim" | "manual" | "photo" | "other";
 
 export interface Warranty {
   id: number;

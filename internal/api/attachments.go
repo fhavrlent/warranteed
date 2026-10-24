@@ -130,8 +130,9 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	defer r.MultipartForm.RemoveAll()
 
 	kind := r.FormValue("kind")
-	if !store.AttachmentKinds[kind] {
-		kind = "other"
+	if !store.ValidKind(kind) {
+		writeError(w, http.StatusBadRequest, "Choose a document type")
+		return
 	}
 	target := r.FormValue("storage")
 	file, hdr, err := r.FormFile("file")
@@ -177,10 +178,12 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "Paperless is not configured — set it up in Settings")
 			return
 		}
-		title := strings.TrimSuffix(filename, filepath.Ext(filename))
-		if kind == "receipt" || kind == "invoice" {
-			title = fmt.Sprintf("%s – %s", wr.ProductName, kind)
+		// "Dishwasher – Warranty terms"; for Other the file name says more.
+		detail := store.AttachmentKinds[kind]
+		if kind == "other" {
+			detail = strings.TrimSuffix(filename, filepath.Ext(filename))
 		}
+		title := fmt.Sprintf("%s – %s", wr.ProductName, detail)
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 		defer cancel()
 		taskID, err := pc.Upload(ctx, paperless.Upload{
@@ -231,7 +234,7 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if !store.AttachmentKinds[in.Kind] || in.Kind == "photo" {
+	if !store.ValidKind(in.Kind) || in.Kind == "photo" {
 		in.Kind = "other"
 	}
 	if len(in.DocumentIDs) == 0 {
@@ -296,7 +299,7 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if !store.AttachmentKinds[in.Kind] || (in.Kind == "photo" && !strings.HasPrefix(a.MimeType, "image/")) {
+	if !store.ValidKind(in.Kind) || (in.Kind == "photo" && !strings.HasPrefix(a.MimeType, "image/")) {
 		writeError(w, http.StatusBadRequest, "Invalid attachment type")
 		return
 	}

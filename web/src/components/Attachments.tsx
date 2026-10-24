@@ -1,15 +1,11 @@
 import {
   AlertTriangle,
-  BookOpen,
   Camera,
   Download,
   ExternalLink,
-  File as FileIcon,
-  FileText,
   Loader2,
   MoreHorizontal,
   Paperclip,
-  Receipt,
   RefreshCw,
   Search,
   Trash2,
@@ -28,27 +24,20 @@ import {
   type PaperlessDoc,
   type Warranty,
 } from "@/lib/api";
+import { DOCUMENT_KINDS, kindMeta, kindsFor } from "@/lib/documents";
 import { useInvalidate, usePrefs } from "@/lib/queries";
 import { cn, formatBytes } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { ConfirmDialog, Dialog } from "./ui/dialog";
 import { Input, Select } from "./ui/input";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/menu";
-import { Segmented } from "./ui/misc";
-
-const kindMeta: Record<AttachmentKind, { label: string; icon: typeof FileIcon }> = {
-  receipt: { label: "Receipt", icon: Receipt },
-  invoice: { label: "Invoice", icon: FileText },
-  manual: { label: "Manual", icon: BookOpen },
-  photo: { label: "Photo", icon: Camera },
-  other: { label: "Other", icon: FileIcon },
-};
+import { UploadDialog } from "./UploadDialog";
 
 const PaperlessMark = ({ className }: { className?: string }) => (
   <span
     title="Stored in Paperless-ngx"
     className={cn(
-      "inline-flex h-4.5 items-center rounded bg-emerald-600/12 px-1 text-[10px] font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-300",
+      "inline-flex h-4.5 items-center rounded bg-emerald-600 px-1 text-[10px] font-semibold tracking-wide text-white uppercase",
       className,
     )}
   >
@@ -91,8 +80,8 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
   const { settings } = usePrefs();
   const invalidate = useInvalidate();
   const paperless = settings?.paperlessEnabled ?? false;
-  const [chosenTarget, setChosenTarget] = useState<"local" | "paperless" | null>(null);
-  const [uploading, setUploading] = useState(0);
+  const [toUpload, setToUpload] = useState<File[] | null>(null);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [drag, setDrag] = useState(false);
   const [picker, setPicker] = useState(false);
   const [preview, setPreview] = useState<Attachment | null>(null);
@@ -100,26 +89,28 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
 
-  const target = chosenTarget ?? (paperless && settings?.paperlessDefault ? "paperless" : "local");
+  const pick = (files: FileList | null) => {
+    if (files?.length) setToUpload(Array.from(files));
+  };
 
-  const upload = async (files: FileList | File[] | null, kind?: AttachmentKind) => {
+  const uploadPhotos = async (files: FileList | null) => {
     if (!files) return;
-    const list = Array.from(files);
-    setUploading((n) => n + list.length);
-    for (const file of list) {
-      const k: AttachmentKind = kind ?? (file.type.startsWith("image/") && target === "local" ? "photo" : "receipt");
+    setUploadingPhotos(true);
+    for (const file of Array.from(files)) {
       try {
-        await api.upload(warranty.id, file, k, k === "photo" ? "local" : target);
+        await api.upload(warranty.id, file, "photo", "local");
       } catch (e) {
         toast.error(`${file.name}: ${errorMessage(e)}`);
-      } finally {
-        setUploading((n) => n - 1);
       }
     }
+    setUploadingPhotos(false);
     invalidate();
   };
 
-  const docs = warranty.attachments;
+  // Grouped by type, in the order types are listed.
+  const docs = warranty.attachments.toSorted(
+    (a, b) => DOCUMENT_KINDS.indexOf(a.kind) - DOCUMENT_KINDS.indexOf(b.kind) || a.id - b.id,
+  );
 
   return (
     <div>
@@ -131,26 +122,15 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
         </h2>
         <div className="flex items-center gap-2">
           {paperless && (
-            <Segmented
-              size="sm"
-              value={target}
-              onChange={setChosenTarget}
-              options={[
-                { value: "local", label: "Store here" },
-                { value: "paperless", label: "Paperless" },
-              ]}
-            />
-          )}
-          {paperless && (
             <Button size="sm" variant="outline" onClick={() => setPicker(true)}>
               <Search /> Link from Paperless
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()}>
-            <Camera /> Photo
+          <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()} loading={uploadingPhotos}>
+            {!uploadingPhotos && <Camera />} Photo
           </Button>
-          <Button size="sm" onClick={() => fileRef.current?.click()} loading={uploading > 0}>
-            {uploading === 0 && <Upload />} Upload
+          <Button size="sm" onClick={() => fileRef.current?.click()}>
+            <Upload /> Add documents
           </Button>
           <input
             ref={fileRef}
@@ -158,7 +138,7 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
             multiple
             hidden
             onChange={(e) => {
-              void upload(e.target.files);
+              pick(e.target.files);
               e.target.value = "";
             }}
           />
@@ -169,7 +149,7 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
             capture="environment"
             hidden
             onChange={(e) => {
-              void upload(e.target.files, "photo");
+              void uploadPhotos(e.target.files);
               e.target.value = "";
             }}
           />
@@ -185,7 +165,7 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
         onDrop={(e) => {
           e.preventDefault();
           setDrag(false);
-          void upload(e.dataTransfer.files);
+          pick(e.dataTransfer.files);
         }}
         className={cn(
           "rounded-2xl transition-colors",
@@ -199,11 +179,10 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
             className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-2xl border border-dashed border-border-strong px-6 py-10 text-center hover:border-primary hover:bg-primary-soft/30"
           >
             <Upload className="size-6 text-fg-subtle" />
-            <p className="text-sm font-medium">Drop the receipt, invoice or manual here</p>
+            <p className="text-sm font-medium">Drop documents here</p>
             <p className="text-xs text-fg-subtle">
-              {paperless
-                ? "Choose above whether files are stored here or in Paperless-ngx."
-                : "PDFs and images up to the upload limit."}
+              Receipts, warranty terms and cards, manuals, repair reports
+              {paperless ? ", stored here or in Paperless" : ""}.
             </p>
           </button>
         ) : (
@@ -223,6 +202,14 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
       </div>
 
       {picker && <PaperlessPicker onOpenChange={setPicker} warranty={warranty} onLinked={invalidate} />}
+      {toUpload && (
+        <UploadDialog
+          warrantyId={warranty.id}
+          initialFiles={toUpload}
+          onClose={() => setToUpload(null)}
+          onUploaded={invalidate}
+        />
+      )}
       <PreviewDialog a={preview} onClose={() => setPreview(null)} />
       <ConfirmDialog
         open={!!toDelete}
@@ -273,15 +260,19 @@ const AttachmentCard = ({
       >
         <Thumb a={a} />
       </button>
+      {a.storage === "paperless" && (
+        <PaperlessMark className="pointer-events-none absolute top-2 right-2 shadow-card" />
+      )}
       <div className="flex items-start gap-2 border-t border-border px-3 py-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium" title={a.filename}>
             {a.filename}
           </p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs whitespace-nowrap text-fg-subtle">
-            {meta.label}
-            {a.size > 0 && <span className="truncate">· {formatBytes(a.size)}</span>}
-            {a.storage === "paperless" && <PaperlessMark />}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap text-fg-subtle">
+            <span className="truncate" title={meta.label}>
+              {meta.label}
+              {a.size > 0 && ` · ${formatBytes(a.size)}`}
+            </span>
           </p>
         </div>
         <Menu>
@@ -325,23 +316,21 @@ const AttachmentCard = ({
             )}
             <MenuSeparator />
             <MenuLabel>Type</MenuLabel>
-            {(Object.keys(kindMeta) as AttachmentKind[])
-              .filter((k) => k !== "photo" || a.mimeType.startsWith("image/"))
-              .map((k) => (
-                <MenuItem
-                  key={k}
-                  icon={(() => {
-                    const I = kindMeta[k].icon;
-                    return <I />;
-                  })()}
-                  onSelect={async () => {
-                    await api.setAttachmentKind(a.id, k).catch((e: unknown) => toast.error(errorMessage(e)));
-                    onChanged();
-                  }}
-                >
-                  <span className={cn(k === a.kind && "font-semibold")}>{kindMeta[k].label}</span>
-                </MenuItem>
-              ))}
+            {kindsFor(a.mimeType).map((k) => (
+              <MenuItem
+                key={k}
+                icon={(() => {
+                  const I = kindMeta[k].icon;
+                  return <I />;
+                })()}
+                onSelect={async () => {
+                  await api.setAttachmentKind(a.id, k).catch((e: unknown) => toast.error(errorMessage(e)));
+                  onChanged();
+                }}
+              >
+                <span className={cn(k === a.kind && "font-semibold")}>{kindMeta[k].label}</span>
+              </MenuItem>
+            ))}
             <MenuSeparator />
             <MenuItem danger icon={<Trash2 />} onSelect={onDelete}>
               {a.storage === "paperless" ? "Unlink" : "Delete"}
@@ -421,7 +410,7 @@ const PaperlessPicker = ({
   const loading = search.isFetching;
   const error = search.error ? errorMessage(search.error) : null;
   const [picked, setPicked] = useState<number[]>([]);
-  const [kind, setKind] = useState<AttachmentKind>("receipt");
+  const [kind, setKind] = useState<AttachmentKind>("purchase");
   const [saving, setSaving] = useState(false);
   const linked = new Set(warranty.attachments.map((a) => a.paperlessDocId).filter((id) => id !== null));
 
@@ -452,12 +441,13 @@ const PaperlessPicker = ({
             aria-label="Document type"
             value={kind}
             onChange={(e) => setKind(e.target.value as AttachmentKind)}
-            className="mr-auto w-36"
+            className="mr-auto w-48"
           >
-            <option value="receipt">As receipt</option>
-            <option value="invoice">As invoice</option>
-            <option value="manual">As manual</option>
-            <option value="other">As other</option>
+            {DOCUMENT_KINDS.filter((k) => k !== "photo").map((k) => (
+              <option key={k} value={k}>
+                As {kindMeta[k].label.toLowerCase()}
+              </option>
+            ))}
           </Select>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
