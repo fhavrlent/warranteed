@@ -2,7 +2,7 @@ import { Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, errorMessage } from "@/lib/api";
-import { toPending } from "@/lib/documents";
+import { storageFor, toPending } from "@/lib/documents";
 import { usePrefs } from "@/lib/queries";
 import { PendingFileList } from "./PendingFiles";
 import { Button } from "./ui/button";
@@ -45,7 +45,7 @@ export const UploadDialog = ({
     const typed = files.flatMap((f) => (f.kind ? [{ ...f, kind: f.kind }] : []));
     for (const p of typed) {
       try {
-        await api.upload(warrantyId, p.file, p.kind, p.kind === "photo" ? "local" : target);
+        await api.upload(warrantyId, p.file, p.kind, storageFor(p, target === "paperless"));
       } catch (e) {
         failed++;
         toast.error(`${p.file.name}: ${errorMessage(e)}`);
@@ -81,7 +81,12 @@ export const UploadDialog = ({
       }
     >
       <div className="flex flex-col gap-4">
-        <PendingFileList files={files} onChange={setFiles} showMissing={attempted} />
+        <PendingFileList
+          files={files}
+          onChange={setFiles}
+          showMissing={attempted}
+          toPaperless={paperless && target === "paperless"}
+        />
         {attempted && untyped > 0 && (
           <p className="text-[13px] text-bad">
             Choose a type for {untyped === 1 ? "the highlighted file" : `the ${untyped} highlighted files`}.

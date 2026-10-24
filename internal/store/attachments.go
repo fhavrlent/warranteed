@@ -84,8 +84,8 @@ func (s *Store) DeleteAttachment(ctx context.Context, id int64) error {
 	return err
 }
 
-func (s *Store) UpdateAttachmentKind(ctx context.Context, id int64, kind string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET kind = ? WHERE id = ?`, kind, id)
+func (s *Store) UpdateAttachment(ctx context.Context, id int64, kind, filename string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET kind = ?, filename = ? WHERE id = ?`, kind, filename, id)
 	return err
 }
 

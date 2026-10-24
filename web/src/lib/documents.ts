@@ -67,3 +67,39 @@ export interface PendingFile {
 let lastId = 0;
 export const toPending = (files: Iterable<File>): PendingFile[] =>
   Array.from(files, (file) => ({ id: `f${++lastId}`, file, kind: guessKind(file) }));
+
+// File types Paperless-ngx can consume (office formats and e-mails need its
+// optional Tika integration). Checked by extension: browsers often report
+// no MIME type for office files.
+const PAPERLESS_EXTENSIONS = new Set([
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "tif",
+  "tiff",
+  "gif",
+  "webp",
+  "txt",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "odt",
+  "ods",
+  "odp",
+  "eml",
+]);
+
+export const extensionOf = (name: string): string => {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+};
+
+export const paperlessAccepts = (file: File): boolean => PAPERLESS_EXTENSIONS.has(extensionOf(file.name));
+
+/** Where a file ends up: photos and types Paperless can't take always stay here. */
+export const storageFor = (p: PendingFile, wantPaperless: boolean): "local" | "paperless" =>
+  wantPaperless && p.kind !== "photo" && paperlessAccepts(p.file) ? "paperless" : "local";

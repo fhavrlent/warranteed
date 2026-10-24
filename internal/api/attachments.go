@@ -99,8 +99,55 @@ func cleanFilename(name string) string {
 	return name
 }
 
+// Office formats sniff as ZIP (OOXML, ODF) or as unknown binary (legacy
+// formats), and the runtime image has no system MIME table, so they are
+// recognised by extension.
+var officeTypes = map[string]string{
+	".doc":  "application/msword",
+	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	".xls":  "application/vnd.ms-excel",
+	".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	".ppt":  "application/vnd.ms-powerpoint",
+	".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	".odt":  "application/vnd.oasis.opendocument.text",
+	".ods":  "application/vnd.oasis.opendocument.spreadsheet",
+	".odp":  "application/vnd.oasis.opendocument.presentation",
+	".eml":  "message/rfc822",
+}
+
+// paperlessRejection explains why a file can't go to Paperless. The check is
+// on content, so a file whose name claims a supported type is called out.
+func paperlessRejection(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" {
+		return "Paperless can't store this type of file — store it here instead"
+	}
+	if paperless.Accepts(extensionTypes[ext]) || paperless.Accepts(officeTypes[ext]) {
+		return fmt.Sprintf("%q isn't really a %s file, so Paperless can't take it", filename, ext)
+	}
+	return fmt.Sprintf("Paperless can't store %s files — store it here instead", ext)
+}
+
+// extensionTypes are the non-office types Paperless accepts, by their usual
+// extension (office ones are in officeTypes).
+var extensionTypes = map[string]string{
+	".pdf":  "application/pdf",
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".tif":  "image/tiff",
+	".tiff": "image/tiff",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".txt":  "text/plain",
+}
+
 func detectType(head []byte, filename string) string {
 	t := http.DetectContentType(head)
+	ext := strings.ToLower(filepath.Ext(filename))
+	if office, ok := officeTypes[ext]; ok && (t == "application/zip" || t == "application/octet-stream" || strings.HasPrefix(t, "text/plain")) {
+		return office
+	}
 	if t == "application/octet-stream" || strings.HasPrefix(t, "text/plain") {
 		if byExt := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename))); byExt != "" {
 			return strings.SplitN(byExt, ";", 2)[0]
@@ -169,6 +216,10 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if target == store.StoragePaperless && kind != "photo" {
+		if !paperless.Accepts(mimeType) {
+			writeError(w, http.StatusBadRequest, paperlessRejection(filename))
+			return
+		}
 		pc, err := s.userPaperless(r.Context(), uid)
 		if err != nil {
 			fail(w, err)
@@ -283,13 +334,16 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, out)
 }
 
+// patchAttachment changes a file's type and/or display name. Renaming keeps
+// the original extension and never touches the document in Paperless.
 func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
 		return
 	}
 	var in struct {
-		Kind string `json:"kind"`
+		Kind     *string `json:"kind"`
+		Filename *string `json:"filename"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -299,15 +353,32 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if !store.ValidKind(in.Kind) || (in.Kind == "photo" && !strings.HasPrefix(a.MimeType, "image/")) {
-		writeError(w, http.StatusBadRequest, "Invalid attachment type")
-		return
+	kind, filename := a.Kind, a.Filename
+	if in.Kind != nil {
+		kind = *in.Kind
+		if !store.ValidKind(kind) || (kind == "photo" && !strings.HasPrefix(a.MimeType, "image/")) {
+			writeError(w, http.StatusBadRequest, "Invalid attachment type")
+			return
+		}
 	}
-	if err := s.store.UpdateAttachmentKind(r.Context(), id, in.Kind); err != nil {
+	if in.Filename != nil {
+		name := strings.TrimSpace(*in.Filename)
+		if name == "" {
+			writeError(w, http.StatusBadRequest, "The name can't be empty")
+			return
+		}
+		ext := filepath.Ext(a.Filename)
+		if ext != "" && !strings.EqualFold(filepath.Ext(name), ext) {
+			name += ext
+		}
+		filename = cleanFilename(name)
+	}
+	if err := s.store.UpdateAttachment(r.Context(), id, kind, filename); err != nil {
 		fail(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	a.Kind, a.Filename = kind, filename
+	writeJSON(w, http.StatusOK, a)
 }
 
 // deleteAttachment removes the attachment. Paperless documents are only

@@ -192,8 +192,8 @@ export const api = {
   },
   linkPaperless: (warrantyId: number, documentIds: number[], kind: AttachmentKind) =>
     request<Attachment[]>("POST", `/api/warranties/${warrantyId}/attachments/paperless`, { documentIds, kind }),
-  setAttachmentKind: (id: number, kind: AttachmentKind) =>
-    request<undefined>("PATCH", `/api/attachments/${id}`, { kind }),
+  updateAttachment: (id: number, patch: { kind?: AttachmentKind; filename?: string }) =>
+    request<Attachment>("PATCH", `/api/attachments/${id}`, patch),
   deleteAttachment: (id: number) => request<undefined>("DELETE", `/api/attachments/${id}`),
   retryAttachment: (id: number) => request<Attachment>("POST", `/api/attachments/${id}/retry`),
   searchPaperless: (q: string) => request<PaperlessDoc[]>("GET", `/api/paperless/search?q=${encodeURIComponent(q)}`),

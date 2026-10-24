@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { api, errorMessage, type Warranty, type WarrantyInput } from "@/lib/api";
 import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
 import { useInvalidate, usePrefs } from "@/lib/queries";
-import { toPending, type PendingFile } from "@/lib/documents";
+import { storageFor, toPending, type PendingFile } from "@/lib/documents";
 import { CURRENCIES, cn } from "@/lib/utils";
 import { DateInput } from "./DateInput";
 import { PendingFileList } from "./PendingFiles";
@@ -139,7 +139,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       const typed = files.flatMap((p) => (p.kind ? [{ ...p, kind: p.kind }] : []));
       for (const p of typed) {
         try {
-          await api.upload(saved.id, p.file, p.kind, toPaperless && p.kind !== "photo" ? "paperless" : "local");
+          await api.upload(saved.id, p.file, p.kind, storageFor(p, toPaperless));
         } catch (err) {
           failed++;
           toast.error(`${p.file.name}: ${errorMessage(err)}`);
@@ -415,7 +415,12 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
             </div>
             {files.length > 0 && (
               <div className="mt-2">
-                <PendingFileList files={files} onChange={setFiles} showMissing={errors.files !== undefined} />
+                <PendingFileList
+                  files={files}
+                  onChange={setFiles}
+                  showMissing={errors.files !== undefined}
+                  toPaperless={toPaperless}
+                />
               </div>
             )}
             {errors.files && <p className="mt-1.5 text-xs text-bad">{errors.files}</p>}

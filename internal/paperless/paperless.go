@@ -473,3 +473,30 @@ func (c *Client) Stream(ctx context.Context, id int64, variant string) (*http.Re
 	}
 	return c.do(ctx, http.MethodGet, fmt.Sprintf("/api/documents/%d/%s/", id, variant), nil, "")
 }
+
+// acceptedTypes are the file types Paperless-ngx can consume. The office and
+// e-mail types need Paperless's optional Tika integration; they are let
+// through, and Paperless reports a failed task when Tika is not enabled.
+var acceptedTypes = map[string]bool{
+	"application/pdf": true,
+	"image/png":       true,
+	"image/jpeg":      true,
+	"image/tiff":      true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"text/plain":      true,
+
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"application/vnd.ms-excel": true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
+	"application/vnd.ms-powerpoint":                                             true,
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
+	"application/vnd.oasis.opendocument.text":                                   true,
+	"application/vnd.oasis.opendocument.spreadsheet":                            true,
+	"application/vnd.oasis.opendocument.presentation":                           true,
+	"message/rfc822": true,
+}
+
+// Accepts reports whether Paperless-ngx can consume a file of this MIME type.
+func Accepts(mimeType string) bool { return acceptedTypes[mimeType] }

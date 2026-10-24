@@ -6,13 +6,14 @@ import {
   Loader2,
   MoreHorizontal,
   Paperclip,
+  Pencil,
   RefreshCw,
   Search,
   Trash2,
   Upload,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { toast } from "sonner";
 import {
   api,
@@ -86,6 +87,7 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
   const [picker, setPicker] = useState(false);
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [toDelete, setToDelete] = useState<Attachment | null>(null);
+  const [renaming, setRenaming] = useState<Attachment | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
 
@@ -107,9 +109,10 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
     invalidate();
   };
 
-  // Grouped by type, in the order types are listed.
-  const docs = warranty.attachments.toSorted(
-    (a, b) => DOCUMENT_KINDS.indexOf(a.kind) - DOCUMENT_KINDS.indexOf(b.kind) || a.id - b.id,
+  const docs = warranty.attachments;
+  // One section per type, in the order types are listed.
+  const groups = DOCUMENT_KINDS.map((kind) => ({ kind, items: docs.filter((a) => a.kind === kind) })).filter(
+    (g) => g.items.length > 0,
   );
 
   return (
@@ -186,17 +189,32 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
             </p>
           </button>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {docs.map((a) => (
-              <AttachmentCard
-                key={a.id}
-                a={a}
-                onOpen={() => setPreview(a)}
-                onDelete={() => setToDelete(a)}
-                onChanged={invalidate}
-                webUrl={settings?.paperlessWebUrl}
-              />
-            ))}
+          <div className="flex flex-col gap-6">
+            {groups.map(({ kind, items }) => {
+              const { label, icon: Icon } = kindMeta[kind];
+              return (
+                <section key={kind} aria-label={label}>
+                  <h3 className="mb-2 flex items-center gap-2 text-[13px] font-medium">
+                    <Icon className="size-4 text-fg-subtle" />
+                    {label}
+                    <span className="font-normal text-fg-subtle tabular-nums">{items.length}</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {items.map((a) => (
+                      <AttachmentCard
+                        key={a.id}
+                        a={a}
+                        onOpen={() => setPreview(a)}
+                        onRename={() => setRenaming(a)}
+                        onDelete={() => setToDelete(a)}
+                        onChanged={invalidate}
+                        webUrl={settings?.paperlessWebUrl}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
@@ -211,6 +229,7 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
         />
       )}
       <PreviewDialog a={preview} onClose={() => setPreview(null)} />
+      {renaming && <RenameDialog a={renaming} onClose={() => setRenaming(null)} onRenamed={invalidate} />}
       <ConfirmDialog
         open={!!toDelete}
         onOpenChange={(o) => !o && setToDelete(null)}
@@ -239,17 +258,19 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
 const AttachmentCard = ({
   a,
   onOpen,
+  onRename,
   onDelete,
   onChanged,
   webUrl,
 }: {
   a: Attachment;
   onOpen: () => void;
+  onRename: () => void;
   onDelete: () => void;
   onChanged: () => void;
   webUrl?: string;
 }) => {
-  const meta = kindMeta[a.kind];
+  const { fmtDate } = usePrefs();
   const ready = a.status === "ready";
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card transition-shadow hover:shadow-pop">
@@ -269,8 +290,8 @@ const AttachmentCard = ({
             {a.filename}
           </p>
           <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap text-fg-subtle">
-            <span className="truncate" title={meta.label}>
-              {meta.label}
+            <span className="truncate">
+              Added {fmtDate(a.createdAt.slice(0, 10))}
               {a.size > 0 && ` · ${formatBytes(a.size)}`}
             </span>
           </p>
@@ -314,6 +335,9 @@ const AttachmentCard = ({
                 Check again
               </MenuItem>
             )}
+            <MenuItem icon={<Pencil />} onSelect={onRename}>
+              Rename
+            </MenuItem>
             <MenuSeparator />
             <MenuLabel>Type</MenuLabel>
             {kindsFor(a.mimeType).map((k) => (
@@ -324,7 +348,7 @@ const AttachmentCard = ({
                   return <I />;
                 })()}
                 onSelect={async () => {
-                  await api.setAttachmentKind(a.id, k).catch((e: unknown) => toast.error(errorMessage(e)));
+                  await api.updateAttachment(a.id, { kind: k }).catch((e: unknown) => toast.error(errorMessage(e)));
                   onChanged();
                 }}
               >
@@ -339,6 +363,57 @@ const AttachmentCard = ({
         </Menu>
       </div>
     </div>
+  );
+};
+
+/** Renames the file as shown here; the extension is kept and Paperless is untouched. */
+const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () => void; onRenamed: () => void }) => {
+  const dot = a.filename.lastIndexOf(".");
+  const ext = dot > 0 ? a.filename.slice(dot) : "";
+  const [name, setName] = useState(ext ? a.filename.slice(0, dot) : a.filename);
+  const [saving, setSaving] = useState(false);
+
+  const save = async (e: SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await api.updateAttachment(a.id, { filename: name.trim() + ext });
+      onRenamed();
+      onClose();
+    } catch (err) {
+      toast.error(errorMessage(err));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title="Rename file"
+      description={
+        a.storage === "paperless"
+          ? "Changes the name shown here; the document in Paperless keeps its title."
+          : undefined
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="rename-form" loading={saving} disabled={!name.trim()}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <form id="rename-form" onSubmit={save} className="flex items-center gap-2">
+        <Input data-autofocus aria-label="File name" value={name} onChange={(e) => setName(e.target.value)} />
+        {ext && <span className="shrink-0 text-sm text-fg-subtle">{ext}</span>}
+      </form>
+    </Dialog>
   );
 };
 
