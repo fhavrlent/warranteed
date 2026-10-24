@@ -146,3 +146,26 @@ func (s *Server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) listSpaces(w http.ResponseWriter, r *http.Request) {
+	spaces, err := s.store.ListSpaces(r.Context(), userID(r))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, 200, spaces)
+}
+
+// moveAllToSpace moves all of the user's personal warranties into a shared space.
+func (s *Server) moveAllToSpace(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	n, err := s.store.MoveAllToSpace(r.Context(), userID(r), id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]int{"moved": n})
+}

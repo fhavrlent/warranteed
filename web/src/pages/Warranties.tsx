@@ -1,4 +1,4 @@
-import { ArrowDownUp, LayoutGrid, List, Paperclip, Plus, Search, ShieldCheck, X } from "lucide-react";
+import { ArrowDownUp, LayoutGrid, List, Lock, Paperclip, Plus, Search, ShieldCheck, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { CoverageBar, StatusBadge } from "@/components/Status";
@@ -7,13 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { Card, Kbd, Segmented } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
-import { thumbUrl, type Warranty } from "@/lib/api";
-import { usePrefs, useTags, useWarranties } from "@/lib/queries";
+import { thumbUrl, type Tag, type Warranty } from "@/lib/api";
+import { usePrefs, useSharing, useTags, useWarranties } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { displayName, photoOf, statusOf, tagDot, type Status, expiryText } from "@/lib/warranty";
 
 type Filter = "current" | "expiring" | "expired" | "lifetime" | "archived" | "all";
 const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime", "archived", "all"];
+type Who = "all" | "shared" | "mine";
+const WHO: readonly Who[] = ["all", "shared", "mine"];
 type Sort = "expiry" | "name" | "purchase" | "price" | "added";
 
 // Placeholder cards while loading.
@@ -49,6 +51,19 @@ export const Warranties = () => {
   const rawFilter = params.get("filter");
   const filter: Filter = FILTERS.find((f) => f === rawFilter) ?? "current";
   const tag = params.get("tag");
+  const { sharing } = useSharing();
+  const rawWho = params.get("who");
+  const who: Who = sharing ? (WHO.find((x) => x === rawWho) ?? "all") : "all";
+  // Tags with the same name in different spaces filter together.
+  const tagChips = useMemo(() => {
+    const byName = new Map<string, Tag>();
+    for (const t of tags) {
+      const key = t.name.toLowerCase();
+      const seen = byName.get(key);
+      byName.set(key, seen ? { ...seen, count: (seen.count ?? 0) + (t.count ?? 0) } : t);
+    }
+    return [...byName.values()];
+  }, [tags]);
   const [sort, setSort] = usePersisted<Sort>("warranteed-sort", "expiry");
   const [view, setView] = usePersisted<"grid" | "list">("warranteed-view", "grid");
   const [adding, setAdding] = useState(false);
@@ -110,7 +125,9 @@ export const Warranties = () => {
         default:
           if (s !== filter) return false;
       }
-      if (tag && !w.tags.some((t) => t.name === tag)) return false;
+      if (tag && !w.tags.some((t) => t.name.toLowerCase() === tag.toLowerCase())) return false;
+      if (who === "mine" && w.spaceKind !== "personal") return false;
+      if (who === "shared" && w.spaceKind === "personal") return false;
       if (!needle) return true;
       return [
         w.productName,
@@ -145,7 +162,7 @@ export const Warranties = () => {
       }
     });
     return res;
-  }, [withStatus, filter, tag, q, sort]);
+  }, [withStatus, filter, tag, q, sort, who]);
 
   const total = list?.length ?? 0;
 
@@ -231,6 +248,31 @@ export const Warranties = () => {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {sharing && (
+              <Segmented
+                value={who}
+                onChange={(v) => setParam("who", v === "all" ? null : v)}
+                options={[
+                  { value: "all", label: "Everyone's" },
+                  {
+                    value: "shared",
+                    label: (
+                      <>
+                        <Users aria-hidden /> Household
+                      </>
+                    ),
+                  },
+                  {
+                    value: "mine",
+                    label: (
+                      <>
+                        <Lock aria-hidden /> Only me
+                      </>
+                    ),
+                  },
+                ]}
+              />
+            )}
             <Segmented
               value={filter}
               onChange={(v) => setParam("filter", v === "current" ? null : v)}
@@ -268,9 +310,9 @@ export const Warranties = () => {
         </div>
       )}
 
-      {tags.length > 0 && total > 0 && (
+      {tagChips.length > 0 && total > 0 && (
         <div className="-mt-1 mb-5 flex flex-wrap gap-1.5">
-          {tags.map((t) => (
+          {tagChips.map((t) => (
             <button
               type="button"
               key={t.id}
@@ -430,6 +472,7 @@ const ProductThumb = ({ w, className }: { w: Warranty; className?: string }) => 
 
 const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: string | null) => string }) => {
   const docs = w.attachments.filter((a) => a.kind !== "photo").length;
+  const { sharing } = useSharing();
   return (
     <Link
       to={`/w/${w.id}`}
@@ -441,7 +484,12 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
       <div className="flex items-start gap-3">
         <ProductThumb w={w} className="size-11 rounded-xl text-base" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{displayName(w)}</p>
+          <p className="flex items-center gap-1.5 truncate font-medium">
+            <span className="truncate">{displayName(w)}</span>
+            {sharing && w.spaceKind === "personal" && (
+              <Lock className="size-3.5 shrink-0 text-fg-subtle" aria-label="Only you can see this" />
+            )}
+          </p>
           <p className="truncate text-[13px] text-fg-subtle">
             {[w.model, w.vendor].filter(Boolean).join(" · ") || " "}
           </p>

@@ -1,5 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCircle2, Database, Download, FileUp, Palette, Plug, Tag as TagIcon, Trash2 } from "lucide-react";
+import {
+  Bell,
+  CheckCircle2,
+  Database,
+  Download,
+  FileUp,
+  Palette,
+  Plug,
+  Tag as TagIcon,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { TagChip } from "@/components/Tags";
@@ -9,7 +20,15 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Card, Segmented, Switch } from "@/components/ui/misc";
 import { api, errorMessage, type ImportResult, type Settings as SettingsT, type Tag } from "@/lib/api";
 import { formatDate, todayISO } from "@/lib/dates";
-import { keys, useInvalidate, useSaveSettings, useSettingsQuery, useTags } from "@/lib/queries";
+import {
+  keys,
+  useInvalidate,
+  useSaveSettings,
+  useSettingsQuery,
+  useSharing,
+  useTags,
+  useWarranties,
+} from "@/lib/queries";
 import { applyTheme } from "@/lib/theme";
 import { CURRENCIES, cn } from "@/lib/utils";
 import { tagDot } from "@/lib/warranty";
@@ -40,6 +59,7 @@ export const Settings = () => {
         <Display s={settings} />
         <Notifications s={settings} />
         <Paperless s={settings} />
+        <Household />
         <Tags />
         <Data />
       </div>
@@ -473,6 +493,61 @@ const TagRow = ({ t, onChanged, onDelete }: { t: Tag; onChanged: () => void; onD
         <Trash2 />
       </Button>
     </li>
+  );
+};
+
+/** Moves private warranties into the household in one go. Hidden until someone else joins. */
+const Household = () => {
+  const { sharing, household } = useSharing();
+  const { data: list = [] } = useWarranties();
+  const invalidate = useInvalidate();
+  const [confirming, setConfirming] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const privateCount = list.filter((w) => w.spaceKind === "personal").length;
+  if (!sharing || !household) return null;
+
+  const moveAll = async () => {
+    setMoving(true);
+    try {
+      const { moved } = await api.moveAllToSpace(household.id);
+      invalidate();
+      toast.success(moved === 1 ? "1 warranty shared" : `${moved} warranties shared`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setMoving(false);
+      setConfirming(false);
+    }
+  };
+
+  return (
+    <Section
+      icon={<Users />}
+      title="Household"
+      description={`${household.members} people share the household. New warranties are shared by default; you can make any of them private.`}
+    >
+      {privateCount === 0 ? (
+        <p className="text-sm text-fg-muted">All your warranties are shared with the household.</p>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-4 py-3">
+          <span className="text-sm">
+            {privateCount === 1 ? "1 warranty is" : `${privateCount} warranties are`} visible only to you.
+          </span>
+          <Button variant="outline" onClick={() => setConfirming(true)}>
+            Share all with household
+          </Button>
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Share all with the household?"
+        description={`Everyone in the household will see and be able to edit your ${privateCount} private warranties, including their documents. You can make individual ones private again later.`}
+        confirmLabel="Share all"
+        loading={moving}
+        onConfirm={() => void moveAll()}
+      />
+    </Section>
   );
 };
 

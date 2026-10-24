@@ -43,6 +43,14 @@ OIDC_PROVIDER_NAME=Pocket ID
 
 Group membership is checked at sign-in and again every hour (`OIDC_RECHECK_INTERVAL`) using a refresh token, so someone removed from the group, or deleted in the provider, is signed out within an hour. This needs the `offline_access` scope, which is requested by default. If your provider issues no refresh token, sessions last at most 7 days instead.
 
+## Sharing
+
+Everyone who signs in belongs to one household. New warranties are shared with the household by default: everyone can see and edit them, add documents and archive them. Choose **Only me** to keep one private. In the household, only the person who added a warranty can delete it or make it private again.
+
+Documents a person attached from their Paperless are shown to the household with that person's connection, so others can open those documents but nothing else in their Paperless. Reminders go to each person through their own notification settings.
+
+With a single user, none of this appears in the interface.
+
 ## Paperless-ngx
 
 Set `PAPERLESS_URL` to your Paperless instance. Each user then connects with their own API token under **Settings → Paperless-ngx** (in Paperless: *Profile → API Auth Token*), so Paperless's permissions decide which documents they can see. Giving each person their own Paperless user is recommended. If `PAPERLESS_URL` is an internal address, set `PAPERLESS_PUBLIC_URL` to the address your browser uses.

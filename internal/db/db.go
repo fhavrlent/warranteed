@@ -50,6 +50,10 @@ func Open(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// migrate applies pending migrations. They run on one connection with
+// foreign keys off, as SQLite recommends for schema changes (otherwise
+// rebuilding a table would cascade-delete rows that reference it); each
+// migration is checked with foreign_key_check before it commits.
 func migrate(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)`); err != nil {
 		return err
@@ -64,6 +68,17 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	sort.Strings(files)
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		return err
+	}
+	defer conn.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
+
 	for _, f := range files {
 		name := strings.TrimPrefix(f, "migrations/")
 		version, err := strconv.Atoi(strings.SplitN(name, "_", 2)[0])
@@ -77,22 +92,34 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
-			tx.Rollback()
+		if err := applyMigration(ctx, conn, version, string(body)); err != nil {
 			return fmt.Errorf("migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
 		}
 		slog.Info("applied migration", "name", name)
 	}
 	return nil
+}
+
+func applyMigration(ctx context.Context, conn *sql.Conn, version int, body string) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, body); err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return err
+	}
+	broken := rows.Next()
+	rows.Close()
+	if broken {
+		return fmt.Errorf("would leave broken foreign keys")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

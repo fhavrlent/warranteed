@@ -18,7 +18,7 @@ import (
 var csvHeader = []string{
 	"product_name", "brand", "model", "vendor", "order_number", "purchase_date",
 	"warranty_months", "warranty_end_date", "lifetime", "price", "currency",
-	"serial_numbers", "tags", "product_url", "notes", "archived",
+	"serial_numbers", "tags", "product_url", "notes", "archived", "space",
 }
 
 const listSep = ";"
@@ -77,7 +77,7 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 			e(wr.ProductName), e(wr.Brand), e(wr.Model), e(wr.Vendor), e(wr.OrderNumber), wr.PurchaseDate,
 			months, end, strconv.FormatBool(wr.IsLifetime), price, e(wr.Currency),
 			e(strings.Join(wr.SerialNumbers, listSep)), e(strings.Join(tags, listSep)),
-			e(wr.ProductURL), e(wr.Notes), strconv.FormatBool(wr.ArchivedAt != nil),
+			e(wr.ProductURL), e(wr.Notes), strconv.FormatBool(wr.ArchivedAt != nil), wr.SpaceKind,
 		})
 	}
 	cw.Flush()
@@ -137,6 +137,17 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// "space" is personal or household; anything else (or no column) means household.
+	spaces, err := s.store.ListSpaces(r.Context(), uid)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	spaceByKind := map[string]int64{}
+	for _, sp := range spaces {
+		spaceByKind[sp.Kind] = sp.ID
+	}
+
 	seen := map[string]bool{}
 	for _, wr := range existing {
 		seen[strings.ToLower(wr.ProductName)+"|"+wr.PurchaseDate] = true
@@ -164,6 +175,9 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		if msg != "" {
 			res.Errors = append(res.Errors, importError{rowNum, msg})
 			continue
+		}
+		if id, ok := spaceByKind[strings.ToLower(get("space"))]; ok {
+			in.SpaceID = &id
 		}
 		key := strings.ToLower(in.ProductName) + "|" + in.PurchaseDate
 		if seen[key] {

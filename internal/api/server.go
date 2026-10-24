@@ -70,6 +70,9 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/paperless/search", s.searchPaperless)
 	api.HandleFunc("GET /api/paperless/documents/{doc}/thumb", s.paperlessThumb)
 
+	api.HandleFunc("GET /api/spaces", s.listSpaces)
+	api.HandleFunc("POST /api/spaces/{id}/move-all", s.moveAllToSpace)
+
 	api.HandleFunc("GET /api/tags", s.listTags)
 	api.HandleFunc("PATCH /api/tags/{id}", s.updateTag)
 	api.HandleFunc("DELETE /api/tags/{id}", s.deleteTag)

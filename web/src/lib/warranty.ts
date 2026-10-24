@@ -1,4 +1,4 @@
-import type { Attachment, Warranty } from "./api";
+import type { Attachment, Warranty, WarrantyInput } from "./api";
 import { daysUntil, fromISO, relativeDays } from "./dates";
 
 export type Status = "active" | "expiring" | "expired" | "lifetime" | "archived";
@@ -76,3 +76,23 @@ export const tagDot: Record<string, string> = {
   pink: "bg-pink-500",
   rose: "bg-rose-500",
 };
+
+/** The editable fields of a warranty, e.g. to save it with one change. */
+export const toInput = (w: Warranty): WarrantyInput => ({
+  productName: w.productName,
+  brand: w.brand,
+  model: w.model,
+  vendor: w.vendor,
+  orderNumber: w.orderNumber,
+  purchaseDate: w.purchaseDate,
+  warrantyMonths: w.warrantyMonths,
+  warrantyEndDate: w.warrantyEndDate,
+  isLifetime: w.isLifetime,
+  price: w.price,
+  currency: w.currency,
+  productUrl: w.productUrl,
+  notes: w.notes,
+  serialNumbers: w.serialNumbers,
+  tags: w.tags.map((t) => t.name),
+  spaceId: w.spaceId,
+});

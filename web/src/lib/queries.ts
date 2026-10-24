@@ -19,6 +19,7 @@ export const keys = {
   warranties: ["warranties"] as const,
   warranty: (id: number) => ["warranties", id] as const,
   tags: ["tags"] as const,
+  spaces: ["spaces"] as const,
 };
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me, staleTime: Infinity });
@@ -73,6 +74,17 @@ export const useWarranty = (id: number) => {
 };
 
 export const useTags = () => useQuery({ queryKey: keys.tags, queryFn: api.tags });
+
+/**
+ * The user's spaces. Sharing UI only appears once the household has more than
+ * one member, so a single-person install never sees it.
+ */
+export const useSharing = () => {
+  const { data: spaces = [] } = useQuery({ queryKey: keys.spaces, queryFn: api.spaces, staleTime: 60_000 });
+  const household = spaces.find((s) => s.kind === "household");
+  const personal = spaces.find((s) => s.kind === "personal");
+  return { household, personal, sharing: (household?.members ?? 0) > 1 };
+};
 
 /** Invalidates everything warranty-related after a change. */
 export const useInvalidate = () => {

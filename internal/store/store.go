@@ -85,8 +85,10 @@ func (s *Store) UpsertUser(ctx context.Context, u UpsertUser) (*User, error) {
 		).Scan(&out.ID, &out.Email, &out.Name, &out.Picture, &out.IsAdmin); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO user_settings (user_id) VALUES (?) ON CONFLICT DO NOTHING`, out.ID)
-		return err
+		if _, err := tx.ExecContext(ctx, `INSERT INTO user_settings (user_id) VALUES (?) ON CONFLICT DO NOTHING`, out.ID); err != nil {
+			return err
+		}
+		return ensureUserSpaces(ctx, tx, out.ID)
 	})
 	if err != nil {
 		return nil, err

@@ -207,6 +207,7 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := &store.Attachment{
+		AddedBy:    &uid,
 		WarrantyID: wid,
 		Kind:       kind,
 		Filename:   filename,
@@ -317,6 +318,7 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 			filename = doc.Title + filepath.Ext(doc.OriginalFileName)
 		}
 		a := &store.Attachment{
+			AddedBy:        &uid,
 			WarrantyID:     wid,
 			Kind:           in.Kind,
 			Storage:        store.StoragePaperless,
@@ -417,7 +419,7 @@ func (s *Server) retryAttachment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Nothing to retry")
 		return
 	}
-	pc, err := s.userPaperless(r.Context(), userID(r))
+	pc, err := s.attachmentPaperless(r.Context(), a, userID(r))
 	if err != nil || pc == nil {
 		writeError(w, http.StatusBadRequest, "Paperless is not configured")
 		return
@@ -490,7 +492,7 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		writeError(w, http.StatusConflict, "The document is still being processed by Paperless")
 		return
 	}
-	pc, err := s.userPaperless(r.Context(), userID(r))
+	pc, err := s.attachmentPaperless(r.Context(), a, userID(r))
 	if err != nil || pc == nil {
 		writeError(w, http.StatusBadGateway, "Paperless is not configured")
 		return
@@ -576,6 +578,17 @@ func (s *Server) paperlessThumb(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	s.proxyPaperless(w, r, pc, docID, "thumb", "", false)
+}
+
+// attachmentPaperless returns the Paperless connection of whoever attached a
+// document. Members of a shared space can open documents attached to its
+// warranties, but nothing else in that person's Paperless.
+func (s *Server) attachmentPaperless(ctx context.Context, a *store.Attachment, viewer int64) (*paperless.Client, error) {
+	owner := viewer
+	if a.AddedBy != nil {
+		owner = *a.AddedBy
+	}
+	return s.userPaperless(ctx, owner)
 }
 
 // ---- background polling of Paperless consumption tasks ----

@@ -186,7 +186,7 @@ func (n *Notifier) checkUser(ctx context.Context, userID int64) error {
 		for _, t := range thresholds {
 			if daysLeft <= t {
 				marks = append(marks, t)
-				sent, err := n.store.ReminderSent(ctx, w.ID, t, *w.ExpiresOn)
+				sent, err := n.store.ReminderSent(ctx, userID, w.ID, t, *w.ExpiresOn)
 				if err != nil {
 					return err
 				}
@@ -227,7 +227,7 @@ func (n *Notifier) checkUser(ctx context.Context, userID int64) error {
 		return err
 	}
 	for _, d := range list {
-		if err := n.store.MarkRemindersSent(ctx, d.w.ID, d.marks, *d.w.ExpiresOn); err != nil {
+		if err := n.store.MarkRemindersSent(ctx, userID, d.w.ID, d.marks, *d.w.ExpiresOn); err != nil {
 			return err
 		}
 	}

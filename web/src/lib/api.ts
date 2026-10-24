@@ -2,6 +2,7 @@ export interface Tag {
   id: number;
   name: string;
   color: string;
+  spaceId: number;
   count?: number;
 }
 
@@ -43,6 +44,18 @@ export interface Warranty {
   serialNumbers: string[];
   tags: Tag[];
   attachments: Attachment[];
+  spaceId: number;
+  spaceKind: SpaceKind;
+  addedBy: { id: number; name: string };
+}
+
+export type SpaceKind = "personal" | "household" | "custom";
+
+export interface Space {
+  id: number;
+  name: string;
+  kind: SpaceKind;
+  members: number;
 }
 
 export interface WarrantyInput {
@@ -61,6 +74,8 @@ export interface WarrantyInput {
   notes: string;
   serialNumbers: string[];
   tags: string[];
+  /** Who can see it; omitted means the household (new) or unchanged (edit). */
+  spaceId?: number;
 }
 
 export interface Settings {
@@ -214,6 +229,9 @@ export const api = {
   deleteAttachment: (id: number) => request<undefined>("DELETE", `/api/attachments/${id}`),
   retryAttachment: (id: number) => request<Attachment>("POST", `/api/attachments/${id}/retry`),
   searchPaperless: (q: string) => request<PaperlessDoc[]>("GET", `/api/paperless/search?q=${encodeURIComponent(q)}`),
+
+  spaces: () => request<Space[]>("GET", "/api/spaces"),
+  moveAllToSpace: (spaceId: number) => request<{ moved: number }>("POST", `/api/spaces/${spaceId}/move-all`),
 
   tags: () => request<Tag[]>("GET", "/api/tags"),
   updateTag: (id: number, name: string, color: string) =>

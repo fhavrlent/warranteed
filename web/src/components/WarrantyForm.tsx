@@ -1,11 +1,11 @@
 import { addMonths, isAfter } from "date-fns";
-import { Plus, Upload, X } from "lucide-react";
+import { Lock, Plus, Upload, Users, X } from "lucide-react";
 import { useRef, useState, type SubmitEvent } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { api, errorMessage, type Warranty, type WarrantyInput } from "@/lib/api";
 import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
-import { useInvalidate, usePrefs } from "@/lib/queries";
+import { useInvalidate, useMe, usePrefs, useSharing } from "@/lib/queries";
 import { storageFor, toPending, type PendingFile } from "@/lib/documents";
 import { CURRENCIES, cn } from "@/lib/utils";
 import { DateInput } from "./DateInput";
@@ -52,6 +52,8 @@ const initial = (w: Warranty | undefined, currency: string) => {
     notes: w?.notes ?? "",
     serials: w?.serialNumbers.length ? w.serialNumbers.map((v) => serial(v)) : [serial()],
     tags: w?.tags.map((t) => t.name) ?? [],
+    /** Null until chosen: new warranties go to the household. */
+    spaceId: w?.spaceId ?? null,
   };
 };
 
@@ -66,6 +68,10 @@ export const WarrantyForm = ({ open, ...props }: FormProps & { open: boolean }) 
 
 const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
   const { currency, settings, fmtDate } = usePrefs();
+  const { sharing, household, personal } = useSharing();
+  const { data: me } = useMe();
+  // In a shared space only the person who added it can make it private.
+  const canMakePrivate = !warranty || warranty.spaceKind === "personal" || warranty.addedBy.id === me?.id;
   const paperless = settings?.paperlessEnabled ?? false;
   const [f, setF] = useState(() => initial(warranty, currency));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -131,6 +137,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       notes: f.notes,
       serialNumbers: f.serials.map((x) => x.value),
       tags: f.tags,
+      spaceId: f.spaceId ?? household?.id,
     };
     setSaving(true);
     try {
@@ -363,6 +370,45 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               </button>
             </div>
           </Field>
+          {sharing && household && personal && (
+            <Field
+              label="Who can see this"
+              className="sm:col-span-2"
+              hint={
+                !canMakePrivate
+                  ? `Only ${warranty.addedBy.name} can make this private.`
+                  : (f.spaceId ?? household.id) === household.id
+                    ? "Everyone in the household can see and edit it."
+                    : "Only you can see it."
+              }
+            >
+              <Segmented
+                value={String(f.spaceId ?? household.id)}
+                onChange={(v) => {
+                  if (Number(v) === personal.id && !canMakePrivate) return;
+                  set("spaceId", Number(v));
+                }}
+                options={[
+                  {
+                    value: String(household.id),
+                    label: (
+                      <>
+                        <Users /> Household
+                      </>
+                    ),
+                  },
+                  {
+                    value: String(personal.id),
+                    label: (
+                      <span className={cn(!canMakePrivate && "opacity-40")}>
+                        <Lock className="mr-1.5 inline" /> Only me
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </Field>
+          )}
           <Field label="Tags" htmlFor="tags" optional className="sm:col-span-2">
             <TagInput id="tags" value={f.tags} onChange={(v) => set("tags", v)} />
           </Field>

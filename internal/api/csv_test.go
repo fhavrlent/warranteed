@@ -8,11 +8,11 @@ import (
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
-const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,serial_numbers,tags,product_url,notes,archived
-Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false
-Knife,,,,,2024-01-15,,,true,,,,,,,false
-Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,Electronics,,,true
-Broken,,,,,2024-01-01,,,false,,,,,,,false
+const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,serial_numbers,tags,product_url,notes,archived,space
+Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,household
+Knife,,,,,2024-01-15,,,true,,,,,,,false,personal
+Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,Electronics,,,true,
+Broken,,,,,2024-01-01,,,false,,,,,,,false,
 `
 
 func parseRows(t *testing.T) []func(string) string {

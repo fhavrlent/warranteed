@@ -1,4 +1,15 @@
-import { Archive, ArchiveRestore, ArrowLeft, Copy, ExternalLink, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  Copy,
+  ExternalLink,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -12,9 +23,9 @@ import { Card } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
 import { api, errorMessage, thumbUrl } from "@/lib/api";
 import { durationLabel } from "@/lib/dates";
-import { useInvalidate, usePrefs, useWarranty } from "@/lib/queries";
+import { useInvalidate, useMe, usePrefs, useSharing, useWarranty } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { displayName, photoOf, statusOf, expiryText } from "@/lib/warranty";
+import { displayName, photoOf, statusOf, expiryText, toInput } from "@/lib/warranty";
 
 export const WarrantyDetail = () => {
   const id = Number(useParams().id);
@@ -24,6 +35,8 @@ export const WarrantyDetail = () => {
   const [deleting, setDeleting] = useState(false);
   const invalidate = useInvalidate();
   const navigate = useNavigate();
+  const { sharing, household, personal } = useSharing();
+  const { data: me } = useMe();
 
   if (isLoading) {
     return <div className="h-64 animate-pulse rounded-2xl bg-surface-3/60" />;
@@ -58,6 +71,21 @@ export const WarrantyDetail = () => {
       invalidate();
       toast.success(`${w.productName} deleted`);
       void navigate("/", { replace: true });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+
+  // In a shared space only the person who added it can delete it or make it private.
+  const shared = w.spaceKind !== "personal";
+  const mine = w.addedBy.id === me?.id;
+  const canManage = !shared || mine;
+
+  const moveTo = async (spaceId: number, message: string) => {
+    try {
+      await api.updateWarranty(w.id, { ...toInput(w), spaceId });
+      invalidate();
+      toast.success(message);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -101,6 +129,13 @@ export const WarrantyDetail = () => {
                     {[w.model, w.vendor && `from ${w.vendor}`].filter(Boolean).join(" · ")}
                   </p>
                 )}
+                {sharing && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-xs text-fg-subtle">
+                    {shared ? <Users className="size-3.5" /> : <Lock className="size-3.5" />}
+                    {shared ? "Shared with the household" : "Only you can see this"}
+                    {shared && !mine && ` · added by ${w.addedBy.name}`}
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 gap-1.5">
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
@@ -116,10 +151,29 @@ export const WarrantyDetail = () => {
                     <MenuItem icon={w.archivedAt ? <ArchiveRestore /> : <Archive />} onSelect={archive}>
                       {w.archivedAt ? "Restore from archive" : "Archive"}
                     </MenuItem>
+                    {sharing && !shared && household && (
+                      <MenuItem
+                        icon={<Users />}
+                        onSelect={() => void moveTo(household.id, "Shared with the household")}
+                      >
+                        Share with household
+                      </MenuItem>
+                    )}
+                    {sharing && shared && canManage && personal && (
+                      <MenuItem icon={<Lock />} onSelect={() => void moveTo(personal.id, "Only you can see it now")}>
+                        Make private
+                      </MenuItem>
+                    )}
                     <MenuSeparator />
-                    <MenuItem danger icon={<Trash2 />} onSelect={() => setDeleting(true)}>
-                      Delete
-                    </MenuItem>
+                    {canManage ? (
+                      <MenuItem danger icon={<Trash2 />} onSelect={() => setDeleting(true)}>
+                        Delete
+                      </MenuItem>
+                    ) : (
+                      <p className="max-w-56 px-2.5 py-1.5 text-xs text-fg-subtle">
+                        Only {w.addedBy.name} can delete this. You can archive it.
+                      </p>
+                    )}
                   </MenuContent>
                 </Menu>
               </div>
