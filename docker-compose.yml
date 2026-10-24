@@ -1,0 +1,14 @@
+services:
+  warranteed:
+    image: ghcr.io/fhavrlent/warranteed:latest
+    container_name: warranteed
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    volumes:
+      # Database and uploaded files. Back this up.
+      - warranteed-data:/data
+
+volumes:
+  warranteed-data:

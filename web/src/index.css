@@ -1,0 +1,170 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "react-day-picker/style.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic colour tokens; components only use these. */
+:root {
+  --bg: oklch(0.985 0.002 95);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.97 0.003 95);
+  --surface-3: oklch(0.94 0.004 95);
+  --border: oklch(0.91 0.005 95);
+  --border-strong: oklch(0.85 0.006 95);
+  --fg: oklch(0.22 0.01 260);
+  --fg-muted: oklch(0.47 0.012 260);
+  --fg-subtle: oklch(0.6 0.01 260);
+  --primary: oklch(0.52 0.1 180);
+  --primary-hover: oklch(0.47 0.1 180);
+  --primary-fg: oklch(0.99 0 0);
+  --primary-soft: oklch(0.95 0.035 180);
+  --ring: oklch(0.6 0.11 180 / 0.45);
+
+  --ok: oklch(0.55 0.13 155);
+  --ok-soft: oklch(0.95 0.045 155);
+  --warn: oklch(0.6 0.14 65);
+  --warn-soft: oklch(0.96 0.05 80);
+  --bad: oklch(0.56 0.19 25);
+  --bad-soft: oklch(0.95 0.035 25);
+  --life: oklch(0.52 0.15 285);
+  --life-soft: oklch(0.95 0.035 285);
+
+  --shadow: 0 1px 2px oklch(0.2 0.01 260 / 0.05), 0 1px 3px oklch(0.2 0.01 260 / 0.05);
+  --shadow-lg: 0 10px 30px -10px oklch(0.2 0.01 260 / 0.25), 0 2px 6px oklch(0.2 0.01 260 / 0.08);
+  color-scheme: light;
+}
+
+.dark {
+  --bg: oklch(0.17 0.006 260);
+  --surface: oklch(0.205 0.007 260);
+  --surface-2: oklch(0.235 0.008 260);
+  --surface-3: oklch(0.27 0.009 260);
+  --border: oklch(0.29 0.009 260);
+  --border-strong: oklch(0.36 0.01 260);
+  --fg: oklch(0.95 0.004 260);
+  --fg-muted: oklch(0.72 0.01 260);
+  --fg-subtle: oklch(0.58 0.01 260);
+  --primary: oklch(0.7 0.11 180);
+  --primary-hover: oklch(0.76 0.11 180);
+  --primary-fg: oklch(0.18 0.02 180);
+  --primary-soft: oklch(0.3 0.05 180);
+  --ring: oklch(0.7 0.11 180 / 0.5);
+
+  --ok: oklch(0.75 0.14 155);
+  --ok-soft: oklch(0.3 0.055 155);
+  --warn: oklch(0.8 0.13 75);
+  --warn-soft: oklch(0.32 0.06 70);
+  --bad: oklch(0.72 0.16 25);
+  --bad-soft: oklch(0.31 0.07 25);
+  --life: oklch(0.75 0.13 285);
+  --life-soft: oklch(0.3 0.06 285);
+
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-lg: 0 12px 32px -8px oklch(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-ring: var(--ring);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-life: var(--life);
+  --color-life-soft: var(--life-soft);
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-lg);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: var(--primary-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Day picker theming */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--primary-soft);
+  --rdp-day-height: 2.25rem;
+  --rdp-day-width: 2.25rem;
+  --rdp-day_button-height: 2.1rem;
+  --rdp-day_button-width: 2.1rem;
+  --rdp-day_button-border-radius: 0.5rem;
+  --rdp-selected-border: 0;
+  --rdp-today-color: var(--primary);
+  font-size: 0.875rem;
+}
+.rdp-root .rdp-selected .rdp-day_button {
+  background: var(--primary);
+  color: var(--primary-fg);
+  font-weight: 600;
+}
+.rdp-root .rdp-day_button:hover:not([disabled]) {
+  background: var(--surface-3);
+}
+.rdp-root .rdp-selected .rdp-day_button:hover {
+  background: var(--primary-hover);
+}
+.rdp-root .rdp-dropdown_root {
+  font-weight: 600;
+}
+.rdp-root .rdp-chevron {
+  fill: var(--fg-muted);
+}
+.rdp-root select.rdp-dropdown {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 150ms ease-out; }
+.animate-pop-in { animation: pop-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+.animate-slide-up { animation: slide-up 160ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in, .animate-pop-in, .animate-slide-up { animation: none; }
+}

@@ -1,0 +1,11 @@
+/data/
+*.db
+*.db-shm
+*.db-wal
+node_modules/
+web/dist/*
+!web/dist/.gitkeep
+/warranteed
+.env
+.claude/
+.DS_Store

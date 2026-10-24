@@ -1,0 +1,37 @@
+# Local integration environment: a real Paperless-ngx and a mock OIDC provider.
+#   docker compose -f dev/compose.yml up -d
+# Paperless: http://localhost:8000 (admin / admin)
+# Mock OIDC issuer: http://localhost:8090/default (any username works)
+services:
+  paperless-redis:
+    image: redis:7-alpine
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    depends_on: [paperless-redis]
+    ports: ["8000:8000"]
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: admin
+      PAPERLESS_URL: http://localhost:8000
+      PAPERLESS_OCR_LANGUAGE: eng
+      PAPERLESS_SECRET_KEY: dev-only-not-secret-4f0b9c1e7a2d8e63b5a1c9f04d7e2b68
+    volumes:
+      - paperless-data:/usr/src/paperless/data
+      - paperless-media:/usr/src/paperless/media
+
+  oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    ports: ["8090:8080"]
+    environment:
+      JSON_CONFIG: >
+        {"interactiveLogin": true, "httpServer": "NettyWrapper",
+         "tokenCallbacks": [{"issuerId": "default", "tokenExpiry": 3600,
+           "requestMappings": [{"requestParam": "scope", "match": "*",
+             "claims": {"sub": "$${username}", "email": "$${username}@example.com",
+                        "name": "Test User", "groups": ["warranty-users", "warranty-admins"]}}]}]}
+
+volumes:
+  paperless-data:
+  paperless-media:
