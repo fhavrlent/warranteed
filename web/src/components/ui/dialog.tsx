@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export function Dialog({
+export const Dialog = ({
   open,
   onOpenChange,
   title,
@@ -21,7 +21,7 @@ export function Dialog({
   footer?: ReactNode;
   className?: string;
   size?: "sm" | "md" | "lg" | "xl";
-}) {
+}) => {
   const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-2xl", xl: "max-w-4xl" };
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
@@ -52,12 +52,15 @@ export function Dialog({
                 <D.Description className="sr-only">{typeof title === "string" ? title : "Dialog"}</D.Description>
               )}
             </div>
-            <D.Close className="-mt-1 -mr-2 rounded-md p-1.5 text-fg-subtle hover:bg-surface-3 hover:text-fg" aria-label="Close">
+            <D.Close
+              className="-mt-1 -mr-2 rounded-md p-1.5 text-fg-subtle hover:bg-surface-3 hover:text-fg"
+              aria-label="Close"
+            >
               <X className="size-4" />
             </D.Close>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
-          {footer && (
+          {footer !== undefined && (
             <div className="flex items-center justify-end gap-2 rounded-b-2xl border-t border-border bg-surface-2 px-6 py-3.5">
               {footer}
             </div>
@@ -66,9 +69,9 @@ export function Dialog({
       </D.Portal>
     </D.Root>
   );
-}
+};
 
-export function ConfirmDialog({
+export const ConfirmDialog = ({
   open,
   onOpenChange,
   title,
@@ -84,30 +87,32 @@ export function ConfirmDialog({
   confirmLabel?: string;
   onConfirm: () => void;
   loading?: boolean;
-}) {
-  return (
-    <D.Root open={open} onOpenChange={onOpenChange}>
-      <D.Portal>
-        <D.Overlay className="animate-fade-in fixed inset-0 z-40 bg-black/40" />
-        <D.Content className="animate-pop-in fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface p-6 shadow-pop">
-          <D.Title className="text-base font-semibold">{title}</D.Title>
-          <D.Description className="mt-2 text-sm text-fg-muted">{description}</D.Description>
-          <div className="mt-6 flex justify-end gap-2">
-            <D.Close asChild>
-              <button className="h-9 cursor-pointer rounded-lg px-3.5 text-sm font-medium text-fg-muted hover:bg-surface-3">
-                Cancel
-              </button>
-            </D.Close>
+}) => (
+  <D.Root open={open} onOpenChange={onOpenChange}>
+    <D.Portal>
+      <D.Overlay className="animate-fade-in fixed inset-0 z-40 bg-black/40" />
+      <D.Content className="animate-pop-in fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface p-6 shadow-pop">
+        <D.Title className="text-base font-semibold">{title}</D.Title>
+        <D.Description className="mt-2 text-sm text-fg-muted">{description}</D.Description>
+        <div className="mt-6 flex justify-end gap-2">
+          <D.Close asChild>
             <button
-              onClick={onConfirm}
-              disabled={loading}
-              className="h-9 cursor-pointer rounded-lg bg-bad px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              type="button"
+              className="h-9 cursor-pointer rounded-lg px-3.5 text-sm font-medium text-fg-muted hover:bg-surface-3"
             >
-              {confirmLabel}
+              Cancel
             </button>
-          </div>
-        </D.Content>
-      </D.Portal>
-    </D.Root>
-  );
-}
+          </D.Close>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="h-9 cursor-pointer rounded-lg bg-bad px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </D.Content>
+    </D.Portal>
+  </D.Root>
+);

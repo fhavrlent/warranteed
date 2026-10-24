@@ -6,32 +6,46 @@ import { cn } from "@/lib/utils";
 import { tagClasses } from "@/lib/warranty";
 import { fieldBase } from "./ui/input";
 
-export function TagChip({ tag, className, onRemove }: { tag: Pick<Tag, "name" | "color">; className?: string; onRemove?: () => void }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-5.5 items-center gap-1 rounded-md px-1.5 text-xs font-medium whitespace-nowrap",
-        tagClasses[tag.color] ?? tagClasses.slate,
-        className,
-      )}
-    >
-      {tag.name}
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="-mr-0.5 cursor-pointer rounded opacity-60 hover:opacity-100"
-          aria-label={`Remove ${tag.name}`}
-        >
-          <X className="size-3" />
-        </button>
-      )}
-    </span>
-  );
-}
+export const TagChip = ({
+  tag,
+  className,
+  onRemove,
+}: {
+  tag: Pick<Tag, "name" | "color">;
+  className?: string;
+  onRemove?: () => void;
+}) => (
+  <span
+    className={cn(
+      "inline-flex h-5.5 items-center gap-1 rounded-md px-1.5 text-xs font-medium whitespace-nowrap",
+      tagClasses[tag.color] ?? tagClasses.slate,
+      className,
+    )}
+  >
+    {tag.name}
+    {onRemove && (
+      <button
+        type="button"
+        onClick={onRemove}
+        className="-mr-0.5 cursor-pointer rounded opacity-60 hover:opacity-100"
+        aria-label={`Remove ${tag.name}`}
+      >
+        <X className="size-3" />
+      </button>
+    )}
+  </span>
+);
 
 /** Free-form tag entry with suggestions from existing tags. */
-export function TagInput({ value, onChange, id }: { value: string[]; onChange: (v: string[]) => void; id?: string }) {
+export const TagInput = ({
+  value,
+  onChange,
+  id,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  id?: string;
+}) => {
   const { data: allTags = [] } = useTags();
   const [text, setText] = useState("");
   const [focus, setFocus] = useState(false);
@@ -42,8 +56,11 @@ export function TagInput({ value, onChange, id }: { value: string[]; onChange: (
   const lower = value.map((v) => v.toLowerCase());
   const suggestions = useMemo(() => {
     const q = text.trim().toLowerCase();
-    return allTags.filter((t) => !lower.includes(t.name.toLowerCase()) && (!q || t.name.toLowerCase().includes(q))).slice(0, 8);
-  }, [allTags, text, value]); // eslint-disable-line react-hooks/exhaustive-deps
+    const chosen = new Set(value.map((v) => v.toLowerCase()));
+    return allTags
+      .filter((t) => !chosen.has(t.name.toLowerCase()) && (!q || t.name.toLowerCase().includes(q)))
+      .slice(0, 8);
+  }, [allTags, text, value]);
 
   const add = (name: string) => {
     const n = name.trim().replace(/,$/, "");
@@ -62,7 +79,11 @@ export function TagInput({ value, onChange, id }: { value: string[]; onChange: (
         onClick={() => inputRef.current?.focus()}
       >
         {value.map((t) => (
-          <TagChip key={t} tag={{ name: t, color: colorOf(t) }} onRemove={() => onChange(value.filter((x) => x !== t))} />
+          <TagChip
+            key={t}
+            tag={{ name: t, color: colorOf(t) }}
+            onRemove={() => onChange(value.filter((x) => x !== t))}
+          />
         ))}
         <input
           id={id}
@@ -130,4 +151,4 @@ export function TagInput({ value, onChange, id }: { value: string[]; onChange: (
       )}
     </div>
   );
-}
+};

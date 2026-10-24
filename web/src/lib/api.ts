@@ -1,6 +1,11 @@
-export type Tag = { id: number; name: string; color: string; count?: number };
+export interface Tag {
+  id: number;
+  name: string;
+  color: string;
+  count?: number;
+}
 
-export type Attachment = {
+export interface Attachment {
   id: number;
   warrantyId: number;
   kind: AttachmentKind;
@@ -12,11 +17,11 @@ export type Attachment = {
   status: "ready" | "processing" | "failed";
   error: string;
   createdAt: string;
-};
+}
 
 export type AttachmentKind = "receipt" | "invoice" | "manual" | "photo" | "other";
 
-export type Warranty = {
+export interface Warranty {
   id: number;
   productName: string;
   brand: string;
@@ -38,9 +43,9 @@ export type Warranty = {
   serialNumbers: string[];
   tags: Tag[];
   attachments: Attachment[];
-};
+}
 
-export type WarrantyInput = {
+export interface WarrantyInput {
   productName: string;
   brand: string;
   model: string;
@@ -56,9 +61,9 @@ export type WarrantyInput = {
   notes: string;
   serialNumbers: string[];
   tags: string[];
-};
+}
 
-export type Settings = {
+export interface Settings {
   dateFormat: string;
   currency: string;
   theme: "system" | "light" | "dark";
@@ -73,18 +78,46 @@ export type Settings = {
   paperlessWebUrl: string;
   dateFormats: string[];
   timezone: string;
-};
+}
 
 export type SettingsInput = Omit<
   Settings,
   "hasPaperlessToken" | "paperlessFromEnv" | "paperlessEnabled" | "paperlessWebUrl" | "dateFormats" | "timezone"
 > & { paperlessToken?: string };
 
-export type User = { id: number; email: string; name: string; picture: string; isAdmin: boolean };
-export type AuthInfo = { providerName: string; oidc: boolean; devLogin: boolean; autoRedirect: boolean };
-export type PaperlessDoc = { id: number; title: string; created: string; originalFileName: string; mimeType: string };
-export type PaperlessInfo = { version: string; apiVersion: number; documents: number };
-export type ImportResult = { imported: number; skipped: number; errors: { row: number; message: string }[] };
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  picture: string;
+  isAdmin: boolean;
+}
+export interface AuthInfo {
+  providerName: string;
+  oidc: boolean;
+  devLogin: boolean;
+  autoRedirect: boolean;
+}
+export interface PaperlessDoc {
+  id: number;
+  title: string;
+  created: string;
+  originalFileName: string;
+  mimeType: string;
+}
+export interface PaperlessInfo {
+  version: string;
+  apiVersion: number;
+  documents: number;
+}
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+}
+
+/** A user-facing message for anything thrown. */
+export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 export class ApiError extends Error {
   constructor(
@@ -95,7 +128,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+const request = async <T>(method: string, url: string, body?: unknown): Promise<T> => {
   const init: RequestInit = { method, headers: {}, credentials: "same-origin" };
   if (body instanceof FormData) {
     init.body = body;
@@ -117,8 +150,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   if (!res.ok) {
     let msg = res.statusText || "Request failed";
     try {
-      const data = await res.json();
-      if (data?.error) msg = data.error;
+      const data: unknown = await res.json();
+      if (typeof data === "object" && data !== null && "error" in data && typeof data.error === "string") {
+        msg = data.error;
+      }
     } catch {
       /* not JSON */
     }
@@ -126,7 +161,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
-}
+};
 
 export const api = {
   authInfo: () => request<AuthInfo>("GET", "/api/auth/info"),
@@ -135,14 +170,16 @@ export const api = {
 
   settings: () => request<Settings>("GET", "/api/settings"),
   saveSettings: (s: SettingsInput) => request<Settings>("PUT", "/api/settings", s),
-  testNotification: (notifyUrls: string) => request<{ ok: boolean }>("POST", "/api/settings/test-notification", { notifyUrls }),
-  testPaperless: (url: string, token?: string) => request<PaperlessInfo>("POST", "/api/settings/test-paperless", { url, token }),
+  testNotification: (notifyUrls: string) =>
+    request<{ ok: boolean }>("POST", "/api/settings/test-notification", { notifyUrls }),
+  testPaperless: (url: string, token?: string) =>
+    request<PaperlessInfo>("POST", "/api/settings/test-paperless", { url, token }),
 
   warranties: () => request<Warranty[]>("GET", "/api/warranties"),
   warranty: (id: number) => request<Warranty>("GET", `/api/warranties/${id}`),
   createWarranty: (w: WarrantyInput) => request<Warranty>("POST", "/api/warranties", w),
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
-  deleteWarranty: (id: number) => request<void>("DELETE", `/api/warranties/${id}`),
+  deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
   archive: (id: number, archived: boolean) =>
     request<Warranty>("POST", `/api/warranties/${id}/${archived ? "archive" : "unarchive"}`),
 
@@ -155,14 +192,16 @@ export const api = {
   },
   linkPaperless: (warrantyId: number, documentIds: number[], kind: AttachmentKind) =>
     request<Attachment[]>("POST", `/api/warranties/${warrantyId}/attachments/paperless`, { documentIds, kind }),
-  setAttachmentKind: (id: number, kind: AttachmentKind) => request<void>("PATCH", `/api/attachments/${id}`, { kind }),
-  deleteAttachment: (id: number) => request<void>("DELETE", `/api/attachments/${id}`),
+  setAttachmentKind: (id: number, kind: AttachmentKind) =>
+    request<undefined>("PATCH", `/api/attachments/${id}`, { kind }),
+  deleteAttachment: (id: number) => request<undefined>("DELETE", `/api/attachments/${id}`),
   retryAttachment: (id: number) => request<Attachment>("POST", `/api/attachments/${id}/retry`),
   searchPaperless: (q: string) => request<PaperlessDoc[]>("GET", `/api/paperless/search?q=${encodeURIComponent(q)}`),
 
   tags: () => request<Tag[]>("GET", "/api/tags"),
-  updateTag: (id: number, name: string, color: string) => request<void>("PATCH", `/api/tags/${id}`, { name, color }),
-  deleteTag: (id: number) => request<void>("DELETE", `/api/tags/${id}`),
+  updateTag: (id: number, name: string, color: string) =>
+    request<undefined>("PATCH", `/api/tags/${id}`, { name, color }),
+  deleteTag: (id: number) => request<undefined>("DELETE", `/api/tags/${id}`),
 
   importCsv: (file: File) => {
     const fd = new FormData();
@@ -174,5 +213,6 @@ export const api = {
 // The version suffix keeps the browser cache honest: attachment IDs can be
 // reused after deletion, and a Paperless upload changes once it is processed.
 const version = (a: Attachment) => `v=${encodeURIComponent(`${a.createdAt}-${a.status}-${a.paperlessDocId ?? ""}`)}`;
-export const fileUrl = (a: Attachment, download = false) => `/api/attachments/${a.id}/file?${version(a)}${download ? "&download=1" : ""}`;
+export const fileUrl = (a: Attachment, download = false) =>
+  `/api/attachments/${a.id}/file?${version(a)}${download ? "&download=1" : ""}`;
 export const thumbUrl = (a: Attachment) => `/api/attachments/${a.id}/thumb?${version(a)}`;

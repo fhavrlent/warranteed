@@ -1,9 +1,9 @@
 import { addMonths, isAfter } from "date-fns";
 import { FileText, Plus, Upload, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { api, type AttachmentKind, type Warranty, type WarrantyInput } from "@/lib/api";
+import { api, errorMessage, type AttachmentKind, type Warranty, type WarrantyInput } from "@/lib/api";
 import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
 import { useInvalidate, usePrefs } from "@/lib/queries";
 import { CURRENCIES, cn, formatBytes } from "@/lib/utils";
@@ -16,12 +16,28 @@ import { Segmented, Switch } from "./ui/misc";
 
 type Mode = "duration" | "date" | "lifetime";
 type Unit = "years" | "months";
-type PendingFile = { file: File; kind: AttachmentKind };
+interface PendingFile {
+  id: string;
+  file: File;
+  kind: AttachmentKind;
+}
+interface Serial {
+  id: string;
+  value: string;
+}
+
+// Keys for editable list rows (crypto.randomUUID needs HTTPS, which a LAN
+// install may not have).
+let lastId = 0;
+const newId = () => String(++lastId);
+const serial = (value = ""): Serial => ({ id: newId(), value });
 
 const PRESETS = [12, 24, 36, 60];
 
-function initial(w: Warranty | undefined, currency: string) {
+const initial = (w: Warranty | undefined, currency: string) => {
   const months = w?.warrantyMonths ?? 24;
+  const mode: Mode = w?.isLifetime ? "lifetime" : w?.warrantyEndDate ? "date" : "duration";
+  const unit: Unit = months % 12 === 0 ? "years" : "months";
   return {
     productName: w?.productName ?? "",
     brand: w?.brand ?? "",
@@ -29,56 +45,50 @@ function initial(w: Warranty | undefined, currency: string) {
     vendor: w?.vendor ?? "",
     orderNumber: w?.orderNumber ?? "",
     purchaseDate: w?.purchaseDate ?? todayISO(),
-    mode: (w?.isLifetime ? "lifetime" : w?.warrantyEndDate ? "date" : "duration") as Mode,
+    mode,
     amount: String(months % 12 === 0 ? months / 12 : months),
-    unit: (months % 12 === 0 ? "years" : "months") as Unit,
+    unit,
     endDate: w?.warrantyEndDate ?? null,
     price: w?.price != null ? String(w.price) : "",
     currency: w?.currency || currency,
     productUrl: w?.productUrl ?? "",
     notes: w?.notes ?? "",
-    serials: w?.serialNumbers.length ? [...w.serialNumbers] : [""],
+    serials: w?.serialNumbers.length ? w.serialNumbers.map((v) => serial(v)) : [serial()],
     tags: w?.tags.map((t) => t.name) ?? [],
   };
-}
+};
 
-function guessKind(f: File): AttachmentKind {
+const guessKind = (f: File): AttachmentKind => {
   const n = f.name.toLowerCase();
   if (f.type.startsWith("image/") && !/(receipt|invoice|bill|uctenka|faktura)/.test(n)) return "photo";
   if (/(invoice|faktura|rechnung)/.test(n)) return "invoice";
   if (/(manual|guide|navod|handbuch)/.test(n)) return "manual";
   return "receipt";
-}
+};
 
-export function WarrantyForm({
-  open,
-  onOpenChange,
-  warranty,
-}: {
-  open: boolean;
+interface FormProps {
   onOpenChange: (o: boolean) => void;
   warranty?: Warranty;
-}) {
-  const { currency, settings } = usePrefs();
+}
+
+/** Add/edit dialog. The form is mounted only while open, so every opening starts from fresh state. */
+export const WarrantyForm = ({ open, ...props }: FormProps & { open: boolean }) =>
+  open ? <WarrantyFormDialog {...props} /> : null;
+
+const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
+  const { currency, settings, fmtDate } = usePrefs();
+  const paperless = settings?.paperlessEnabled ?? false;
   const [f, setF] = useState(() => initial(warranty, currency));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
-  const [toPaperless, setToPaperless] = useState(false);
+  // The serial row added last gets focus.
+  const [newSerialId, setNewSerialId] = useState<string | null>(null);
+  const [toPaperless, setToPaperless] = useState(() => paperless && (settings?.paperlessDefault ?? false));
   const fileRef = useRef<HTMLInputElement>(null);
   const invalidate = useInvalidate();
   const navigate = useNavigate();
-  const editing = !!warranty;
-  const paperless = settings?.paperlessEnabled ?? false;
-
-  useEffect(() => {
-    if (open) {
-      setF(initial(warranty, currency));
-      setErrors({});
-      setFiles([]);
-      setToPaperless(paperless && (settings?.paperlessDefault ?? false));
-    }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const editing = warranty !== undefined;
 
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -96,7 +106,6 @@ export function WarrantyForm({
         : months && f.purchaseDate
           ? toISO(addMonths(fromISO(f.purchaseDate), months))
           : null;
-  const { fmtDate } = usePrefs();
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -105,14 +114,15 @@ export function WarrantyForm({
     if (f.mode === "duration" && !months) e.amount = "Enter a length";
     if (f.mode === "date") {
       if (!f.endDate) e.endDate = "Pick the end date";
-      else if (f.purchaseDate && isAfter(fromISO(f.purchaseDate), fromISO(f.endDate))) e.endDate = "Ends before the purchase date";
+      else if (f.purchaseDate && isAfter(fromISO(f.purchaseDate), fromISO(f.endDate)))
+        e.endDate = "Ends before the purchase date";
     }
     if (f.price && !Number.isFinite(Number(f.price.replace(",", ".")))) e.price = "Not a number";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const submit = async (ev: FormEvent) => {
+  const submit = async (ev: SubmitEvent<HTMLFormElement>) => {
     ev.preventDefault();
     if (!validate()) return;
     const input: WarrantyInput = {
@@ -129,7 +139,7 @@ export function WarrantyForm({
       currency: f.currency,
       productUrl: f.productUrl,
       notes: f.notes,
-      serialNumbers: f.serials,
+      serialNumbers: f.serials.map((x) => x.value),
       tags: f.tags,
     };
     setSaving(true);
@@ -139,9 +149,9 @@ export function WarrantyForm({
       for (const p of files) {
         try {
           await api.upload(saved.id, p.file, p.kind, toPaperless && p.kind !== "photo" ? "paperless" : "local");
-        } catch (err: any) {
+        } catch (err) {
           failed++;
-          toast.error(`${p.file.name}: ${err.message}`);
+          toast.error(`${p.file.name}: ${errorMessage(err)}`);
         }
       }
       invalidate();
@@ -149,9 +159,9 @@ export function WarrantyForm({
       toast.success(editing ? "Changes saved" : `${saved.productName} added`, {
         description: failed ? `${failed} file(s) could not be uploaded` : undefined,
       });
-      if (!editing) navigate(`/w/${saved.id}`);
-    } catch (err: any) {
-      toast.error(err.message);
+      if (!editing) void navigate(`/w/${saved.id}`);
+    } catch (err) {
+      toast.error(errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -159,12 +169,12 @@ export function WarrantyForm({
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
-    setFiles((prev) => [...prev, ...Array.from(list).map((file) => ({ file, kind: guessKind(file) }))]);
+    setFiles((prev) => [...prev, ...Array.from(list).map((file) => ({ id: newId(), file, kind: guessKind(file) }))]);
   };
 
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={onOpenChange}
       size="lg"
       title={editing ? "Edit warranty" : "Add a warranty"}
@@ -201,10 +211,20 @@ export function WarrantyForm({
 
         <section className="grid gap-4 sm:grid-cols-2">
           <Field label="Purchase date" htmlFor="purchaseDate" error={errors.purchaseDate}>
-            <DateInput id="purchaseDate" value={f.purchaseDate} onChange={(v) => set("purchaseDate", v ?? "")} invalid={!!errors.purchaseDate} />
+            <DateInput
+              id="purchaseDate"
+              value={f.purchaseDate}
+              onChange={(v) => set("purchaseDate", v ?? "")}
+              invalid={!!errors.purchaseDate}
+            />
           </Field>
           <Field label="Bought from" htmlFor="vendor" optional>
-            <Input id="vendor" value={f.vendor} placeholder="Store or website" onChange={(e) => set("vendor", e.target.value)} />
+            <Input
+              id="vendor"
+              value={f.vendor}
+              placeholder="Store or website"
+              onChange={(e) => set("vendor", e.target.value)}
+            />
           </Field>
           <Field label="Price" htmlFor="price" error={errors.price} optional>
             <div className="flex gap-2">
@@ -216,7 +236,12 @@ export function WarrantyForm({
                 className="tabular-nums"
                 onChange={(e) => set("price", e.target.value)}
               />
-              <Select aria-label="Currency" value={f.currency} onChange={(e) => set("currency", e.target.value)} className="w-24">
+              <Select
+                aria-label="Currency"
+                value={f.currency}
+                onChange={(e) => set("currency", e.target.value)}
+                className="w-24"
+              >
                 {[...new Set([f.currency, ...CURRENCIES])].map((c) => (
                   <option key={c}>{c}</option>
                 ))}
@@ -254,7 +279,12 @@ export function WarrantyForm({
                     onChange={(e) => set("amount", e.target.value.replace(/\D/g, ""))}
                     className="w-20 tabular-nums"
                   />
-                  <Select aria-label="Unit" value={f.unit} onChange={(e) => set("unit", e.target.value as Unit)} className="w-28">
+                  <Select
+                    aria-label="Unit"
+                    value={f.unit}
+                    onChange={(e) => set("unit", e.target.value as Unit)}
+                    className="w-28"
+                  >
                     <option value="years">years</option>
                     <option value="months">months</option>
                   </Select>
@@ -267,7 +297,9 @@ export function WarrantyForm({
                       onClick={() => setF((p) => ({ ...p, amount: String(m / 12), unit: "years" }))}
                       className={cn(
                         "h-9 cursor-pointer rounded-lg border px-3 text-[13px] font-medium transition-colors",
-                        months === m ? "border-primary bg-primary-soft text-primary" : "border-border bg-surface text-fg-muted hover:text-fg",
+                        months === m
+                          ? "border-primary bg-primary-soft text-primary"
+                          : "border-border bg-surface text-fg-muted hover:text-fg",
                       )}
                     >
                       {durationLabel(m)}
@@ -282,7 +314,9 @@ export function WarrantyForm({
               </div>
             )}
             {f.mode === "lifetime" && <p className="text-sm text-fg-muted">This warranty never expires.</p>}
-            {(errors.amount || errors.endDate) && <p className="mt-1.5 text-xs text-bad">{errors.amount || errors.endDate}</p>}
+            {(errors.amount || errors.endDate) && (
+              <p className="mt-1.5 text-xs text-bad">{errors.amount || errors.endDate}</p>
+            )}
             {computedExpiry && !errors.endDate && (
               <p className="mt-2.5 text-[13px] text-fg-muted">
                 Covered until <span className="font-medium text-fg">{fmtDate(computedExpiry)}</span>
@@ -294,20 +328,31 @@ export function WarrantyForm({
         <section className="grid gap-4 sm:grid-cols-2">
           <Field label="Serial numbers" optional className="sm:col-span-2">
             <div className="flex flex-col gap-2">
-              {f.serials.map((s, i) => (
-                <div key={i} className="flex gap-2">
+              {f.serials.map((sn, i) => (
+                <div key={sn.id} className="flex gap-2">
                   <Input
                     aria-label={`Serial number ${i + 1}`}
-                    value={s}
+                    autoFocus={sn.id === newSerialId}
+                    value={sn.value}
                     className="font-mono text-[13px]"
-                    onChange={(e) => set("serials", f.serials.map((x, j) => (j === i ? e.target.value : x)))}
+                    onChange={(e) =>
+                      set(
+                        "serials",
+                        f.serials.map((x) => (x.id === sn.id ? { ...x, value: e.target.value } : x)),
+                      )
+                    }
                   />
                   {f.serials.length > 1 && (
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label="Remove serial number"
-                      onClick={() => set("serials", f.serials.filter((_, j) => j !== i))}
+                      onClick={() =>
+                        set(
+                          "serials",
+                          f.serials.filter((x) => x.id !== sn.id),
+                        )
+                      }
                     >
                       <X />
                     </Button>
@@ -316,7 +361,11 @@ export function WarrantyForm({
               ))}
               <button
                 type="button"
-                onClick={() => set("serials", [...f.serials, ""])}
+                onClick={() => {
+                  const added = serial();
+                  set("serials", [...f.serials, added]);
+                  setNewSerialId(added.id);
+                }}
                 className="inline-flex w-fit cursor-pointer items-center gap-1 text-[13px] font-medium text-primary hover:underline"
               >
                 <Plus className="size-3.5" /> Add another
@@ -327,7 +376,13 @@ export function WarrantyForm({
             <TagInput id="tags" value={f.tags} onChange={(v) => set("tags", v)} />
           </Field>
           <Field label="Product link" htmlFor="productUrl" optional className="sm:col-span-2">
-            <Input id="productUrl" type="url" value={f.productUrl} placeholder="https://" onChange={(e) => set("productUrl", e.target.value)} />
+            <Input
+              id="productUrl"
+              type="url"
+              value={f.productUrl}
+              placeholder="https://"
+              onChange={(e) => set("productUrl", e.target.value)}
+            />
           </Field>
           <Field label="Notes" htmlFor="notes" optional className="sm:col-span-2">
             <Textarea
@@ -369,15 +424,22 @@ export function WarrantyForm({
             </div>
             {files.length > 0 && (
               <ul className="mt-2 flex flex-col gap-1.5">
-                {files.map((p, i) => (
-                  <li key={i} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm">
+                {files.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm"
+                  >
                     <FileText className="size-4 shrink-0 text-fg-subtle" />
                     <span className="min-w-0 flex-1 truncate">{p.file.name}</span>
                     <span className="text-xs text-fg-subtle">{formatBytes(p.file.size)}</span>
                     <Select
                       aria-label="Document type"
                       value={p.kind}
-                      onChange={(e) => setFiles(files.map((x, j) => (j === i ? { ...x, kind: e.target.value as AttachmentKind } : x)))}
+                      onChange={(e) =>
+                        setFiles(
+                          files.map((x) => (x.id === p.id ? { ...x, kind: e.target.value as AttachmentKind } : x)),
+                        )
+                      }
                       className="h-7 w-28 text-xs"
                     >
                       <option value="receipt">Receipt</option>
@@ -386,7 +448,12 @@ export function WarrantyForm({
                       {p.file.type.startsWith("image/") && <option value="photo">Photo</option>}
                       <option value="other">Other</option>
                     </Select>
-                    <Button variant="ghost" size="icon-sm" aria-label="Remove file" onClick={() => setFiles(files.filter((_, j) => j !== i))}>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Remove file"
+                      onClick={() => setFiles(files.filter((x) => x.id !== p.id))}
+                    >
                       <X />
                     </Button>
                   </li>
@@ -398,4 +465,4 @@ export function WarrantyForm({
       </form>
     </Dialog>
   );
-}
+};

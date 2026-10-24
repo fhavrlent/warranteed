@@ -3,20 +3,20 @@ import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { AttachmentsPanel } from "@/components/Attachments";
-import { CoverageBar, expiryText, StatusBadge } from "@/components/Status";
+import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
 import { Card } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
-import { api, thumbUrl } from "@/lib/api";
+import { api, errorMessage, thumbUrl } from "@/lib/api";
 import { durationLabel } from "@/lib/dates";
 import { useInvalidate, usePrefs, useWarranty } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { displayName, photoOf, statusOf } from "@/lib/warranty";
+import { displayName, photoOf, statusOf, expiryText } from "@/lib/warranty";
 
-export function WarrantyDetail() {
+export const WarrantyDetail = () => {
   const id = Number(useParams().id);
   const { data: w, isLoading, error } = useWarranty(id);
   const { soonDays, fmtDate, fmtMoney } = usePrefs();
@@ -47,8 +47,8 @@ export function WarrantyDetail() {
       await api.archive(w.id, !w.archivedAt);
       invalidate();
       toast.success(w.archivedAt ? "Restored from archive" : "Archived");
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e) {
+      toast.error(errorMessage(e));
     }
   };
 
@@ -57,9 +57,9 @@ export function WarrantyDetail() {
       await api.deleteWarranty(w.id);
       invalidate();
       toast.success(`${w.productName} deleted`);
-      navigate("/", { replace: true });
-    } catch (e: any) {
-      toast.error(e.message);
+      void navigate("/", { replace: true });
+    } catch (e) {
+      toast.error(errorMessage(e));
     }
   };
 
@@ -97,7 +97,9 @@ export function WarrantyDetail() {
                 </div>
                 <h1 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">{displayName(w)}</h1>
                 {(w.model || w.vendor) && (
-                  <p className="mt-0.5 text-sm text-fg-muted">{[w.model, w.vendor && `from ${w.vendor}`].filter(Boolean).join(" · ")}</p>
+                  <p className="mt-0.5 text-sm text-fg-muted">
+                    {[w.model, w.vendor && `from ${w.vendor}`].filter(Boolean).join(" · ")}
+                  </p>
                 )}
               </div>
               <div className="flex shrink-0 gap-1.5">
@@ -125,7 +127,13 @@ export function WarrantyDetail() {
 
             <div className="mt-6 rounded-xl bg-surface-2 p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className={cn("text-[15px] font-semibold", s === "expiring" && "text-warn", s === "expired" && "text-bad")}>
+                <span
+                  className={cn(
+                    "text-[15px] font-semibold",
+                    s === "expiring" && "text-warn",
+                    s === "expired" && "text-bad",
+                  )}
+                >
                   {expiryText(w)}
                 </span>
                 <span className="text-sm text-fg-muted tabular-nums">
@@ -154,13 +162,18 @@ export function WarrantyDetail() {
               </Detail>
             )}
             {w.serialNumbers.map((sn, i) => (
-              <Detail key={i} label={w.serialNumbers.length > 1 ? `Serial ${i + 1}` : "Serial no."} copy={sn}>
+              <Detail key={sn} label={w.serialNumbers.length > 1 ? `Serial ${i + 1}` : "Serial no."} copy={sn}>
                 <span className="font-mono text-[13px] break-all">{sn}</span>
               </Detail>
             ))}
             {w.productUrl && (
               <Detail label="Link">
-                <a href={w.productUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                <a
+                  href={w.productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
                   {hostOf(w.productUrl)}
                   <ExternalLink className="size-3.5" />
                 </a>
@@ -192,35 +205,41 @@ export function WarrantyDetail() {
       />
     </div>
   );
-}
+};
 
-function hostOf(url: string): string {
+const hostOf = (url: string): string => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url;
   }
-}
+};
 
-function Detail({ label, children, copy }: { label: string; children: ReactNode; copy?: string }) {
-  return (
-    <div className="group flex items-start justify-between gap-4 px-4 py-3">
-      <span className="shrink-0 text-[13px] text-fg-subtle">{label}</span>
-      <span className="flex min-w-0 items-center gap-1 text-right text-sm">
-        {children}
-        {copy && (
-          <button
-            onClick={() => {
-              navigator.clipboard?.writeText(copy);
-              toast.success("Copied");
-            }}
-            className="cursor-pointer rounded p-0.5 text-fg-subtle opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100"
-            aria-label={`Copy ${label}`}
-          >
-            <Copy className="size-3.5" />
-          </button>
-        )}
-      </span>
-    </div>
-  );
-}
+const Detail = ({ label, children, copy }: { label: string; children: ReactNode; copy?: string }) => (
+  <div className="group flex items-start justify-between gap-4 px-4 py-3">
+    <span className="shrink-0 text-[13px] text-fg-subtle">{label}</span>
+    <span className="flex min-w-0 items-center gap-1 text-right text-sm">
+      {children}
+      {copy && (
+        <button
+          type="button"
+          onClick={() => {
+            // The Clipboard API only exists on HTTPS (or localhost) pages.
+            if (!window.isSecureContext) {
+              toast.error("Copying needs HTTPS");
+              return;
+            }
+            navigator.clipboard.writeText(copy).then(
+              () => toast.success("Copied"),
+              () => toast.error("Couldn't copy"),
+            );
+          }}
+          className="cursor-pointer rounded p-0.5 text-fg-subtle opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100"
+          aria-label={`Copy ${label}`}
+        >
+          <Copy className="size-3.5" />
+        </button>
+      )}
+    </span>
+  </div>
+);

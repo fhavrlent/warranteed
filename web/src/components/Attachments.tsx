@@ -15,9 +15,19 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, fileUrl, thumbUrl, type Attachment, type AttachmentKind, type PaperlessDoc, type Warranty } from "@/lib/api";
+import {
+  api,
+  errorMessage,
+  fileUrl,
+  thumbUrl,
+  type Attachment,
+  type AttachmentKind,
+  type PaperlessDoc,
+  type Warranty,
+} from "@/lib/api";
 import { useInvalidate, usePrefs } from "@/lib/queries";
 import { cn, formatBytes } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -34,20 +44,21 @@ const kindMeta: Record<AttachmentKind, { label: string; icon: typeof FileIcon }>
   other: { label: "Other", icon: FileIcon },
 };
 
-function PaperlessMark({ className }: { className?: string }) {
-  return (
-    <span
-      title="Stored in Paperless-ngx"
-      className={cn("inline-flex h-4.5 items-center rounded bg-emerald-600/12 px-1 text-[10px] font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-300", className)}
-    >
-      Paperless
-    </span>
-  );
-}
+const PaperlessMark = ({ className }: { className?: string }) => (
+  <span
+    title="Stored in Paperless-ngx"
+    className={cn(
+      "inline-flex h-4.5 items-center rounded bg-emerald-600/12 px-1 text-[10px] font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-300",
+      className,
+    )}
+  >
+    Paperless
+  </span>
+);
 
-function Thumb({ a }: { a: Attachment }) {
+const Thumb = ({ a }: { a: Attachment }) => {
   const [failed, setFailed] = useState(false);
-  const Icon = kindMeta[a.kind]?.icon ?? FileIcon;
+  const Icon = kindMeta[a.kind].icon;
   const hasThumb = a.status === "ready" && (a.storage === "paperless" || a.mimeType.startsWith("image/"));
   return (
     <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-t-xl bg-surface-2">
@@ -74,13 +85,13 @@ function Thumb({ a }: { a: Attachment }) {
       )}
     </div>
   );
-}
+};
 
-export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
+export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
   const { settings } = usePrefs();
   const invalidate = useInvalidate();
   const paperless = settings?.paperlessEnabled ?? false;
-  const [target, setTarget] = useState<"local" | "paperless">("local");
+  const [chosenTarget, setChosenTarget] = useState<"local" | "paperless" | null>(null);
   const [uploading, setUploading] = useState(0);
   const [drag, setDrag] = useState(false);
   const [picker, setPicker] = useState(false);
@@ -89,9 +100,7 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const photoRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setTarget(paperless && settings?.paperlessDefault ? "paperless" : "local");
-  }, [paperless, settings?.paperlessDefault]);
+  const target = chosenTarget ?? (paperless && settings?.paperlessDefault ? "paperless" : "local");
 
   const upload = async (files: FileList | File[] | null, kind?: AttachmentKind) => {
     if (!files) return;
@@ -101,8 +110,8 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
       const k: AttachmentKind = kind ?? (file.type.startsWith("image/") && target === "local" ? "photo" : "receipt");
       try {
         await api.upload(warranty.id, file, k, k === "photo" ? "local" : target);
-      } catch (e: any) {
-        toast.error(`${file.name}: ${e.message}`);
+      } catch (e) {
+        toast.error(`${file.name}: ${errorMessage(e)}`);
       } finally {
         setUploading((n) => n - 1);
       }
@@ -125,7 +134,7 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
             <Segmented
               size="sm"
               value={target}
-              onChange={setTarget}
+              onChange={setChosenTarget}
               options={[
                 { value: "local", label: "Store here" },
                 { value: "paperless", label: "Paperless" },
@@ -143,8 +152,27 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
           <Button size="sm" onClick={() => fileRef.current?.click()} loading={uploading > 0}>
             {uploading === 0 && <Upload />} Upload
           </Button>
-          <input ref={fileRef} type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
-          <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { upload(e.target.files, "photo"); e.target.value = ""; }} />
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              void upload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={photoRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(e) => {
+              void upload(e.target.files, "photo");
+              e.target.value = "";
+            }}
+          />
         </div>
       </div>
 
@@ -157,9 +185,12 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
         onDrop={(e) => {
           e.preventDefault();
           setDrag(false);
-          upload(e.dataTransfer.files);
+          void upload(e.dataTransfer.files);
         }}
-        className={cn("rounded-2xl transition-colors", drag && "bg-primary-soft/50 ring-2 ring-primary ring-offset-4 ring-offset-bg")}
+        className={cn(
+          "rounded-2xl transition-colors",
+          drag && "bg-primary-soft/50 ring-2 ring-primary ring-offset-4 ring-offset-bg",
+        )}
       >
         {docs.length === 0 ? (
           <button
@@ -170,19 +201,28 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
             <Upload className="size-6 text-fg-subtle" />
             <p className="text-sm font-medium">Drop the receipt, invoice or manual here</p>
             <p className="text-xs text-fg-subtle">
-              {paperless ? "Choose above whether files are stored here or in Paperless-ngx." : "PDFs and images up to the upload limit."}
+              {paperless
+                ? "Choose above whether files are stored here or in Paperless-ngx."
+                : "PDFs and images up to the upload limit."}
             </p>
           </button>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {docs.map((a) => (
-              <AttachmentCard key={a.id} a={a} onOpen={() => setPreview(a)} onDelete={() => setToDelete(a)} onChanged={invalidate} webUrl={settings?.paperlessWebUrl} />
+              <AttachmentCard
+                key={a.id}
+                a={a}
+                onOpen={() => setPreview(a)}
+                onDelete={() => setToDelete(a)}
+                onChanged={invalidate}
+                webUrl={settings?.paperlessWebUrl}
+              />
             ))}
           </div>
         )}
       </div>
 
-      <PaperlessPicker open={picker} onOpenChange={setPicker} warranty={warranty} onLinked={invalidate} />
+      {picker && <PaperlessPicker onOpenChange={setPicker} warranty={warranty} onLinked={invalidate} />}
       <PreviewDialog a={preview} onClose={() => setPreview(null)} />
       <ConfirmDialog
         open={!!toDelete}
@@ -199,17 +239,17 @@ export function AttachmentsPanel({ warranty }: { warranty: Warranty }) {
           try {
             await api.deleteAttachment(toDelete.id);
             invalidate();
-          } catch (e: any) {
-            toast.error(e.message);
+          } catch (e) {
+            toast.error(errorMessage(e));
           }
           setToDelete(null);
         }}
       />
     </div>
   );
-}
+};
 
-function AttachmentCard({
+const AttachmentCard = ({
   a,
   onOpen,
   onDelete,
@@ -221,12 +261,16 @@ function AttachmentCard({
   onDelete: () => void;
   onChanged: () => void;
   webUrl?: string;
-}) {
-  const meta = kindMeta[a.kind] ?? kindMeta.other;
+}) => {
+  const meta = kindMeta[a.kind];
   const ready = a.status === "ready";
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-card transition-shadow hover:shadow-pop">
-      <button type="button" onClick={ready ? onOpen : undefined} className={cn("text-left", ready ? "cursor-pointer" : "cursor-default")}>
+      <button
+        type="button"
+        onClick={ready ? onOpen : undefined}
+        className={cn("text-left", ready ? "cursor-pointer" : "cursor-default")}
+      >
         <Thumb a={a} />
       </button>
       <div className="flex items-start gap-2 border-t border-border px-3 py-2">
@@ -242,7 +286,11 @@ function AttachmentCard({
         </div>
         <Menu>
           <MenuTrigger asChild>
-            <button className="-mr-1 cursor-pointer rounded-md p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg" aria-label="File actions">
+            <button
+              type="button"
+              className="-mr-1 cursor-pointer rounded-md p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg"
+              aria-label="File actions"
+            >
               <MoreHorizontal className="size-4" />
             </button>
           </MenuTrigger>
@@ -252,8 +300,11 @@ function AttachmentCard({
                 Download
               </MenuItem>
             )}
-            {a.storage === "paperless" && a.paperlessDocId && webUrl && (
-              <MenuItem icon={<ExternalLink />} onSelect={() => window.open(`${webUrl}/documents/${a.paperlessDocId}/details`, "_blank", "noopener")}>
+            {a.storage === "paperless" && a.paperlessDocId !== null && webUrl !== undefined && webUrl !== "" && (
+              <MenuItem
+                icon={<ExternalLink />}
+                onSelect={() => window.open(`${webUrl}/documents/${a.paperlessDocId}/details`, "_blank", "noopener")}
+              >
                 Open in Paperless
               </MenuItem>
             )}
@@ -264,8 +315,8 @@ function AttachmentCard({
                   try {
                     await api.retryAttachment(a.id);
                     onChanged();
-                  } catch (e: any) {
-                    toast.error(e.message);
+                  } catch (e) {
+                    toast.error(errorMessage(e));
                   }
                 }}
               >
@@ -284,7 +335,7 @@ function AttachmentCard({
                     return <I />;
                   })()}
                   onSelect={async () => {
-                    await api.setAttachmentKind(a.id, k).catch((e) => toast.error(e.message));
+                    await api.setAttachmentKind(a.id, k).catch((e: unknown) => toast.error(errorMessage(e)));
                     onChanged();
                   }}
                 >
@@ -300,9 +351,9 @@ function AttachmentCard({
       </div>
     </div>
   );
-}
+};
 
-function PreviewDialog({ a, onClose }: { a: Attachment | null; onClose: () => void }) {
+const PreviewDialog = ({ a, onClose }: { a: Attachment | null; onClose: () => void }) => {
   const isImage = a?.mimeType.startsWith("image/") && a.storage === "local";
   return (
     <Dialog
@@ -327,55 +378,52 @@ function PreviewDialog({ a, onClose }: { a: Attachment | null; onClose: () => vo
         (isImage ? (
           <img src={fileUrl(a)} alt={a.filename} className="mx-auto max-h-[70vh] rounded-lg object-contain" />
         ) : (
-          <iframe src={fileUrl(a)} title={a.filename} className="h-[70vh] w-full rounded-lg border border-border bg-white" />
+          // Chrome's built-in PDF viewer refuses to render inside sandboxed frames.
+          // eslint-disable-next-line @eslint-react/dom-no-missing-iframe-sandbox
+          <iframe
+            src={fileUrl(a)}
+            title={a.filename}
+            className="h-[70vh] w-full rounded-lg border border-border bg-white"
+          />
         ))}
     </Dialog>
   );
-}
+};
 
-function PaperlessPicker({
-  open,
+const useDebounced = <T,>(value: T, ms: number): T => {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+};
+
+/** Mounted only while open, so each opening starts with a fresh search. */
+const PaperlessPicker = ({
   onOpenChange,
   warranty,
   onLinked,
 }: {
-  open: boolean;
   onOpenChange: (o: boolean) => void;
   warranty: Warranty;
   onLinked: () => void;
-}) {
+}) => {
   const { fmtDate } = usePrefs();
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<PaperlessDoc[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState(warranty.productName);
+  const query = useDebounced(q, 300);
+  const search = useQuery({
+    queryKey: ["paperless-search", query],
+    queryFn: () => api.searchPaperless(query),
+    retry: false,
+  });
+  const results: PaperlessDoc[] | undefined = search.data;
+  const loading = search.isFetching;
+  const error = search.error ? errorMessage(search.error) : null;
   const [picked, setPicked] = useState<number[]>([]);
   const [kind, setKind] = useState<AttachmentKind>("receipt");
   const [saving, setSaving] = useState(false);
-  const linked = new Set(warranty.attachments.map((a) => a.paperlessDocId).filter(Boolean));
-
-  useEffect(() => {
-    if (!open) return;
-    setPicked([]);
-    setQ((prev) => prev || warranty.productName);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!open) return;
-    const t = setTimeout(async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        setResults(await api.searchPaperless(q));
-      } catch (e: any) {
-        setError(e.message);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [q, open]);
+  const linked = new Set(warranty.attachments.map((a) => a.paperlessDocId).filter((id) => id !== null));
 
   const link = async () => {
     setSaving(true);
@@ -384,8 +432,8 @@ function PaperlessPicker({
       onLinked();
       toast.success(picked.length === 1 ? "Document linked" : `${picked.length} documents linked`);
       onOpenChange(false);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e) {
+      toast.error(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -393,14 +441,19 @@ function PaperlessPicker({
 
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={onOpenChange}
       size="xl"
       title="Link documents from Paperless"
       description="Search your Paperless-ngx archive and attach existing documents to this warranty."
       footer={
         <>
-          <Select aria-label="Document type" value={kind} onChange={(e) => setKind(e.target.value as AttachmentKind)} className="mr-auto w-36">
+          <Select
+            aria-label="Document type"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as AttachmentKind)}
+            className="mr-auto w-36"
+          >
             <option value="receipt">As receipt</option>
             <option value="invoice">As invoice</option>
             <option value="manual">As manual</option>
@@ -417,12 +470,20 @@ function PaperlessPicker({
     >
       <div className="relative mb-4">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" />
-        <Input data-autofocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by text, title or document ID" className="pl-9" />
-        {loading && <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-fg-subtle" />}
+        <Input
+          data-autofocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by text, title or document ID"
+          className="pl-9"
+        />
+        {loading && (
+          <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-fg-subtle" />
+        )}
       </div>
       {error ? (
         <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>
-      ) : results && results.length === 0 && !loading ? (
+      ) : results?.length === 0 && !loading ? (
         <p className="py-10 text-center text-sm text-fg-muted">No documents found.</p>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -441,7 +502,12 @@ function PaperlessPicker({
                 )}
               >
                 <div className="aspect-[3/4] overflow-hidden bg-surface-2">
-                  <img src={`/api/paperless/documents/${d.id}/thumb`} alt="" loading="lazy" className="size-full object-cover object-top" />
+                  <img
+                    src={`/api/paperless/documents/${d.id}/thumb`}
+                    alt=""
+                    loading="lazy"
+                    className="size-full object-cover object-top"
+                  />
                 </div>
                 <div className="border-t border-border px-2.5 py-2">
                   <p className="line-clamp-2 text-[13px] leading-snug font-medium">{d.title || d.originalFileName}</p>
@@ -457,4 +523,4 @@ function PaperlessPicker({
       )}
     </Dialog>
   );
-}
+};

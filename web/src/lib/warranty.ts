@@ -1,16 +1,16 @@
 import type { Attachment, Warranty } from "./api";
-import { daysUntil, fromISO } from "./dates";
+import { daysUntil, fromISO, relativeDays } from "./dates";
 
 export type Status = "active" | "expiring" | "expired" | "lifetime" | "archived";
 
-export function statusOf(w: Warranty, expiringSoonDays: number): Status {
+export const statusOf = (w: Warranty, expiringSoonDays: number): Status => {
   if (w.archivedAt) return "archived";
   if (w.isLifetime || !w.expiresOn) return "lifetime";
   const d = daysUntil(w.expiresOn);
   if (d < 0) return "expired";
   if (d <= expiringSoonDays) return "expiring";
   return "active";
-}
+};
 
 export const statusLabel: Record<Status, string> = {
   active: "Active",
@@ -20,23 +20,31 @@ export const statusLabel: Record<Status, string> = {
   archived: "Archived",
 };
 
+/** "Expires in 3 months" / "Expired 2 days ago" / "Never expires". */
+export const expiryText = (w: Warranty): string => {
+  if (w.isLifetime || !w.expiresOn) return "Never expires";
+  const d = daysUntil(w.expiresOn);
+  if (d < 0) return `Expired ${relativeDays(d)}`;
+  if (d === 0) return "Expires today";
+  return `Expires ${relativeDays(d)}`;
+};
+
 /** Share of the coverage period already used, 0..1. */
-export function coverageUsed(w: Warranty): number | null {
+export const coverageUsed = (w: Warranty): number | null => {
   if (w.isLifetime || !w.expiresOn) return null;
   const start = fromISO(w.purchaseDate).getTime();
   const end = fromISO(w.expiresOn).getTime();
   if (end <= start) return 1;
   return Math.min(1, Math.max(0, (Date.now() - start) / (end - start)));
-}
+};
 
-export function photoOf(w: Warranty): Attachment | undefined {
-  return w.attachments.find((a) => a.kind === "photo" && a.status === "ready");
-}
+export const photoOf = (w: Warranty): Attachment | undefined =>
+  w.attachments.find((a) => a.kind === "photo" && a.status === "ready");
 
-export function displayName(w: Warranty): string {
+export const displayName = (w: Warranty): string => {
   if (w.brand && !w.productName.toLowerCase().includes(w.brand.toLowerCase())) return `${w.brand} ${w.productName}`;
   return w.productName;
-}
+};
 
 /** Tailwind classes per tag colour (kept as literal strings so Tailwind sees them). */
 export const tagClasses: Record<string, string> = {

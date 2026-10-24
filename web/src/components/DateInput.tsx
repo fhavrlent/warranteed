@@ -1,18 +1,22 @@
 import * as P from "@radix-ui/react-popover";
 import { CalendarDays } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { formatDate, fromISO, parseUserDate, toISO, weekStartsOn } from "@/lib/dates";
 import { usePrefs } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { fieldBase } from "./ui/input";
 
+// Calendar dropdown range.
+const FIRST_MONTH = new Date(1990, 0);
+const LAST_MONTH = new Date(new Date().getFullYear() + 30, 11);
+
 /**
  * A date field that displays and accepts dates in the user's chosen format,
  * instead of <input type="date"> which always follows the OS locale.
  * The value is always an ISO date (YYYY-MM-DD) or null.
  */
-export function DateInput({
+export const DateInput = ({
   value,
   onChange,
   id,
@@ -26,30 +30,31 @@ export function DateInput({
   invalid?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
-}) {
+}) => {
   const { dateFormat } = usePrefs();
-  const [text, setText] = useState(() => formatDate(value, dateFormat));
-  const [bad, setBad] = useState(false);
+  // While the user is typing, `draft` holds their text; otherwise the field
+  // shows the formatted value, so it follows value and format changes.
+  const [draft, setDraft] = useState<string | null>(null);
+  // The draft that failed to parse; editing it clears the error.
+  const [rejected, setRejected] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    setText(formatDate(value, dateFormat));
-    setBad(false);
-  }, [value, dateFormat]);
+  const text = draft ?? formatDate(value, dateFormat);
+  const bad = draft !== null && draft === rejected;
 
   const commit = () => {
-    if (!text.trim()) {
-      setBad(false);
+    if (draft === null) return;
+    if (!draft.trim()) {
+      setDraft(null);
       if (value !== null) onChange(null);
       return;
     }
-    const iso = parseUserDate(text, dateFormat);
+    const iso = parseUserDate(draft, dateFormat);
     if (iso) {
-      setBad(false);
-      setText(formatDate(iso, dateFormat));
+      setDraft(null);
       if (iso !== value) onChange(iso);
     } else {
-      setBad(true);
+      setRejected(draft);
     }
   };
 
@@ -66,8 +71,8 @@ export function DateInput({
           inputMode="text"
           autoComplete="off"
           placeholder={placeholder ?? sample}
-          aria-invalid={invalid || bad || undefined}
-          onChange={(e) => setText(e.target.value)}
+          aria-invalid={invalid || bad ? true : undefined}
+          onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -101,10 +106,11 @@ export function DateInput({
             defaultMonth={selected}
             weekStartsOn={weekStartsOn(dateFormat)}
             captionLayout="dropdown"
-            startMonth={new Date(1990, 0)}
-            endMonth={new Date(new Date().getFullYear() + 30, 11)}
+            startMonth={FIRST_MONTH}
+            endMonth={LAST_MONTH}
             onSelect={(d) => {
               if (d) {
+                setDraft(null);
                 onChange(toISO(d));
                 setOpen(false);
               }
@@ -115,6 +121,7 @@ export function DateInput({
               type="button"
               className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft"
               onClick={() => {
+                setDraft(null);
                 onChange(toISO(new Date()));
                 setOpen(false);
               }}
@@ -126,6 +133,7 @@ export function DateInput({
                 type="button"
                 className="cursor-pointer rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-3"
                 onClick={() => {
+                  setDraft(null);
                   onChange(null);
                   setOpen(false);
                 }}
@@ -138,4 +146,4 @@ export function DateInput({
       </P.Portal>
     </P.Root>
   );
-}
+};

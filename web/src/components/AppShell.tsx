@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/menu";
 
-function Avatar({ name, picture }: { name: string; picture?: string }) {
+const Avatar = ({ name, picture }: { name: string; picture?: string }) => {
   const initials = name
     .split(/\s+/)
     .map((p) => p[0])
@@ -22,19 +22,20 @@ function Avatar({ name, picture }: { name: string; picture?: string }) {
       {initials || "?"}
     </span>
   );
-}
+};
 
-export function AppShell({ children }: { children: ReactNode }) {
+export const AppShell = ({ children }: { children: ReactNode }) => {
   const { data: me } = useMe();
   const { data: settings } = useSettingsQuery();
   const save = useSaveSettings();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
+  const theme = settings?.theme;
   useEffect(() => {
-    if (settings) applyTheme(settings.theme);
-    return watchSystemTheme(() => settings?.theme ?? "system");
-  }, [settings?.theme]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (theme) applyTheme(theme);
+    return watchSystemTheme(() => theme ?? "system");
+  }, [theme]);
 
   const setTheme = (theme: Theme) => {
     applyTheme(theme);
@@ -57,7 +58,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       className={({ isActive }) =>
         cn(
           "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-          isActive || (to === "/" && pathname.startsWith("/w/")) ? "bg-surface-3 text-fg" : "text-fg-muted hover:text-fg",
+          isActive || (to === "/" && pathname.startsWith("/w/"))
+            ? "bg-surface-3 text-fg"
+            : "text-fg-muted hover:text-fg",
         )
       }
     >
@@ -79,7 +82,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="ml-auto">
             <Menu>
               <MenuTrigger asChild>
-                <button className="cursor-pointer rounded-full ring-offset-2 ring-offset-bg hover:ring-2 hover:ring-border-strong" aria-label="Account">
+                <button
+                  type="button"
+                  className="cursor-pointer rounded-full ring-offset-2 ring-offset-bg hover:ring-2 hover:ring-border-strong"
+                  aria-label="Account"
+                >
                   <Avatar name={me?.name || me?.email || ""} picture={me?.picture} />
                 </button>
               </MenuTrigger>
@@ -102,6 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     ] as const
                   ).map(([t, Icon, label]) => (
                     <button
+                      type="button"
                       key={t}
                       onClick={() => setTheme(t)}
                       className={cn(
@@ -131,4 +139,4 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6 sm:pt-8">{children}</main>
     </div>
   );
-}
+};

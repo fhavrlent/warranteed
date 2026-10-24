@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "tsc --noEmit && eslint . && prettier --check ."
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -26,12 +31,22 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@eslint-react/eslint-plugin": "5.28.8",
+    "@eslint/js": "10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.8.1",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
     "vite": "^8.3.5"
   }
 }

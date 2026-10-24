@@ -1,4 +1,4 @@
-.PHONY: dev web build test image clean
+.PHONY: dev web build test fmt image clean
 
 # Backend with the local dev login on :8080; run `make web` in a second terminal
 # for the Vite dev server with hot reload on :5173.
@@ -18,7 +18,12 @@ test:
 	@mkdir -p web/dist && touch web/dist/.gitkeep
 	go vet ./...
 	go test ./...
-	cd web && npm run typecheck
+	cd web && npm run check
+
+# Format and auto-fix everything.
+fmt:
+	gofmt -w .
+	cd web && npm run lint:fix && npm run format
 
 image:
 	docker build -t warranteed:local .

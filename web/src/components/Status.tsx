@@ -1,6 +1,5 @@
 import { Archive, CircleAlert, CircleCheck, CircleX, Infinity as InfinityIcon } from "lucide-react";
 import type { Warranty } from "@/lib/api";
-import { daysUntil, relativeDays } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { coverageUsed, statusLabel, type Status } from "@/lib/warranty";
 
@@ -20,7 +19,7 @@ const icons = {
   archived: Archive,
 };
 
-export function StatusBadge({ status, className }: { status: Status; className?: string }) {
+export const StatusBadge = ({ status, className }: { status: Status; className?: string }) => {
   const Icon = icons[status];
   return (
     <span
@@ -34,16 +33,7 @@ export function StatusBadge({ status, className }: { status: Status; className?:
       {statusLabel[status]}
     </span>
   );
-}
-
-/** "Expires in 3 months" / "Expired 2 days ago" / "Never expires". */
-export function expiryText(w: Warranty): string {
-  if (w.isLifetime || !w.expiresOn) return "Never expires";
-  const d = daysUntil(w.expiresOn);
-  if (d < 0) return `Expired ${relativeDays(d)}`;
-  if (d === 0) return "Expires today";
-  return `Expires ${relativeDays(d)}`;
-}
+};
 
 const barColor: Record<Status, string> = {
   active: "bg-ok",
@@ -53,14 +43,17 @@ const barColor: Record<Status, string> = {
   archived: "bg-fg-subtle",
 };
 
-export function CoverageBar({ w, status, className }: { w: Warranty; status: Status; className?: string }) {
+export const CoverageBar = ({ w, status, className }: { w: Warranty; status: Status; className?: string }) => {
   const used = coverageUsed(w);
   return (
     <div className={cn("h-1.5 overflow-hidden rounded-full bg-surface-3", className)}>
       <div
         className={cn("h-full rounded-full transition-[width]", barColor[status])}
-        style={{ width: `${used === null ? 100 : Math.max(3, Math.round(used * 100))}%`, opacity: used === null ? 0.35 : 1 }}
+        style={{
+          width: `${used === null ? 100 : Math.max(3, Math.round(used * 100))}%`,
+          opacity: used === null ? 0.35 : 1,
+        }}
       />
     </div>
   );
-}
+};

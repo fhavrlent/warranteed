@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router";
 import { LogoMark } from "@/components/Logo";
 import { api } from "@/lib/api";
 
-export function Login() {
+export const Login = () => {
   const [params] = useSearchParams();
   const error = params.get("error");
   const ret = params.get("return") || "/";
@@ -62,7 +62,9 @@ export function Login() {
                 </a>
               )}
               {!info?.oidc && !info?.devLogin && (
-                <p className="text-center text-sm text-fg-muted">No sign-in method is configured. Set OIDC_ISSUER on the server.</p>
+                <p className="text-center text-sm text-fg-muted">
+                  No sign-in method is configured. Set OIDC_ISSUER on the server.
+                </p>
               )}
             </div>
           )}
@@ -71,4 +73,4 @@ export function Login() {
       </div>
     </div>
   );
-}
+};
