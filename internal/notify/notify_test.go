@@ -61,7 +61,7 @@ func TestRemindersFireOncePerThreshold(t *testing.T) {
 		}
 	}
 
-	n := New(st, time.Local, 0, "")
+	n := New(st, time.Local, 0, "", Policy{})
 	for i := 0; i < 3; i++ {
 		if err := n.CheckAll(ctx); err != nil {
 			t.Fatal(err)

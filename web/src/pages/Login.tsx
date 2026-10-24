@@ -4,11 +4,12 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { LogoMark } from "@/components/Logo";
 import { api } from "@/lib/api";
+import { safeReturn } from "@/lib/utils";
 
 export const Login = () => {
   const [params] = useSearchParams();
   const error = params.get("error");
-  const ret = params.get("return") || "/";
+  const ret = safeReturn(params.get("return"));
   const { data: info, isLoading } = useQuery({ queryKey: ["auth-info"], queryFn: api.authInfo });
 
   // Already signed in? Skip the login screen.

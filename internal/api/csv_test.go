@@ -77,3 +77,15 @@ func TestExportHeaderRoundTrip(t *testing.T) {
 		t.Fatalf("sample header out of sync with export header")
 	}
 }
+
+func TestFormulaEscaping(t *testing.T) {
+	for _, v := range []string{"=HYPERLINK(\"http://x\",\"y\")", "+1", "-5 off", "@SUM(A1)", "\tx", "plain", "", "'quoted", "'=already escaped"} {
+		esc := escapeCell(v)
+		if esc != "" && strings.ContainsRune(formulaChars, rune(esc[0])) {
+			t.Errorf("%q exported as %q, still starts with a formula character", v, esc)
+		}
+		if got := unescapeCell(esc); got != v {
+			t.Errorf("%q round-tripped to %q", v, got)
+		}
+	}
+}

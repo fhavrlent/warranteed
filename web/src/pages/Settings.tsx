@@ -203,6 +203,14 @@ const Notifications = ({ s }: { s: SettingsT }) => {
         </>
       }
     >
+      {!s.isAdmin && (
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-fg-muted">
+          Discord, Telegram, Slack, Pushover, Pushbullet, IFTTT and Join work out of the box.{" "}
+          {s.notifyAllowedHosts.length > 0
+            ? `Self-hosted services (ntfy, Gotify, webhooks, email) can send to: ${s.notifyAllowedHosts.join(", ")}.`
+            : "Self-hosted services (ntfy, Gotify, webhooks, email) need an admin to allow their host first."}
+        </p>
+      )}
       <Field
         label="Notification URLs"
         hint="One per line, e.g. ntfy://ntfy.sh/my-topic or smtp://user:pass@host:587/?to=me@example.com"
@@ -285,58 +293,85 @@ const Paperless = ({ s }: { s: SettingsT }) => {
       title="Paperless-ngx"
       description="Store receipts and manuals in your Paperless-ngx archive instead of here, or link documents that are already there."
     >
-      {s.paperlessFromEnv && (
-        <p className="rounded-lg bg-primary-soft/60 px-3 py-2 text-[13px] text-fg">
-          A server-wide Paperless connection is configured. Fill these in only to use a different instance or token.
+      {!s.canSetPaperlessUrl && !s.paperlessServerUrl ? (
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-fg-muted">
+          Paperless isn&apos;t set up on this server. An admin can enable it with <code>PAPERLESS_URL</code>.
         </p>
-      )}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Paperless URL">
-          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://paperless.example.com" />
-        </Field>
-        <Field
-          label="API token"
-          hint={
-            s.hasPaperlessToken
-              ? "A token is saved. Enter a new one to replace it."
-              : "Profile → API Auth Token in Paperless."
-          }
-        >
-          <Input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={s.hasPaperlessToken ? "••••••••••••" : ""}
-            autoComplete="off"
-          />
-        </Field>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={test} loading={testing}>
-          Test connection
-        </Button>
-        <Button onClick={saveConnection} disabled={url === s.paperlessUrl && !token}>
-          Save
-        </Button>
-        {s.paperlessUrl && (
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              if (await update({ paperlessUrl: "", paperlessToken: "" })) {
-                setUrl("");
-                setStatus(null);
+      ) : (
+        <>
+          {s.paperlessServerToken && (
+            <p className="rounded-lg bg-primary-soft/60 px-3 py-2 text-[13px] text-fg">
+              As an admin you can use the server&apos;s Paperless connection. Fill these in only to use a different
+              instance or your own token.
+            </p>
+          )}
+          {!s.canSetPaperlessUrl && (
+            <p className="rounded-lg bg-primary-soft/60 px-3 py-2 text-[13px] text-fg">
+              Connect with your own Paperless account&apos;s token. You&apos;ll only see documents that account can see.
+            </p>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {s.canSetPaperlessUrl ? (
+              <Field
+                label="Paperless URL"
+                hint={s.paperlessServerUrl ? `Leave empty to use ${s.paperlessServerUrl}` : undefined}
+              >
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder={s.paperlessServerUrl || "https://paperless.example.com"}
+                />
+              </Field>
+            ) : (
+              <Field label="Paperless">
+                <p className="flex h-9 items-center truncate text-sm text-fg-muted">{s.paperlessServerUrl}</p>
+              </Field>
+            )}
+            <Field
+              label="API token"
+              hint={
+                s.hasPaperlessToken
+                  ? "A token is saved. Enter a new one to replace it."
+                  : "Profile → API Auth Token in Paperless."
               }
-            }}
-          >
-            Disconnect
-          </Button>
-        )}
-      </div>
-      {status && (
-        <p className="flex items-center gap-2 text-[13px] text-ok">
-          <CheckCircle2 className="size-4" />
-          {status}
-        </p>
+            >
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={s.hasPaperlessToken ? "••••••••••••" : ""}
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={test} loading={testing}>
+              Test connection
+            </Button>
+            <Button onClick={saveConnection} disabled={url === s.paperlessUrl && !token}>
+              Save
+            </Button>
+            {(s.paperlessUrl || s.hasPaperlessToken) && (
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  if (await update({ paperlessUrl: "", paperlessToken: "" })) {
+                    setUrl("");
+                    setStatus(null);
+                  }
+                }}
+              >
+                Disconnect
+              </Button>
+            )}
+          </div>
+          {status && (
+            <p className="flex items-center gap-2 text-[13px] text-ok">
+              <CheckCircle2 className="size-4" />
+              {status}
+            </p>
+          )}
+        </>
       )}
       <label
         className={cn(

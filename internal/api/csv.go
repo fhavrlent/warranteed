@@ -23,6 +23,30 @@ var csvHeader = []string{
 
 const listSep = ";"
 
+// Spreadsheet apps run cells starting with these as formulas. Exported text
+// gets a leading apostrophe (shown as text, not printed), which import strips.
+const formulaChars = "=+-@\t\r"
+
+func escapeCell(v string) string {
+	// Also escape text that already looks escaped, so import restores it as is.
+	if v != "" && (strings.ContainsRune(formulaChars, rune(v[0])) || unescapeCell(v) != v) {
+		return "'" + v
+	}
+	return v
+}
+
+// unescapeCell reverses escapeCell: one apostrophe is removed from a value
+// that, without it, starts with a formula character or is itself escaped.
+func unescapeCell(v string) string {
+	if len(v) > 1 && v[0] == '\'' {
+		rest := v[1:]
+		if strings.ContainsRune(formulaChars, rune(rest[0])) || unescapeCell(rest) != rest {
+			return rest
+		}
+	}
+	return v
+}
+
 func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 	list, err := s.store.ListWarranties(r.Context(), userID(r))
 	if err != nil {
@@ -48,11 +72,12 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		if wr.Price != nil {
 			price = strconv.FormatFloat(*wr.Price, 'f', -1, 64)
 		}
+		e := escapeCell
 		cw.Write([]string{
-			wr.ProductName, wr.Brand, wr.Model, wr.Vendor, wr.OrderNumber, wr.PurchaseDate,
-			months, end, strconv.FormatBool(wr.IsLifetime), price, wr.Currency,
-			strings.Join(wr.SerialNumbers, listSep), strings.Join(tags, listSep),
-			wr.ProductURL, wr.Notes, strconv.FormatBool(wr.ArchivedAt != nil),
+			e(wr.ProductName), e(wr.Brand), e(wr.Model), e(wr.Vendor), e(wr.OrderNumber), wr.PurchaseDate,
+			months, end, strconv.FormatBool(wr.IsLifetime), price, e(wr.Currency),
+			e(strings.Join(wr.SerialNumbers, listSep)), e(strings.Join(tags, listSep)),
+			e(wr.ProductURL), e(wr.Notes), strconv.FormatBool(wr.ArchivedAt != nil),
 		})
 	}
 	cw.Flush()
@@ -131,7 +156,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		}
 		get := func(name string) string {
 			if i, ok := col[name]; ok && i < len(rec) {
-				return strings.TrimSpace(rec[i])
+				return unescapeCell(strings.TrimSpace(rec[i]))
 			}
 			return ""
 		}

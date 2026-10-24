@@ -73,7 +73,15 @@ export interface Settings {
   paperlessUrl: string;
   paperlessDefault: boolean;
   hasPaperlessToken: boolean;
-  paperlessFromEnv: boolean;
+  /** The server's Paperless instance (PAPERLESS_URL), empty if none. */
+  paperlessServerUrl: string;
+  /** An admin can use the server's own Paperless token. */
+  paperlessServerToken: boolean;
+  /** Only admins may point Paperless at another URL. */
+  canSetPaperlessUrl: boolean;
+  /** Hosts non-admins may use with self-hosted notification services. */
+  notifyAllowedHosts: string[];
+  isAdmin: boolean;
   paperlessEnabled: boolean;
   paperlessWebUrl: string;
   dateFormats: string[];
@@ -82,7 +90,16 @@ export interface Settings {
 
 export type SettingsInput = Omit<
   Settings,
-  "hasPaperlessToken" | "paperlessFromEnv" | "paperlessEnabled" | "paperlessWebUrl" | "dateFormats" | "timezone"
+  | "hasPaperlessToken"
+  | "paperlessEnabled"
+  | "paperlessWebUrl"
+  | "paperlessServerUrl"
+  | "paperlessServerToken"
+  | "canSetPaperlessUrl"
+  | "notifyAllowedHosts"
+  | "isAdmin"
+  | "dateFormats"
+  | "timezone"
 > & { paperlessToken?: string };
 
 export interface User {

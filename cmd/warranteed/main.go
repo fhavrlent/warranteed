@@ -65,8 +65,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	notifier := notify.New(st, cfg.Location, cfg.NotifyHour, cfg.AppURL.String())
-	srv := api.New(cfg, st, auth.New(cfg, st), notifier, files, web.Assets(), version)
+	notifier := notify.New(st, cfg.Location, cfg.NotifyHour, cfg.AppURL.String(), notify.Policy{AllowedHosts: cfg.NotifyAllowedHosts})
+	key, err := auth.LoadKey(cfg.Secret, cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	srv := api.New(cfg, st, auth.New(cfg, st, key), notifier, files, web.Assets(), version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

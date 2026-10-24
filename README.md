@@ -38,18 +38,24 @@ OIDC_PROVIDER_NAME=Pocket ID
 
 `OIDC_ISSUER` is the URL that serves `/.well-known/openid-configuration`. The client secret can be left empty for public clients.
 
-- `OIDC_ALLOWED_GROUPS`: only members of these groups can sign in.
+- `OIDC_ALLOWED_GROUPS`: only members of these groups can sign in. Not needed if your provider already restricts the client to certain groups (Pocket ID does).
 - `OIDC_ADMIN_GROUPS`: members of these groups are admins. If unset, the first user to sign in is the admin.
+
+Group membership is checked at sign-in and again every hour (`OIDC_RECHECK_INTERVAL`) using a refresh token, so someone removed from the group, or deleted in the provider, is signed out within an hour. This needs the `offline_access` scope, which is requested by default. If your provider issues no refresh token, sessions last at most 7 days instead.
 
 ## Paperless-ngx
 
-Set `PAPERLESS_URL` and `PAPERLESS_TOKEN` in `.env`, or per user under **Settings → Paperless-ngx**. The token is under *Profile → API Auth Token* in Paperless. If `PAPERLESS_URL` is an internal address, set `PAPERLESS_PUBLIC_URL` to the address your browser uses.
+Set `PAPERLESS_URL` to your Paperless instance. Each user then connects with their own API token under **Settings → Paperless-ngx** (in Paperless: *Profile → API Auth Token*), so Paperless's permissions decide which documents they can see. Giving each person their own Paperless user is recommended. If `PAPERLESS_URL` is an internal address, set `PAPERLESS_PUBLIC_URL` to the address your browser uses.
+
+`PAPERLESS_TOKEN` is optional and only ever used for admins; other users never get it. Only admins can point Paperless at a different URL.
 
 Removing a Paperless attachment only unlinks it; the document stays in Paperless.
 
 ## Reminders
 
 Under **Settings → Reminders**, add one or more [Shoutrrr URLs](https://shoutrrr.nickfedor.com/latest/services/overview/) and the number of days before expiry to send a reminder (e.g. `30, 7`). Reminders are checked once a day after `WARRANTEED_NOTIFY_HOUR` in the `TZ` timezone. Each reminder is sent once.
+
+Discord, Telegram, Slack, Pushover, Pushbullet, IFTTT and Join work for everyone. Services where the URL contains a server address (ntfy, Gotify, generic webhooks, email and others) are unrestricted for admins; other users can only use them with hosts listed in `WARRANTEED_NOTIFY_ALLOWED_HOSTS`, so the server can't be used to reach internal addresses.
 
 ```
 ntfy://ntfy.sh/my-warranties
@@ -65,17 +71,20 @@ smtp://user:password@smtp.example.com:587/?from=warranty@example.com&to=me@examp
 | `OIDC_CLIENT_ID` | | Client ID (required) |
 | `OIDC_CLIENT_SECRET` | | Client secret |
 | `OIDC_PROVIDER_NAME` | `SSO` | Login button label |
-| `OIDC_SCOPES` | `openid profile email groups` | |
+| `OIDC_SCOPES` | `openid profile email groups offline_access` | |
 | `OIDC_ALLOWED_GROUPS` | | Comma-separated groups allowed to sign in |
 | `OIDC_ADMIN_GROUPS` | | Comma-separated admin groups |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim containing the user's groups |
 | `OIDC_AUTO_REDIRECT` | `false` | Skip the login page |
 | `OIDC_LOGOUT_AT_PROVIDER` | `false` | Also sign out at the provider |
+| `OIDC_RECHECK_INTERVAL` | `1h` | How often group membership is re-checked |
 | `PAPERLESS_URL` | | Paperless-ngx URL |
-| `PAPERLESS_TOKEN` | | Paperless-ngx API token |
+| `PAPERLESS_TOKEN` | | API token used for admins only |
 | `PAPERLESS_PUBLIC_URL` | `PAPERLESS_URL` | Paperless URL used for browser links |
 | `TZ` | | Timezone |
 | `WARRANTEED_NOTIFY_HOUR` | `9` | Hour (0–23) after which reminders are sent |
+| `WARRANTEED_NOTIFY_ALLOWED_HOSTS` | | Comma-separated hosts non-admins may use with self-hosted notification services |
+| `WARRANTEED_SECRET` | | Key for encrypting stored refresh tokens; generated in the data directory if unset |
 | `WARRANTEED_MAX_UPLOAD_MB` | `50` | Maximum upload size |
 | `WARRANTEED_SESSION_DAYS` | `30` | Session length |
 | `WARRANTEED_DATA_DIR` | `/data` | Database directory (local disk) |
@@ -98,7 +107,7 @@ services:
       - /mnt/nas/warranteed:/files
 ```
 
-Back up both directories. To copy the database while the app is running, use `sqlite3 warranteed.db ".backup backup.db"`.
+Back up both directories. The data directory also holds `secret.key` (unless `WARRANTEED_SECRET` is set); losing it only means everyone signs in again. To copy the database while the app is running, use `sqlite3 warranteed.db ".backup backup.db"`.
 
 The container runs as uid 65532. Bind mounts and network shares must be writable by that user, or set `user:` in the compose file.
 

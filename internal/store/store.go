@@ -94,6 +94,16 @@ func (s *Store) UpsertUser(ctx context.Context, u UpsertUser) (*User, error) {
 	return &out, nil
 }
 
+// IsAdmin reports whether the user is an admin.
+func (s *Store) IsAdmin(ctx context.Context, userID int64) (bool, error) {
+	var admin bool
+	err := s.db.QueryRowContext(ctx, `SELECT is_admin FROM users WHERE id = ?`, userID).Scan(&admin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	return admin, err
+}
+
 func (s *Store) ListUserIDs(ctx context.Context) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id FROM users`)
 	if err != nil {
@@ -118,26 +128,71 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Store) CreateSession(ctx context.Context, token string, userID int64, idToken string, ttl time.Duration) error {
+// CreateSession stores a new session. refreshToken is already encrypted.
+func (s *Store) CreateSession(ctx context.Context, token string, userID int64, idToken, refreshToken string, ttl time.Duration) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions (token_hash, user_id, id_token, expires_at) VALUES (?, ?, ?, ?)`,
-		hashToken(token), userID, idToken, time.Now().Add(ttl).UTC().Format(timeLayout))
+		`INSERT INTO sessions (token_hash, user_id, id_token, refresh_token, checked_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		hashToken(token), userID, idToken, refreshToken, now(), time.Now().Add(ttl).UTC().Format(timeLayout))
 	return err
 }
 
-// SessionUser returns the user for a valid, unexpired session token.
-func (s *Store) SessionUser(ctx context.Context, token string) (*User, error) {
+// Session is a signed-in session.
+type Session struct {
+	Hash         string
+	Issuer       string // the user's identity provider
+	IDToken      string
+	RefreshToken string // encrypted; empty when the provider gave none
+	CheckedAt    time.Time
+}
+
+// SessionUser returns the user and session for a valid, unexpired session token.
+func (s *Store) SessionUser(ctx context.Context, token string) (*User, *Session, error) {
+	return s.sessionBy(ctx, hashToken(token))
+}
+
+// SessionByHash re-reads a session, e.g. after waiting for a lock.
+func (s *Store) SessionByHash(ctx context.Context, hash string) (*Session, error) {
+	_, sess, err := s.sessionBy(ctx, hash)
+	return sess, err
+}
+
+func (s *Store) sessionBy(ctx context.Context, hash string) (*User, *Session, error) {
 	var u User
+	sess := Session{Hash: hash}
+	var checked string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.email, u.name, u.picture, u.is_admin
+		SELECT u.id, u.email, u.name, u.picture, u.is_admin, u.issuer, s.id_token, s.refresh_token, s.checked_at
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.expires_at > ?`,
-		hashToken(token), now(),
-	).Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.IsAdmin)
+		hash, now(),
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.IsAdmin, &sess.Issuer, &sess.IDToken, &sess.RefreshToken, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+		return nil, nil, ErrNotFound
 	}
-	return &u, err
+	if err != nil {
+		return nil, nil, err
+	}
+	sess.CheckedAt, _ = time.Parse(timeLayout, checked) // '' = never checked
+	return &u, &sess, nil
+}
+
+// UpdateSessionCheck records a successful re-check with the new tokens.
+func (s *Store) UpdateSessionCheck(ctx context.Context, hash, idToken, refreshToken string, checkedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET id_token = ?, refresh_token = ?, checked_at = ? WHERE token_hash = ?`,
+		idToken, refreshToken, checkedAt.UTC().Format(timeLayout), hash)
+	return err
+}
+
+// DeleteSessionByHash ends a session, e.g. when the user lost access.
+func (s *Store) DeleteSessionByHash(ctx context.Context, hash string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hash)
+	return err
+}
+
+func (s *Store) SetAdmin(ctx context.Context, userID int64, admin bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET is_admin = ? WHERE id = ?`, admin, userID)
+	return err
 }
 
 // DeleteSession removes the session and returns its stored ID token (used for

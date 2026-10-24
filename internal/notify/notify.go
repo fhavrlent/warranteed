@@ -24,10 +24,11 @@ type Notifier struct {
 	loc    *time.Location
 	hour   int
 	appURL string
+	policy Policy
 }
 
-func New(st *store.Store, loc *time.Location, hour int, appURL string) *Notifier {
-	return &Notifier{store: st, loc: loc, hour: hour, appURL: strings.TrimSuffix(appURL, "/")}
+func New(st *store.Store, loc *time.Location, hour int, appURL string, policy Policy) *Notifier {
+	return &Notifier{store: st, loc: loc, hour: hour, appURL: strings.TrimSuffix(appURL, "/"), policy: policy}
 }
 
 // ParseURLs splits the settings field into individual service URLs.
@@ -138,7 +139,20 @@ func (n *Notifier) checkUser(ctx context.Context, userID int64) error {
 	if err != nil {
 		return err
 	}
-	urls := ParseURLs(st.NotifyURLs)
+	admin, err := n.store.IsAdmin(ctx, userID)
+	if err != nil {
+		return err
+	}
+	// Re-checked on every send: an admin may have been demoted, or the
+	// allowed hosts changed, since the URLs were saved.
+	var urls []string
+	for _, u := range ParseURLs(st.NotifyURLs) {
+		if err := n.policy.Check(u, admin); err != nil {
+			slog.Warn("skipping notification URL", "user", userID, "reason", err)
+			continue
+		}
+		urls = append(urls, u)
+	}
 	thresholds, err := ParseDays(st.NotifyDays)
 	if len(urls) == 0 || err != nil || len(thresholds) == 0 {
 		return nil
