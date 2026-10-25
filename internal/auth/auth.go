@@ -144,7 +144,10 @@ func safeReturn(r string) string {
 	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") {
 		return "/"
 	}
-	return r
+	// Rebuilt from path, query and fragment only, so the result can't carry
+	// a scheme or host whatever the input was.
+	local := url.URL{Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery, Fragment: u.Fragment}
+	return local.String()
 }
 
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
