@@ -2,6 +2,19 @@
 
 Self-hosted warranty tracker. Track purchases, warranty periods, receipts and manuals, and get reminded before a warranty expires.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/list-dark.png">
+  <img alt="Warranty list with expiry status, tags and value under warranty" src="docs/screenshots/list.png">
+</picture>
+
+<table>
+  <tr>
+    <td width="40%"><img alt="Warranty detail with receipt and warranty card" src="docs/screenshots/detail.png"></td>
+    <td width="40%"><img alt="Adding a warranty" src="docs/screenshots/add.png"></td>
+    <td width="20%"><img alt="Warranty list on a phone" src="docs/screenshots/phone.png"></td>
+  </tr>
+</table>
+
 ## Features
 
 - Sign-in through an OpenID Connect provider (Pocket ID, Authentik, Keycloak, …). There are no local passwords.
