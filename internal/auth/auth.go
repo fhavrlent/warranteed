@@ -128,11 +128,7 @@ func randomString(n int) string {
 // different site. Any control character or backslash is therefore refused,
 // and the parsed result must have no scheme or host.
 func safeReturn(r string) string {
-	if r == "" || r[0] != '/' {
-		return "/"
-	}
-	// "//host" and "/\host" are protocol-relative URLs to another site.
-	if len(r) > 1 && (r[1] == '/' || r[1] == '\\') {
+	if !isLocalPath(r) {
 		return "/"
 	}
 	for _, c := range r {
@@ -141,13 +137,20 @@ func safeReturn(r string) string {
 		}
 	}
 	u, err := url.Parse(r)
-	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") {
+	// The decoded path is checked too: "/%2F%2Fevil.example" decodes to "//evil.example".
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !isLocalPath(u.Path) {
 		return "/"
 	}
 	// Rebuilt from path, query and fragment only, so the result can't carry
 	// a scheme or host whatever the input was.
 	local := url.URL{Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery, Fragment: u.Fragment}
 	return local.String()
+}
+
+// isLocalPath reports whether p starts with a single "/". "//host" and
+// "/\host" are protocol-relative URLs to another site.
+func isLocalPath(p string) bool {
+	return p != "" && p[0] == '/' && (len(p) == 1 || (p[1] != '/' && p[1] != '\\'))
 }
 
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
