@@ -224,8 +224,8 @@ func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInp
 	in.PurchaseDate = purchase
 
 	if p := get("price"); p != "" {
-		v, err := strconv.ParseFloat(strings.ReplaceAll(p, ",", "."), 64)
-		if err != nil {
+		v, ok := parsePrice(p)
+		if !ok {
 			return nil, false, fmt.Sprintf("Invalid price %q", p)
 		}
 		in.Price = &v
@@ -251,6 +251,53 @@ func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInp
 		}
 	}
 	return in, parseBool(get("archived")), ""
+}
+
+// parsePrice reads prices as shops and spreadsheets write them: "1 379",
+// "1 379,50", "1.379,50", "1,379.50", "1'379", with or without a currency.
+// When both "." and "," appear the last is the decimal separator; a single
+// separator followed by exactly three digits groups thousands. Mirrors the
+// price field in the web app.
+func parsePrice(input string) (float64, bool) {
+	var b strings.Builder
+	for _, r := range input {
+		switch {
+		case r >= '0' && r <= '9', r == '.', r == ',':
+			b.WriteRune(r)
+		case r == '-':
+			return 0, false
+		}
+	}
+	s := b.String()
+	if s == "" {
+		return 0, false
+	}
+	dot, comma := strings.LastIndex(s, "."), strings.LastIndex(s, ",")
+	switch {
+	case dot >= 0 && comma >= 0:
+		dec, grp := ".", ","
+		if comma > dot {
+			dec, grp = ",", "."
+		}
+		s = strings.Replace(strings.ReplaceAll(s, grp, ""), dec, ".", 1)
+	case dot >= 0 || comma >= 0:
+		sep := "."
+		if comma >= 0 {
+			sep = ","
+		}
+		parts := strings.Split(s, sep)
+		tail := parts[len(parts)-1]
+		if len(parts) > 2 || (len(tail) == 3 && parts[0] != "0" && parts[0] != "") {
+			s = strings.Join(parts, "")
+		} else {
+			s = strings.Join(parts, ".")
+		}
+	}
+	if strings.Count(s, ".") > 1 || strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	return v, err == nil
 }
 
 func parseBool(s string) bool {

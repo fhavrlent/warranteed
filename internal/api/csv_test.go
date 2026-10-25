@@ -89,3 +89,21 @@ func TestFormulaEscaping(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePrice(t *testing.T) {
+	cases := map[string]float64{
+		"1 379": 1379, "1\u00a0379": 1379, "1\u202f379,50": 1379.5, "1.379,50": 1379.5, "1,379.50": 1379.5,
+		"1'379": 1379, "1 379 Kč": 1379, "€1,379": 1379, "1.379": 1379, "1,379": 1379, "13,5": 13.5,
+		"13.50": 13.5, "0,379": 0.379, "1.379.000": 1379000, "1 379 000,00": 1379000, "549": 549,
+	}
+	for in, want := range cases {
+		if got, ok := parsePrice(in); !ok || got != want {
+			t.Errorf("parsePrice(%q) = %v, %v; want %v", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"abc", "1.2.3,4.5", "-5", ""} {
+		if _, ok := parsePrice(in); ok {
+			t.Errorf("parsePrice(%q) should fail", in)
+		}
+	}
+}

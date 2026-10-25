@@ -7,6 +7,7 @@ import { api, errorMessage, type Warranty, type WarrantyInput } from "@/lib/api"
 import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
 import { useInvalidate, useMe, usePrefs, useSharing } from "@/lib/queries";
 import { storageFor, toPending, type PendingFile } from "@/lib/documents";
+import { formatPriceInput, parsePrice } from "@/lib/price";
 import { CURRENCIES, cn } from "@/lib/utils";
 import { DateInput } from "./DateInput";
 import { PendingFileList } from "./PendingFiles";
@@ -46,7 +47,7 @@ const initial = (w: Warranty | undefined, currency: string) => {
     amount: String(months % 12 === 0 ? months / 12 : months),
     unit,
     endDate: w?.warrantyEndDate ?? null,
-    price: w?.price != null ? String(w.price) : "",
+    price: w?.price != null ? formatPriceInput(w.price) : "",
     currency: w?.currency || currency,
     productUrl: w?.productUrl ?? "",
     notes: w?.notes ?? "",
@@ -112,7 +113,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       else if (f.purchaseDate && isAfter(fromISO(f.purchaseDate), fromISO(f.endDate)))
         e.endDate = "Ends before the purchase date";
     }
-    if (f.price && !Number.isFinite(Number(f.price.replace(",", ".")))) e.price = "Not a number";
+    if (Number.isNaN(parsePrice(f.price))) e.price = "Enter a price like 1 379 or 1 379,50";
     if (files.some((p) => p.kind === null)) e.files = "Choose a type for each file";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -131,7 +132,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       warrantyMonths: f.mode === "duration" ? months : null,
       warrantyEndDate: f.mode === "date" ? f.endDate : null,
       isLifetime: f.mode === "lifetime",
-      price: f.price ? Number(f.price.replace(",", ".")) : null,
+      price: parsePrice(f.price),
       currency: f.currency,
       productUrl: f.productUrl,
       notes: f.notes,
@@ -230,9 +231,15 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                 id="price"
                 inputMode="decimal"
                 value={f.price}
-                placeholder="0.00"
+                placeholder={formatPriceInput(1379)}
                 className="tabular-nums"
+                aria-invalid={errors.price ? true : undefined}
                 onChange={(e) => set("price", e.target.value)}
+                onBlur={() => {
+                  // Tidy "1379" or "1.379,5" into the local format once the user is done.
+                  const n = parsePrice(f.price);
+                  if (n !== null && !Number.isNaN(n)) set("price", formatPriceInput(n));
+                }}
               />
               <Select
                 aria-label="Currency"

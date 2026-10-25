@@ -9,6 +9,7 @@ import { Card, Kbd, Segmented } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
 import { thumbUrl, type Tag, type Warranty } from "@/lib/api";
 import { usePrefs, useSharing, useTags, useWarranties } from "@/lib/queries";
+import { matcher } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { displayName, photoOf, statusOf, tagDot, type Status, expiryText } from "@/lib/warranty";
 
@@ -114,7 +115,8 @@ export const Warranties = () => {
   );
 
   const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const match = matcher(q);
+    const scores = new Map<number, number>();
     const res = withStatus.filter(({ w, s }) => {
       switch (filter) {
         case "current":
@@ -128,25 +130,28 @@ export const Warranties = () => {
       if (tag && !w.tags.some((t) => t.name.toLowerCase() === tag.toLowerCase())) return false;
       if (who === "mine" && w.spaceKind !== "personal") return false;
       if (who === "shared" && w.spaceKind === "personal") return false;
-      if (!needle) return true;
-      return [
-        w.productName,
-        w.brand,
-        w.model,
-        w.vendor,
-        w.orderNumber,
-        w.notes,
-        ...w.serialNumbers,
-        ...w.tags.map((t) => t.name),
-      ]
-        .join("\u0000")
-        .toLowerCase()
-        .includes(needle);
+      const score = match.score(
+        [
+          w.productName,
+          w.brand,
+          w.model,
+          w.vendor,
+          w.orderNumber,
+          w.notes,
+          ...w.serialNumbers,
+          ...w.tags.map((t) => t.name),
+        ].join("\u0000"),
+      );
+      scores.set(w.id, score);
+      return score > 0;
     });
     const byName = (a: Warranty, b: Warranty) => displayName(a).localeCompare(displayName(b));
     res.sort((A, B) => {
       const a = A.w,
         b = B.w;
+      // When searching, exact matches come before ones found despite typos.
+      const byScore = (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0);
+      if (byScore !== 0) return byScore;
       switch (sort) {
         case "name":
           return byName(a, b);
