@@ -1,4 +1,11 @@
-.PHONY: dev web build test fmt image clean
+.PHONY: binary dev web build test fmt image clean
+
+# `make` with no target must only compile and exit: tools such as GitHub code
+# scanning run it to build the Go code. Uses whatever frontend is in web/dist;
+# `make build` rebuilds the frontend first.
+binary:
+	@mkdir -p web/dist && touch web/dist/.gitkeep
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o warranteed ./cmd/warranteed
 
 # Backend with the local dev login on :8080; run `make web` in a second terminal
 # for the Vite dev server with hot reload on :5173.
