@@ -128,7 +128,11 @@ func randomString(n int) string {
 // different site. Any control character or backslash is therefore refused,
 // and the parsed result must have no scheme or host.
 func safeReturn(r string) string {
-	if r == "" || r[0] != '/' || strings.HasPrefix(r, "//") {
+	if r == "" || r[0] != '/' {
+		return "/"
+	}
+	// "//host" and "/\host" are protocol-relative URLs to another site.
+	if len(r) > 1 && (r[1] == '/' || r[1] == '\\') {
 		return "/"
 	}
 	for _, c := range r {
