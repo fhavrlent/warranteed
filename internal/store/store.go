@@ -80,11 +80,12 @@ func (s *Store) UpsertUser(ctx context.Context, u UpsertUser) (*User, error) {
 			return err
 		}
 		if err := tx.QueryRowContext(ctx,
-			`SELECT id, email, name, picture, is_admin FROM users WHERE issuer = ? AND subject = ?`,
+			`SELECT id, email, name, picture_etag, is_admin FROM users WHERE issuer = ? AND subject = ?`,
 			u.Issuer, u.Subject,
 		).Scan(&out.ID, &out.Email, &out.Name, &out.Picture, &out.IsAdmin); err != nil {
 			return err
 		}
+		out.Picture = pictureURL(out.Picture)
 		if _, err := tx.ExecContext(ctx, `INSERT INTO user_settings (user_id) VALUES (?) ON CONFLICT DO NOTHING`, out.ID); err != nil {
 			return err
 		}
@@ -94,6 +95,41 @@ func (s *Store) UpsertUser(ctx context.Context, u UpsertUser) (*User, error) {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// pictureURL is where the app serves a user's picture; the etag in the query
+// lets browsers cache it until it changes.
+func pictureURL(etag string) string {
+	if etag == "" {
+		return ""
+	}
+	return "/api/me/picture?v=" + etag
+}
+
+// SetUserPicture stores the user's profile picture; nil data removes it.
+func (s *Store) SetUserPicture(ctx context.Context, userID int64, data []byte, contentType string) error {
+	etag := ""
+	if data != nil {
+		sum := sha256.Sum256(data)
+		etag = hex.EncodeToString(sum[:8])
+	} else {
+		contentType = ""
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET picture_data = ?, picture_type = ?, picture_etag = ? WHERE id = ?`,
+		data, contentType, etag, userID)
+	return err
+}
+
+// UserPicture returns the user's stored profile picture and its content type.
+func (s *Store) UserPicture(ctx context.Context, userID int64) ([]byte, string, error) {
+	var data []byte
+	var contentType string
+	err := s.db.QueryRowContext(ctx, `SELECT picture_data, picture_type FROM users WHERE id = ?`, userID).Scan(&data, &contentType)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && data == nil) {
+		return nil, "", ErrNotFound
+	}
+	return data, contentType, err
 }
 
 // IsAdmin reports whether the user is an admin.
@@ -163,7 +199,7 @@ func (s *Store) sessionBy(ctx context.Context, hash string) (*User, *Session, er
 	sess := Session{Hash: hash}
 	var checked string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.email, u.name, u.picture, u.is_admin, u.issuer, s.id_token, s.refresh_token, s.checked_at
+		SELECT u.id, u.email, u.name, u.picture_etag, u.is_admin, u.issuer, s.id_token, s.refresh_token, s.checked_at
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.expires_at > ?`,
 		hash, now(),
@@ -175,6 +211,7 @@ func (s *Store) sessionBy(ctx context.Context, hash string) (*User, *Session, er
 		return nil, nil, err
 	}
 	sess.CheckedAt, _ = time.Parse(timeLayout, checked) // '' = never checked
+	u.Picture = pictureURL(u.Picture)
 	return &u, &sess, nil
 }
 

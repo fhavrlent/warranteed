@@ -1,5 +1,5 @@
 import { LogOut, Monitor, Moon, Settings as SettingsIcon, ShieldCheck, Sun } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { api } from "@/lib/api";
 import { useMe, useSaveSettings, useSettingsQuery } from "@/lib/queries";
@@ -15,8 +15,16 @@ const Avatar = ({ name, picture }: { name: string; picture?: string }) => {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  return picture ? (
-    <img src={picture} alt="" className="size-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+  const [failed, setFailed] = useState<string | null>(null);
+  return picture && failed !== picture ? (
+    <img
+      src={picture}
+      alt=""
+      className="size-8 rounded-full object-cover"
+      onError={() => {
+        setFailed(picture);
+      }}
+    />
   ) : (
     <span className="flex size-8 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
       {initials || "?"}

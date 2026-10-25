@@ -271,6 +271,7 @@ func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
 		a.failLogin(w, r, "Could not create your account.")
 		return
 	}
+	a.savePicture(ctx, user.ID, str(claims["picture"]))
 	if err := a.startSession(w, r, user.ID, rawID, tok.RefreshToken); err != nil {
 		slog.Error("create session", "err", err)
 		a.failLogin(w, r, "Could not start a session.")

@@ -46,6 +46,7 @@ func (s *Server) Handler() http.Handler {
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/me", s.me)
+	api.HandleFunc("GET /api/me/picture", s.mePicture)
 	api.HandleFunc("GET /api/settings", s.getSettings)
 	api.HandleFunc("PUT /api/settings", s.putSettings)
 	api.HandleFunc("POST /api/settings/test-notification", s.testNotification)
