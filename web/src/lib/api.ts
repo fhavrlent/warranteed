@@ -86,6 +86,8 @@ export interface Settings {
   notifyUrls: string;
   notifyDays: string;
   paperlessUrl: string;
+  /** Address the browser uses for Paperless links (admins), empty = the Paperless URL. */
+  paperlessPublicUrl: string;
   paperlessDefault: boolean;
   hasPaperlessToken: boolean;
   /** The server's Paperless instance (PAPERLESS_URL), empty if none. */

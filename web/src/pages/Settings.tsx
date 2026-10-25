@@ -280,6 +280,7 @@ const Notifications = ({ s }: { s: SettingsT }) => {
 const Paperless = ({ s }: { s: SettingsT }) => {
   const update = useAutoSave(s);
   const [url, setUrl] = useState(s.paperlessUrl);
+  const [publicUrl, setPublicUrl] = useState(s.paperlessPublicUrl);
   const [token, setToken] = useState("");
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -300,7 +301,11 @@ const Paperless = ({ s }: { s: SettingsT }) => {
   };
 
   const saveConnection = async () => {
-    const ok = await update({ paperlessUrl: url, ...(token ? { paperlessToken: token } : {}) });
+    const ok = await update({
+      paperlessUrl: url,
+      paperlessPublicUrl: publicUrl,
+      ...(token ? { paperlessToken: token } : {}),
+    });
     if (ok) {
       setToken("");
       toast.success("Paperless connection saved");
@@ -363,20 +368,38 @@ const Paperless = ({ s }: { s: SettingsT }) => {
                 autoComplete="off"
               />
             </Field>
+            {s.canSetPaperlessUrl && (
+              <Field
+                label="Link address"
+                optional
+                hint="Where your browser opens Paperless, if the URL above is an internal address (e.g. http://paperless:8000 in Docker)."
+                className="sm:col-span-2"
+              >
+                <Input
+                  value={publicUrl}
+                  onChange={(e) => setPublicUrl(e.target.value)}
+                  placeholder={url || s.paperlessServerUrl || "https://paperless.example.com"}
+                />
+              </Field>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={test} loading={testing}>
               Test connection
             </Button>
-            <Button onClick={saveConnection} disabled={url === s.paperlessUrl && !token}>
+            <Button
+              onClick={saveConnection}
+              disabled={url === s.paperlessUrl && publicUrl === s.paperlessPublicUrl && !token}
+            >
               Save
             </Button>
             {(s.paperlessUrl || s.hasPaperlessToken) && (
               <Button
                 variant="ghost"
                 onClick={async () => {
-                  if (await update({ paperlessUrl: "", paperlessToken: "" })) {
+                  if (await update({ paperlessUrl: "", paperlessPublicUrl: "", paperlessToken: "" })) {
                     setUrl("");
+                    setPublicUrl("");
                     setStatus(null);
                   }
                 }}

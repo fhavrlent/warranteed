@@ -255,25 +255,26 @@ func (s *Store) PurgeExpiredSessions(ctx context.Context) error {
 // ---- settings ----
 
 type Settings struct {
-	DateFormat       string `json:"dateFormat"`
-	Currency         string `json:"currency"`
-	Theme            string `json:"theme"`
-	ExpiringSoonDays int    `json:"expiringSoonDays"`
-	NotifyURLs       string `json:"notifyUrls"`
-	NotifyDays       string `json:"notifyDays"`
-	PaperlessURL     string `json:"paperlessUrl"`
-	PaperlessToken   string `json:"-"`
-	PaperlessDefault bool   `json:"paperlessDefault"`
+	DateFormat         string `json:"dateFormat"`
+	Currency           string `json:"currency"`
+	Theme              string `json:"theme"`
+	ExpiringSoonDays   int    `json:"expiringSoonDays"`
+	NotifyURLs         string `json:"notifyUrls"`
+	NotifyDays         string `json:"notifyDays"`
+	PaperlessURL       string `json:"paperlessUrl"`
+	PaperlessPublicURL string `json:"paperlessPublicUrl"`
+	PaperlessToken     string `json:"-"`
+	PaperlessDefault   bool   `json:"paperlessDefault"`
 }
 
 func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	var st Settings
 	err := s.db.QueryRowContext(ctx, `
 		SELECT date_format, currency, theme, expiring_soon_days, notify_urls, notify_days,
-		       paperless_url, paperless_token, paperless_default
+		       paperless_url, paperless_public_url, paperless_token, paperless_default
 		FROM user_settings WHERE user_id = ?`, userID,
 	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.ExpiringSoonDays, &st.NotifyURLs,
-		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessToken, &st.PaperlessDefault)
+		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -284,9 +285,9 @@ func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) er
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
 			date_format = ?, currency = ?, theme = ?, expiring_soon_days = ?, notify_urls = ?,
-			notify_days = ?, paperless_url = ?, paperless_token = ?, paperless_default = ?
+			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?
 		WHERE user_id = ?`,
 		st.DateFormat, st.Currency, st.Theme, st.ExpiringSoonDays, st.NotifyURLs,
-		st.NotifyDays, st.PaperlessURL, st.PaperlessToken, st.PaperlessDefault, userID)
+		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, userID)
 	return err
 }

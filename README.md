@@ -71,7 +71,7 @@ With a single user, none of this appears in the interface.
 
 ## Paperless-ngx
 
-Set `PAPERLESS_URL` to your Paperless instance. Each user then connects with their own API token under **Settings → Paperless-ngx** (in Paperless: *Profile → API Auth Token*), so Paperless's permissions decide which documents they can see. Giving each person their own Paperless user is recommended. If `PAPERLESS_URL` is an internal address, set `PAPERLESS_PUBLIC_URL` to the address your browser uses.
+Set `PAPERLESS_URL` to your Paperless instance. Each user then connects with their own API token under **Settings → Paperless-ngx** (in Paperless: *Profile → API Auth Token*), so Paperless's permissions decide which documents they can see. Giving each person their own Paperless user is recommended. If `PAPERLESS_URL` is an internal address, set `PAPERLESS_PUBLIC_URL` to the address your browser uses. An admin who sets their own Paperless URL in Settings can set its link address there too.
 
 `PAPERLESS_TOKEN` is optional and only ever used for admins; other users never get it. Only admins can point Paperless at a different URL.
 

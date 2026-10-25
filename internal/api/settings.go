@@ -37,7 +37,10 @@ func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsRespon
 	webURL := ""
 	if pc != nil {
 		webURL = pc.BaseURL
-		if pc.BaseURL == s.cfg.Paperless.URL && s.cfg.Paperless.PublicURL != "" {
+		switch {
+		case admin && st.PaperlessPublicURL != "":
+			webURL = st.PaperlessPublicURL
+		case pc.BaseURL == s.cfg.Paperless.URL && s.cfg.Paperless.PublicURL != "":
 			webURL = s.cfg.Paperless.PublicURL
 		}
 	}
@@ -108,15 +111,16 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 type settingsInput struct {
-	DateFormat       string  `json:"dateFormat"`
-	Currency         string  `json:"currency"`
-	Theme            string  `json:"theme"`
-	ExpiringSoonDays int     `json:"expiringSoonDays"`
-	NotifyURLs       string  `json:"notifyUrls"`
-	NotifyDays       string  `json:"notifyDays"`
-	PaperlessURL     string  `json:"paperlessUrl"`
-	PaperlessToken   *string `json:"paperlessToken"` // nil keeps the stored token
-	PaperlessDefault bool    `json:"paperlessDefault"`
+	DateFormat         string  `json:"dateFormat"`
+	Currency           string  `json:"currency"`
+	Theme              string  `json:"theme"`
+	ExpiringSoonDays   int     `json:"expiringSoonDays"`
+	NotifyURLs         string  `json:"notifyUrls"`
+	NotifyDays         string  `json:"notifyDays"`
+	PaperlessURL       string  `json:"paperlessUrl"`
+	PaperlessPublicURL string  `json:"paperlessPublicUrl"`
+	PaperlessToken     *string `json:"paperlessToken"` // nil keeps the stored token
+	PaperlessDefault   bool    `json:"paperlessDefault"`
 }
 
 var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -124,6 +128,7 @@ var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Policy) string {
 	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
 	in.PaperlessURL = strings.TrimSuffix(strings.TrimSpace(in.PaperlessURL), "/")
+	in.PaperlessPublicURL = strings.TrimSuffix(strings.TrimSpace(in.PaperlessPublicURL), "/")
 	switch {
 	case !dates.Valid(in.DateFormat):
 		return "Unknown date format"
@@ -135,6 +140,8 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 		return "“Expiring soon” must be between 1 and 365 days"
 	case in.PaperlessURL != "" && !strings.HasPrefix(in.PaperlessURL, "http://") && !strings.HasPrefix(in.PaperlessURL, "https://"):
 		return "Paperless URL must start with http:// or https://"
+	case in.PaperlessPublicURL != "" && !strings.HasPrefix(in.PaperlessPublicURL, "http://") && !strings.HasPrefix(in.PaperlessPublicURL, "https://"):
+		return "Paperless link address must start with http:// or https://"
 	}
 	if _, err := notify.ParseDays(in.NotifyDays); err != nil {
 		return "Reminder days: " + err.Error()
@@ -153,6 +160,7 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 	st.NotifyURLs, st.NotifyDays = strings.TrimSpace(in.NotifyURLs), strings.TrimSpace(in.NotifyDays)
 	if admin {
 		st.PaperlessURL = in.PaperlessURL
+		st.PaperlessPublicURL = in.PaperlessPublicURL
 	}
 	st.PaperlessDefault = in.PaperlessDefault
 	if in.PaperlessToken != nil {
