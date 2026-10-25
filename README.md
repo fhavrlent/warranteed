@@ -1,5 +1,10 @@
 # Warranteed
 
+[![CI](https://img.shields.io/github/actions/workflow/status/fhavrlent/warranteed/ci.yml?branch=main&label=ci&logo=github)](https://github.com/fhavrlent/warranteed/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/tag/fhavrlent/warranteed?sort=semver&label=release)](https://github.com/fhavrlent/warranteed/pkgs/container/warranteed)
+[![License](https://img.shields.io/github/license/fhavrlent/warranteed)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/fhavrlent/warranteed?logo=go&logoColor=white)](go.mod)
+
 Self-hosted warranty tracker. Track purchases, warranty periods, receipts and manuals, and get reminded before a warranty expires.
 
 <picture>
