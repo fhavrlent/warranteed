@@ -161,7 +161,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	p, err := a.discover(r.Context())
 	if err != nil {
 		slog.Error("oidc discovery", "err", err)
-		a.failLogin(w, r, "Could not reach the identity provider. Try again in a moment.")
+		a.failLogin(w, r, "unreachable", "")
 		return
 	}
 	fs := flowState{
@@ -186,8 +186,14 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	), http.StatusFound)
 }
 
-func (a *Auth) failLogin(w http.ResponseWriter, r *http.Request, msg string) {
-	http.Redirect(w, r, "/login?error="+url.QueryEscape(msg), http.StatusFound)
+// failLogin sends the user back to the login page with the reason, a
+// "signIn.<reason>" translation key, and an optional detail from the provider.
+func (a *Auth) failLogin(w http.ResponseWriter, r *http.Request, reason, detail string) {
+	q := url.Values{"error": {reason}}
+	if detail != "" {
+		q.Set("detail", detail)
+	}
+	http.Redirect(w, r, "/login?"+q.Encode(), http.StatusFound)
 }
 
 func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
@@ -198,56 +204,56 @@ func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
 		if msg == "" {
 			msg = e
 		}
-		a.failLogin(w, r, "Sign-in was cancelled or denied: "+msg)
+		a.failLogin(w, r, "denied", msg)
 		return
 	}
 
 	c, err := r.Cookie(flowCookie)
 	if err != nil {
-		a.failLogin(w, r, "Your sign-in attempt expired. Please try again.")
+		a.failLogin(w, r, "expired", "")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: flowCookie, Path: "/auth/", MaxAge: -1, HttpOnly: true, Secure: a.cfg.Secure()})
 	var fs flowState
 	raw, err := base64.RawURLEncoding.DecodeString(c.Value)
 	if err != nil || json.Unmarshal(raw, &fs) != nil || fs.State == "" || q.Get("state") != fs.State {
-		a.failLogin(w, r, "Sign-in state did not match. Please try again.")
+		a.failLogin(w, r, "state", "")
 		return
 	}
 
 	p, err := a.discover(ctx)
 	if err != nil {
-		a.failLogin(w, r, "Could not reach the identity provider.")
+		a.failLogin(w, r, "exchange", "")
 		return
 	}
 	tok, err := a.oauth(p).Exchange(ctx, q.Get("code"), oauth2.VerifierOption(fs.Verifier))
 	if err != nil {
 		slog.Error("oidc code exchange", "err", err)
-		a.failLogin(w, r, "The identity provider rejected the sign-in. Check the client ID, secret and callback URL.")
+		a.failLogin(w, r, "rejected", "")
 		return
 	}
 	rawID, _ := tok.Extra("id_token").(string)
 	if rawID == "" {
-		a.failLogin(w, r, "The identity provider did not return an ID token.")
+		a.failLogin(w, r, "noIdToken", "")
 		return
 	}
 	idt, err := p.Verifier(&oidc.Config{ClientID: a.cfg.OIDC.ClientID}).Verify(ctx, rawID)
 	if err != nil || idt.Nonce != fs.Nonce {
 		slog.Error("oidc id token verification", "err", err)
-		a.failLogin(w, r, "Could not verify the identity token.")
+		a.failLogin(w, r, "verify", "")
 		return
 	}
 
 	claims := map[string]any{}
 	if err := idt.Claims(&claims); err != nil {
-		a.failLogin(w, r, "Could not read identity claims.")
+		a.failLogin(w, r, "claims", "")
 		return
 	}
 	a.mergeUserInfo(ctx, p, tok, claims)
 
 	allowed, isAdmin := a.access(claims)
 	if !allowed {
-		a.failLogin(w, r, "Your account is not allowed to use this app.")
+		a.failLogin(w, r, "notAllowed", "")
 		return
 	}
 
@@ -268,13 +274,13 @@ func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("upsert user", "err", err)
-		a.failLogin(w, r, "Could not create your account.")
+		a.failLogin(w, r, "account", "")
 		return
 	}
 	a.savePicture(ctx, user.ID, str(claims["picture"]))
 	if err := a.startSession(w, r, user.ID, rawID, tok.RefreshToken); err != nil {
 		slog.Error("create session", "err", err)
-		a.failLogin(w, r, "Could not start a session.")
+		a.failLogin(w, r, "session", "")
 		return
 	}
 	slog.Info("user signed in", "user", user.ID, "email", user.Email)

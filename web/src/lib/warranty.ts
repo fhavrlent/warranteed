@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import type { Attachment, Warranty, WarrantyInput } from "./api";
 import { daysUntil, fromISO, relativeDays } from "./dates";
 
@@ -12,21 +13,16 @@ export const statusOf = (w: Warranty, expiringSoonDays: number): Status => {
   return "active";
 };
 
-export const statusLabel: Record<Status, string> = {
-  active: "Active",
-  expiring: "Expiring soon",
-  expired: "Expired",
-  lifetime: "Lifetime",
-  archived: "Archived",
-};
+export const statusLabel = (s: Status): string => i18n.t(`status.${s}`);
 
 /** "Expires in 3 months" / "Expired 2 days ago" / "Never expires". */
 export const expiryText = (w: Warranty): string => {
-  if (w.isLifetime || !w.expiresOn) return "Never expires";
+  const t = i18n.t;
+  if (w.isLifetime || !w.expiresOn) return t("expiry.never");
   const d = daysUntil(w.expiresOn);
-  if (d < 0) return `Expired ${relativeDays(d)}`;
-  if (d === 0) return "Expires today";
-  return `Expires ${relativeDays(d)}`;
+  if (d < 0) return t("expiry.past", { when: relativeDays(d) });
+  if (d === 0) return t("expiry.today");
+  return t("expiry.future", { when: relativeDays(d) });
 };
 
 /** Share of the coverage period already used, 0..1. */

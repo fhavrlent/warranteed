@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
 import { AppShell } from "./components/AppShell";
+import { LanguageRoot } from "./components/LanguageRoot";
+import "./i18n";
 import "./index.css";
 import { queryClient } from "./lib/queries";
 import { Login } from "./pages/Login";
@@ -18,41 +20,43 @@ createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/"
-            element={
-              <AppShell>
-                <Warranties />
-              </AppShell>
-            }
-          />
-          <Route
-            path="/w/:id"
-            element={
-              <AppShell>
-                <WarrantyDetail />
-              </AppShell>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <AppShell>
-                <Settings />
-              </AppShell>
-            }
-          />
-          <Route
-            path="*"
-            element={
-              <AppShell>
-                <Warranties />
-              </AppShell>
-            }
-          />
-        </Routes>
+        <LanguageRoot>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/"
+              element={
+                <AppShell>
+                  <Warranties />
+                </AppShell>
+              }
+            />
+            <Route
+              path="/w/:id"
+              element={
+                <AppShell>
+                  <WarrantyDetail />
+                </AppShell>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <AppShell>
+                  <Settings />
+                </AppShell>
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <AppShell>
+                  <Warranties />
+                </AppShell>
+              }
+            />
+          </Routes>
+        </LanguageRoot>
       </BrowserRouter>
       <Toaster
         position="bottom-right"

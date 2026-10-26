@@ -1,6 +1,8 @@
 import { LogOut, Monitor, Moon, Settings as SettingsIcon, ShieldCheck, Sun } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
+import { applyLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { useMe, useSaveSettings, useSettingsQuery } from "@/lib/queries";
 import { applyTheme, watchSystemTheme, type Theme } from "@/lib/theme";
@@ -33,11 +35,17 @@ const Avatar = ({ name, picture }: { name: string; picture?: string }) => {
 };
 
 export const AppShell = ({ children }: { children: ReactNode }) => {
+  const { t } = useTranslation();
   const { data: me } = useMe();
   const { data: settings } = useSettingsQuery();
   const save = useSaveSettings();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+
+  const language = settings?.language;
+  useEffect(() => {
+    if (language !== undefined) void applyLanguage(language);
+  }, [language]);
 
   const theme = settings?.theme;
   useEffect(() => {
@@ -84,8 +92,8 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
             <Logo />
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
-            {nav("/", "Warranties")}
-            {nav("/settings", "Settings")}
+            {nav("/", t("nav.warranties"))}
+            {nav("/settings", t("nav.settings"))}
           </nav>
           <div className="ml-auto">
             <Menu>
@@ -93,36 +101,36 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
                 <button
                   type="button"
                   className="cursor-pointer rounded-full ring-offset-2 ring-offset-bg hover:ring-2 hover:ring-border-strong"
-                  aria-label="Account"
+                  aria-label={t("account.menu")}
                 >
                   <Avatar name={me?.name || me?.email || ""} picture={me?.picture} />
                 </button>
               </MenuTrigger>
               <MenuContent className="w-60">
                 <div className="px-2.5 py-2">
-                  <p className="truncate text-sm font-medium">{me?.name || "Signed in"}</p>
+                  <p className="truncate text-sm font-medium">{me?.name || t("account.signedIn")}</p>
                   <p className="truncate text-xs text-fg-subtle">{me?.email}</p>
                 </div>
                 <MenuSeparator />
                 <MenuItem icon={<SettingsIcon />} onSelect={() => navigate("/settings")}>
-                  Settings
+                  {t("nav.settings")}
                 </MenuItem>
-                <MenuLabel>Theme</MenuLabel>
+                <MenuLabel>{t("account.theme")}</MenuLabel>
                 <div className="flex gap-1 px-1.5 pb-1.5">
                   {(
                     [
-                      ["light", Sun, "Light"],
-                      ["dark", Moon, "Dark"],
-                      ["system", Monitor, "Auto"],
+                      ["light", Sun, t("theme.light")],
+                      ["dark", Moon, t("theme.dark")],
+                      ["system", Monitor, t("theme.auto")],
                     ] as const
-                  ).map(([t, Icon, label]) => (
+                  ).map(([value, Icon, label]) => (
                     <button
                       type="button"
-                      key={t}
-                      onClick={() => setTheme(t)}
+                      key={value}
+                      onClick={() => setTheme(value)}
                       className={cn(
                         "flex flex-1 cursor-pointer flex-col items-center gap-1 rounded-lg py-1.5 text-[11px]",
-                        settings?.theme === t ? "bg-primary-soft text-primary" : "text-fg-muted hover:bg-surface-3",
+                        settings?.theme === value ? "bg-primary-soft text-primary" : "text-fg-muted hover:bg-surface-3",
                       )}
                     >
                       <Icon className="size-4" />
@@ -132,12 +140,12 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
                 </div>
                 {me?.isAdmin && (
                   <div className="flex items-center gap-1.5 px-2.5 pb-1.5 text-xs text-fg-subtle">
-                    <ShieldCheck className="size-3.5" /> Administrator
+                    <ShieldCheck className="size-3.5" /> {t("account.administrator")}
                   </div>
                 )}
                 <MenuSeparator />
                 <MenuItem icon={<LogOut />} onSelect={logout}>
-                  Sign out
+                  {t("account.signOut")}
                 </MenuItem>
               </MenuContent>
             </Menu>

@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { KeyRound, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import { LogoMark } from "@/components/Logo";
-import { api } from "@/lib/api";
+import { api, translateServer } from "@/lib/api";
 import { safeReturn } from "@/lib/utils";
 
 export const Login = () => {
+  const { t } = useTranslation();
   const [params] = useSearchParams();
   const error = params.get("error");
+  const detail = params.get("detail") ?? "";
   const ret = safeReturn(params.get("return"));
   const { data: info, isLoading } = useQuery({ queryKey: ["auth-info"], queryFn: api.authInfo });
 
@@ -30,13 +33,13 @@ export const Login = () => {
         <div className="mb-8 flex flex-col items-center text-center">
           <LogoMark className="size-12" />
           <h1 className="mt-4 text-2xl font-semibold tracking-tight">Warranteed</h1>
-          <p className="mt-1.5 text-sm text-fg-muted">Every receipt, warranty and expiry date in one place.</p>
+          <p className="mt-1.5 text-sm text-fg-muted">{t("login.tagline")}</p>
         </div>
         <div className="rounded-2xl border border-border bg-surface p-6 shadow-pop">
           {error && (
             <div className="mb-4 flex gap-2 rounded-lg bg-bad-soft px-3 py-2.5 text-sm text-bad">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              <span>{error}</span>
+              <span>{translateServer(error, `signIn.${error}`, { detail })}</span>
             </div>
           )}
           {isLoading || me.isLoading ? (
@@ -51,7 +54,7 @@ export const Login = () => {
                   className="flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-medium text-primary-fg shadow-card transition-colors hover:bg-primary-hover"
                 >
                   <KeyRound className="size-4" />
-                  Continue with {info.providerName}
+                  {t("login.continueWith", { provider: info.providerName })}
                 </a>
               )}
               {info?.devLogin && (
@@ -59,18 +62,16 @@ export const Login = () => {
                   href={`/auth/dev?return=${encodeURIComponent(ret)}`}
                   className="flex h-11 items-center justify-center rounded-xl border border-dashed border-border-strong text-sm font-medium text-fg-muted hover:bg-surface-2"
                 >
-                  Development login
+                  {t("login.devLogin")}
                 </a>
               )}
               {!info?.oidc && !info?.devLogin && (
-                <p className="text-center text-sm text-fg-muted">
-                  No sign-in method is configured. Set OIDC_ISSUER on the server.
-                </p>
+                <p className="text-center text-sm text-fg-muted">{t("login.notConfigured")}</p>
               )}
             </div>
           )}
         </div>
-        <p className="mt-6 text-center text-xs text-fg-subtle">Password-less sign-in via your identity provider.</p>
+        <p className="mt-6 text-center text-xs text-fg-subtle">{t("login.footer")}</p>
       </div>
     </div>
   );

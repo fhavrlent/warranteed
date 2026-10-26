@@ -27,6 +27,7 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 - Expiry reminders via ntfy, Gotify, Discord, Telegram, email and other services.
 - Tags, serial numbers, archiving, search, CSV export and import.
 - Light and dark theme, usable on phones.
+- In English and Czech; more languages are easy to add.
 
 ## Installation
 
@@ -148,6 +149,10 @@ make test
 ```
 
 `dev/compose.yml` starts Paperless-ngx and a mock OIDC provider for local testing.
+
+## Translations
+
+The app and its reminders are available in English and Czech. Each user can pick a language under **Settings → Display**; by default it follows the browser. To add or improve a language, see [TRANSLATING.md](TRANSLATING.md). It only takes one JSON file.
 
 ## License
 

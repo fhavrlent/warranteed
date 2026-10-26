@@ -6,6 +6,8 @@ package dates
 import (
 	"strings"
 	"time"
+
+	"github.com/fhavrlent/warranteed/internal/i18n"
 )
 
 // Formats is the list of formats offered in settings.
@@ -40,8 +42,9 @@ var goTokens = strings.NewReplacer(
 	"d", "2",
 )
 
-// Format renders an ISO date (YYYY-MM-DD) using a date-fns style format.
-func Format(iso, format string) string {
+// Format renders an ISO date (YYYY-MM-DD) using a date-fns style format,
+// with month names in lang.
+func Format(iso, format, lang string) string {
 	t, err := time.Parse("2006-01-02", iso)
 	if err != nil {
 		return iso
@@ -49,5 +52,19 @@ func Format(iso, format string) string {
 	if !Valid(format) {
 		format = Formats[0]
 	}
-	return t.Format(goTokens.Replace(format))
+	out := t.Format(goTokens.Replace(format))
+	// Month names come from the translations as comma-separated lists.
+	key, english := "", ""
+	switch {
+	case strings.Contains(format, "MMMM"):
+		key, english = "reminder.monthsLong", t.Format("January")
+	case strings.Contains(format, "MMM"):
+		key, english = "reminder.monthsShort", t.Format("Jan")
+	}
+	if key != "" {
+		if names := strings.Split(i18n.T(lang, key, nil), ","); len(names) == 12 {
+			out = strings.Replace(out, english, strings.TrimSpace(names[t.Month()-1]), 1)
+		}
+	}
+	return out
 }

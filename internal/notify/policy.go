@@ -1,10 +1,11 @@
 package notify
 
 import (
-	"fmt"
 	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/fhavrlent/warranteed/internal/i18n"
 )
 
 // publicServices always send to their own fixed, public endpoints (e.g.
@@ -34,7 +35,7 @@ func (p Policy) Check(rawURL string, admin bool) error {
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("invalid notification URL")
+		return i18n.NewError("server.notifyInvalidUrl", nil)
 	}
 	scheme := strings.ToLower(u.Scheme)
 	if publicServices[scheme] {
@@ -45,10 +46,9 @@ func (p Policy) Check(rawURL string, admin bool) error {
 		return nil
 	}
 	if len(p.AllowedHosts) == 0 {
-		return fmt.Errorf("%s notifications need an admin to allow the host (WARRANTEED_NOTIFY_ALLOWED_HOSTS); "+
-			"Discord, Telegram, Slack, Pushover, Pushbullet, IFTTT and Join always work", scheme)
+		return i18n.NewError("server.notifyNeedsAdmin", i18n.Args{"scheme": scheme})
 	}
-	return fmt.Errorf("%q isn't an allowed notification host — allowed: %s", host, strings.Join(p.AllowedHosts, ", "))
+	return i18n.NewError("server.notifyHostNotAllowed", i18n.Args{"host": host, "allowed": strings.Join(p.AllowedHosts, ", ")})
 }
 
 func (p Policy) CheckAll(urls []string, admin bool) error {

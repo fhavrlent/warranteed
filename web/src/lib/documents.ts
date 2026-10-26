@@ -9,6 +9,7 @@ import {
   ShieldPlus,
   Wrench,
 } from "lucide-react";
+import i18n from "@/i18n";
 import type { AttachmentKind } from "./api";
 
 /** Document types in display order. */
@@ -23,16 +24,18 @@ export const DOCUMENT_KINDS: readonly AttachmentKind[] = [
   "other",
 ];
 
-export const kindMeta: Record<AttachmentKind, { label: string; icon: LucideIcon }> = {
-  purchase: { label: "Proof of purchase", icon: Receipt },
-  terms: { label: "Warranty terms", icon: ScrollText },
-  card: { label: "Warranty card", icon: IdCard },
-  extended: { label: "Extended warranty", icon: ShieldPlus },
-  claim: { label: "Repair & claims", icon: Wrench },
-  manual: { label: "Manual", icon: BookOpen },
-  photo: { label: "Product photo", icon: Camera },
-  other: { label: "Other", icon: FileIcon },
+export const kindIcon: Record<AttachmentKind, LucideIcon> = {
+  purchase: Receipt,
+  terms: ScrollText,
+  card: IdCard,
+  extended: ShieldPlus,
+  claim: Wrench,
+  manual: BookOpen,
+  photo: Camera,
+  other: FileIcon,
 };
+
+export const kindLabel = (kind: AttachmentKind): string => i18n.t(`kinds.${kind}`);
 
 /** Types a file can be given; product photos must be images. */
 export const kindsFor = (mimeType: string): AttachmentKind[] =>

@@ -1,6 +1,7 @@
 import { addMonths, isAfter } from "date-fns";
 import { Lock, Plus, Upload, Users, X } from "lucide-react";
 import { useRef, useState, type SubmitEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { api, errorMessage, type Warranty, type WarrantyInput } from "@/lib/api";
@@ -68,6 +69,7 @@ export const WarrantyForm = ({ open, ...props }: FormProps & { open: boolean }) 
   open ? <WarrantyFormDialog {...props} /> : null;
 
 const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
+  const { t } = useTranslation();
   const { currency, settings, fmtDate } = usePrefs();
   const { sharing, household, personal } = useSharing();
   const { data: me } = useMe();
@@ -105,16 +107,16 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!f.productName.trim()) e.productName = "Give the product a name";
-    if (!f.purchaseDate) e.purchaseDate = "When did you buy it?";
-    if (f.mode === "duration" && !months) e.amount = "Enter a length";
+    if (!f.productName.trim()) e.productName = t("form.errName");
+    if (!f.purchaseDate) e.purchaseDate = t("form.errPurchaseDate");
+    if (f.mode === "duration" && !months) e.amount = t("form.errLength");
     if (f.mode === "date") {
-      if (!f.endDate) e.endDate = "Pick the end date";
+      if (!f.endDate) e.endDate = t("form.errEndDate");
       else if (f.purchaseDate && isAfter(fromISO(f.purchaseDate), fromISO(f.endDate)))
-        e.endDate = "Ends before the purchase date";
+        e.endDate = t("form.errEndBeforePurchase");
     }
-    if (Number.isNaN(parsePrice(f.price))) e.price = "Enter a price like 1 379 or 1 379,50";
-    if (files.some((p) => p.kind === null)) e.files = "Choose a type for each file";
+    if (Number.isNaN(parsePrice(f.price))) e.price = t("form.errPrice", { example: formatPriceInput(1379.5) });
+    if (files.some((p) => p.kind === null)) e.files = t("form.errFileTypes");
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -155,8 +157,8 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       }
       invalidate();
       onOpenChange(false);
-      toast.success(editing ? "Changes saved" : `${saved.productName} added`, {
-        description: failed ? `${failed} file(s) could not be uploaded` : undefined,
+      toast.success(editing ? t("form.saved") : t("form.added", { name: saved.productName }), {
+        description: failed ? t("form.filesFailed", { count: failed }) : undefined,
       });
       if (!editing) void navigate(`/w/${saved.id}`);
     } catch (err) {
@@ -176,40 +178,40 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       open
       onOpenChange={onOpenChange}
       size="lg"
-      title={editing ? "Edit warranty" : "Add a warranty"}
+      title={editing ? t("form.editTitle") : t("form.addTitle")}
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="submit" form="warranty-form" loading={saving}>
-            {editing ? "Save changes" : "Add warranty"}
+            {editing ? t("form.submitEdit") : t("form.submitAdd")}
           </Button>
         </>
       }
     >
       <form id="warranty-form" onSubmit={submit} className="flex flex-col gap-6" noValidate>
         <section className="grid gap-4 sm:grid-cols-2">
-          <Field label="Product" htmlFor="productName" error={errors.productName} className="sm:col-span-2">
+          <Field label={t("form.product")} htmlFor="productName" error={errors.productName} className="sm:col-span-2">
             <Input
               id="productName"
               data-autofocus
               value={f.productName}
-              placeholder="e.g. Dishwasher, MacBook Air, Drill"
+              placeholder={t("form.productPlaceholder")}
               aria-invalid={!!errors.productName || undefined}
               onChange={(e) => set("productName", e.target.value)}
             />
           </Field>
-          <Field label="Brand" htmlFor="brand" optional>
+          <Field label={t("form.brand")} htmlFor="brand" optional>
             <Input id="brand" value={f.brand} placeholder="Bosch" onChange={(e) => set("brand", e.target.value)} />
           </Field>
-          <Field label="Model" htmlFor="model" optional>
+          <Field label={t("form.model")} htmlFor="model" optional>
             <Input id="model" value={f.model} placeholder="SMS4HVI33E" onChange={(e) => set("model", e.target.value)} />
           </Field>
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2">
-          <Field label="Purchase date" htmlFor="purchaseDate" error={errors.purchaseDate}>
+          <Field label={t("form.purchaseDate")} htmlFor="purchaseDate" error={errors.purchaseDate}>
             <DateInput
               id="purchaseDate"
               value={f.purchaseDate}
@@ -217,15 +219,15 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               invalid={!!errors.purchaseDate}
             />
           </Field>
-          <Field label="Bought from" htmlFor="vendor" optional>
+          <Field label={t("form.vendor")} htmlFor="vendor" optional>
             <Input
               id="vendor"
               value={f.vendor}
-              placeholder="Store or website"
+              placeholder={t("form.vendorPlaceholder")}
               onChange={(e) => set("vendor", e.target.value)}
             />
           </Field>
-          <Field label="Price" htmlFor="price" error={errors.price} optional>
+          <Field label={t("form.price")} htmlFor="price" error={errors.price} optional>
             <div className="flex gap-2">
               <Input
                 id="price"
@@ -242,7 +244,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                 }}
               />
               <Select
-                aria-label="Currency"
+                aria-label={t("form.currency")}
                 value={f.currency}
                 onChange={(e) => set("currency", e.target.value)}
                 className="w-24"
@@ -253,22 +255,22 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               </Select>
             </div>
           </Field>
-          <Field label="Order number" htmlFor="orderNumber" optional>
+          <Field label={t("form.orderNumber")} htmlFor="orderNumber" optional>
             <Input id="orderNumber" value={f.orderNumber} onChange={(e) => set("orderNumber", e.target.value)} />
           </Field>
         </section>
 
         <section className="rounded-xl border border-border bg-surface-2 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-[13px] font-medium">Warranty</h3>
+            <h3 className="text-[13px] font-medium">{t("form.warranty")}</h3>
             <Segmented
               size="sm"
               value={f.mode}
               onChange={(m) => set("mode", m)}
               options={[
-                { value: "duration", label: "Length" },
-                { value: "date", label: "End date" },
-                { value: "lifetime", label: "Lifetime" },
+                { value: "duration", label: t("form.modeLength") },
+                { value: "date", label: t("form.modeDate") },
+                { value: "lifetime", label: t("form.modeLifetime") },
               ]}
             />
           </div>
@@ -277,7 +279,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               <div className="flex flex-wrap items-start gap-2">
                 <div className="flex gap-2">
                   <Input
-                    aria-label="Warranty length"
+                    aria-label={t("form.length")}
                     inputMode="numeric"
                     value={f.amount}
                     aria-invalid={!!errors.amount || undefined}
@@ -285,13 +287,13 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                     className="w-20 tabular-nums"
                   />
                   <Select
-                    aria-label="Unit"
+                    aria-label={t("form.unit")}
                     value={f.unit}
                     onChange={(e) => set("unit", e.target.value as Unit)}
                     className="w-28"
                   >
-                    <option value="years">years</option>
-                    <option value="months">months</option>
+                    <option value="years">{t("form.unitYears")}</option>
+                    <option value="months">{t("form.unitMonths")}</option>
                   </Select>
                 </div>
                 <div className="flex flex-wrap gap-1">
@@ -318,25 +320,29 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                 <DateInput value={f.endDate} onChange={(v) => set("endDate", v)} invalid={!!errors.endDate} />
               </div>
             )}
-            {f.mode === "lifetime" && <p className="text-sm text-fg-muted">This warranty never expires.</p>}
+            {f.mode === "lifetime" && <p className="text-sm text-fg-muted">{t("form.neverExpires")}</p>}
             {(errors.amount || errors.endDate) && (
               <p className="mt-1.5 text-xs text-bad">{errors.amount || errors.endDate}</p>
             )}
             {computedExpiry && !errors.endDate && (
               <p className="mt-2.5 text-[13px] text-fg-muted">
-                Covered until <span className="font-medium text-fg">{fmtDate(computedExpiry)}</span>
+                <Trans
+                  i18nKey="form.coveredUntil"
+                  values={{ date: fmtDate(computedExpiry) }}
+                  components={{ b: <span className="font-medium text-fg" /> }}
+                />
               </p>
             )}
           </div>
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2">
-          <Field label="Serial numbers" optional className="sm:col-span-2">
+          <Field label={t("form.serials")} optional className="sm:col-span-2">
             <div className="flex flex-col gap-2">
               {f.serials.map((sn, i) => (
                 <div key={sn.id} className="flex gap-2">
                   <Input
-                    aria-label={`Serial number ${i + 1}`}
+                    aria-label={t("form.serialN", { n: i + 1 })}
                     autoFocus={sn.id === newSerialId}
                     value={sn.value}
                     className="font-mono text-[13px]"
@@ -351,7 +357,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      aria-label="Remove serial number"
+                      aria-label={t("form.removeSerial")}
                       onClick={() =>
                         set(
                           "serials",
@@ -373,20 +379,20 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                 }}
                 className="inline-flex w-fit cursor-pointer items-center gap-1 text-[13px] font-medium text-primary hover:underline"
               >
-                <Plus className="size-3.5" /> Add another
+                <Plus className="size-3.5" /> {t("form.addSerial")}
               </button>
             </div>
           </Field>
           {sharing && household && personal && (
             <Field
-              label="Who can see this"
+              label={t("form.visibility")}
               className="sm:col-span-2"
               hint={
                 !canMakePrivate
-                  ? `Only ${warranty.addedBy.name} can make this private.`
+                  ? t("form.visibilityOwner", { name: warranty.addedBy.name })
                   : (f.spaceId ?? household.id) === household.id
-                    ? "Everyone in the household can see and edit it."
-                    : "Only you can see it."
+                    ? t("form.visibilityShared")
+                    : t("form.visibilityPrivate")
               }
             >
               <Segmented
@@ -400,7 +406,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                     value: String(household.id),
                     label: (
                       <>
-                        <Users /> Household
+                        <Users /> {t("common.household")}
                       </>
                     ),
                   },
@@ -408,7 +414,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                     value: String(personal.id),
                     label: (
                       <span className={cn(!canMakePrivate && "opacity-40")}>
-                        <Lock className="mr-1.5 inline" /> Only me
+                        <Lock className="mr-1.5 inline" /> {t("common.onlyMe")}
                       </span>
                     ),
                   },
@@ -416,10 +422,10 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               />
             </Field>
           )}
-          <Field label="Tags" htmlFor="tags" optional className="sm:col-span-2">
+          <Field label={t("form.tags")} htmlFor="tags" optional className="sm:col-span-2">
             <TagInput id="tags" value={f.tags} onChange={(v) => set("tags", v)} />
           </Field>
-          <Field label="Product link" htmlFor="productUrl" optional className="sm:col-span-2">
+          <Field label={t("form.productUrl")} htmlFor="productUrl" optional className="sm:col-span-2">
             <Input
               id="productUrl"
               type="url"
@@ -428,11 +434,11 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               onChange={(e) => set("productUrl", e.target.value)}
             />
           </Field>
-          <Field label="Notes" htmlFor="notes" optional className="sm:col-span-2">
+          <Field label={t("form.notes")} htmlFor="notes" optional className="sm:col-span-2">
             <Textarea
               id="notes"
               value={f.notes}
-              placeholder="Support phone, claim instructions, extended warranty details…"
+              placeholder={t("form.notesPlaceholder")}
               onChange={(e) => set("notes", e.target.value)}
             />
           </Field>
@@ -442,12 +448,12 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
           <section>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[13px] font-medium">
-                Documents &amp; photos <span className="font-normal text-fg-subtle">optional</span>
+                {t("form.documents")} <span className="font-normal text-fg-subtle">{t("common.optional")}</span>
               </span>
               {paperless && (
                 <label className="flex cursor-pointer items-center gap-2 text-[13px] text-fg-muted">
                   <Switch checked={toPaperless} onCheckedChange={setToPaperless} />
-                  Store documents in Paperless
+                  {t("form.toPaperless")}
                 </label>
               )}
             </div>
@@ -462,7 +468,7 @@ const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
             >
               <Upload className="size-5 text-fg-subtle" />
               <p className="text-sm text-fg-muted">
-                Drop files here or <span className="font-medium text-primary">browse</span>
+                <Trans i18nKey="form.dropFiles" components={{ link: <span className="font-medium text-primary" /> }} />
               </p>
               <input ref={fileRef} type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />
             </div>

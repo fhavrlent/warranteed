@@ -258,6 +258,8 @@ type Settings struct {
 	DateFormat         string `json:"dateFormat"`
 	Currency           string `json:"currency"`
 	Theme              string `json:"theme"`
+	Language           string `json:"language"`
+	BrowserLanguage    string `json:"-"`
 	ExpiringSoonDays   int    `json:"expiringSoonDays"`
 	NotifyURLs         string `json:"notifyUrls"`
 	NotifyDays         string `json:"notifyDays"`
@@ -270,10 +272,10 @@ type Settings struct {
 func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	var st Settings
 	err := s.db.QueryRowContext(ctx, `
-		SELECT date_format, currency, theme, expiring_soon_days, notify_urls, notify_days,
+		SELECT date_format, currency, theme, language, browser_language, expiring_soon_days, notify_urls, notify_days,
 		       paperless_url, paperless_public_url, paperless_token, paperless_default
 		FROM user_settings WHERE user_id = ?`, userID,
-	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.ExpiringSoonDays, &st.NotifyURLs,
+	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.Language, &st.BrowserLanguage, &st.ExpiringSoonDays, &st.NotifyURLs,
 		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -281,13 +283,30 @@ func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	return &st, err
 }
 
+// EffectiveLanguage is the language to write to the user in when there is no
+// browser to ask, e.g. in reminders.
+func (st *Settings) EffectiveLanguage() string {
+	switch {
+	case st.Language != "":
+		return st.Language
+	case st.BrowserLanguage != "":
+		return st.BrowserLanguage
+	}
+	return "en"
+}
+
+func (s *Store) SetBrowserLanguage(ctx context.Context, userID int64, lang string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET browser_language = ? WHERE user_id = ?`, lang, userID)
+	return err
+}
+
 func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
-			date_format = ?, currency = ?, theme = ?, expiring_soon_days = ?, notify_urls = ?,
+			date_format = ?, currency = ?, theme = ?, language = ?, expiring_soon_days = ?, notify_urls = ?,
 			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?
 		WHERE user_id = ?`,
-		st.DateFormat, st.Currency, st.Theme, st.ExpiringSoonDays, st.NotifyURLs,
+		st.DateFormat, st.Currency, st.Theme, st.Language, st.ExpiringSoonDays, st.NotifyURLs,
 		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, userID)
 	return err
 }

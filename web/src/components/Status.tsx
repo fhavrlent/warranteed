@@ -30,7 +30,7 @@ export const StatusBadge = ({ status, className }: { status: Status; className?:
       )}
     >
       <Icon className="size-3.5" strokeWidth={2.25} />
-      {statusLabel[status]}
+      {statusLabel(status)}
     </span>
   );
 };

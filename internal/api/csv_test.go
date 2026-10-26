@@ -43,7 +43,7 @@ func TestImportRows(t *testing.T) {
 	rows := parseRows(t)
 
 	wm, archived, msg := rowToInput(rows[0], st)
-	if msg != "" || archived {
+	if msg != nil || archived {
 		t.Fatal(msg)
 	}
 	if *wm.WarrantyMonths != 30 || wm.Currency != "CZK" || wm.Model != "WM-900" ||
@@ -56,16 +56,16 @@ func TestImportRows(t *testing.T) {
 	}
 
 	knife, _, msg := rowToInput(rows[1], st)
-	if msg != "" || !knife.IsLifetime || knife.Currency != "EUR" {
-		t.Fatalf("knife: %+v %s", knife, msg)
+	if msg != nil || !knife.IsLifetime || knife.Currency != "EUR" {
+		t.Fatalf("knife: %+v %v", knife, msg)
 	}
 
 	phone, archived, msg := rowToInput(rows[2], st)
-	if msg != "" || !archived || phone.PurchaseDate != "2022-03-15" || *phone.WarrantyEndDate != "2024-03-15" {
-		t.Fatalf("phone: %+v %s", phone, msg)
+	if msg != nil || !archived || phone.PurchaseDate != "2022-03-15" || *phone.WarrantyEndDate != "2024-03-15" {
+		t.Fatalf("phone: %+v %v", phone, msg)
 	}
 
-	if _, _, msg := rowToInput(rows[3], st); msg == "" {
+	if _, _, msg := rowToInput(rows[3], st); msg == nil {
 		t.Fatal("row without any warranty length should be rejected")
 	}
 }

@@ -43,11 +43,11 @@ func TestPaperlessRejection(t *testing.T) {
 	for file, want := range map[string]string{
 		"ubuntu.iso":         "Paperless can't store .iso files",
 		"backup.tar.gz":      "Paperless can't store .gz files",
-		"fake-receipt.pdf":   `"fake-receipt.pdf" isn't really a .pdf file`,
-		"renamed-terms.DOCX": `"renamed-terms.DOCX" isn't really a .docx file`,
+		"fake-receipt.pdf":   "“fake-receipt.pdf” isn't really a .pdf file",
+		"renamed-terms.DOCX": "“renamed-terms.DOCX” isn't really a .docx file",
 		"no-extension":       "Paperless can't store this type of file",
 	} {
-		if got := paperlessRejection(file); !strings.HasPrefix(got, want) {
+		if got := paperlessRejection(file).Error(); !strings.HasPrefix(got, want) {
 			t.Errorf("%s: %q, want prefix %q", file, got, want)
 		}
 	}

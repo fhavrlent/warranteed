@@ -16,6 +16,7 @@ import (
 	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 
 	"github.com/fhavrlent/warranteed/internal/dates"
+	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -49,7 +50,7 @@ func ParseDays(raw string) ([]int, error) {
 	for _, f := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' }) {
 		n, err := strconv.Atoi(f)
 		if err != nil || n < 0 || n > 3650 {
-			return nil, fmt.Errorf("%q is not a valid number of days", f)
+			return nil, i18n.NewError("server.reminderDays", i18n.Args{"value": f})
 		}
 		if !seen[n] {
 			seen[n] = true
@@ -201,28 +202,28 @@ func (n *Notifier) checkUser(ctx context.Context, userID int64) error {
 		return nil
 	}
 
+	lang := st.EffectiveLanguage()
 	var b strings.Builder
 	for _, d := range list {
 		name := d.w.ProductName
 		if d.w.Brand != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(d.w.Brand)) {
 			name = d.w.Brand + " " + name
 		}
-		when := fmt.Sprintf("in %d days", d.daysLeft)
+		when := i18n.T(lang, "reminder.inDays", i18n.Args{"count": d.daysLeft})
 		switch d.daysLeft {
 		case 0:
-			when = "today"
+			when = i18n.T(lang, "reminder.today", nil)
 		case 1:
-			when = "tomorrow"
+			when = i18n.T(lang, "reminder.tomorrow", nil)
 		}
-		fmt.Fprintf(&b, "• %s — expires %s (%s)\n", name, when, dates.Format(*d.w.ExpiresOn, st.DateFormat))
+		b.WriteString(i18n.T(lang, "reminder.line", i18n.Args{
+			"name": name, "when": when, "date": dates.Format(*d.w.ExpiresOn, st.DateFormat, lang),
+		}) + "\n")
 	}
 	if n.appURL != "" {
 		fmt.Fprintf(&b, "\n%s", n.appURL)
 	}
-	title := "Warranty expiring soon"
-	if len(list) > 1 {
-		title = fmt.Sprintf("%d warranties expiring soon", len(list))
-	}
+	title := i18n.T(lang, "reminder.title", i18n.Args{"count": len(list)})
 	if err := Send(urls, title, strings.TrimSpace(b.String())); err != nil {
 		return err
 	}

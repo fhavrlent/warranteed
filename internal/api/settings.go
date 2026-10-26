@@ -9,6 +9,7 @@ import (
 
 	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/dates"
+	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/notify"
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/store"
@@ -29,6 +30,7 @@ type settingsResponse struct {
 	NotifyAllowedHosts []string `json:"notifyAllowedHosts"`
 	IsAdmin            bool     `json:"isAdmin"`
 	DateFormats        []string `json:"dateFormats"`
+	Languages          []string `json:"languages"`
 	Timezone           string   `json:"timezone"`
 }
 
@@ -55,6 +57,7 @@ func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsRespon
 		NotifyAllowedHosts:   s.cfg.NotifyAllowedHosts,
 		IsAdmin:              admin,
 		DateFormats:          dates.Formats,
+		Languages:            i18n.Languages(),
 		Timezone:             s.cfg.Location.String(),
 	}
 }
@@ -107,6 +110,15 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Remember the browser's language: reminders for users who follow it are
+	// sent in it.
+	if lang := i18n.Match(r.Header.Get("Accept-Language")); lang != "" && lang != st.BrowserLanguage {
+		if err := s.store.SetBrowserLanguage(r.Context(), userID(r), lang); err != nil {
+			fail(w, err)
+			return
+		}
+		st.BrowserLanguage = lang
+	}
 	writeJSON(w, 200, s.settingsResponse(st, isAdmin(r)))
 }
 
@@ -114,6 +126,7 @@ type settingsInput struct {
 	DateFormat         string  `json:"dateFormat"`
 	Currency           string  `json:"currency"`
 	Theme              string  `json:"theme"`
+	Language           string  `json:"language"` // "" follows the browser
 	ExpiringSoonDays   int     `json:"expiringSoonDays"`
 	NotifyURLs         string  `json:"notifyUrls"`
 	NotifyDays         string  `json:"notifyDays"`
@@ -125,38 +138,42 @@ type settingsInput struct {
 
 var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
 
-func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Policy) string {
+func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Policy) error {
 	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
 	in.PaperlessURL = strings.TrimSuffix(strings.TrimSpace(in.PaperlessURL), "/")
 	in.PaperlessPublicURL = strings.TrimSuffix(strings.TrimSpace(in.PaperlessPublicURL), "/")
+	msg := func(key string) error { return i18n.NewError("server."+key, nil) }
 	switch {
 	case !dates.Valid(in.DateFormat):
-		return "Unknown date format"
+		return msg("dateFormat")
 	case !currencyRe.MatchString(in.Currency):
-		return "Currency must be a 3-letter ISO code, e.g. EUR"
+		return msg("currency")
 	case in.Theme != "system" && in.Theme != "light" && in.Theme != "dark":
-		return "Unknown theme"
+		return msg("theme")
+	case in.Language != "" && !i18n.Supported(in.Language):
+		return msg("language")
 	case in.ExpiringSoonDays < 1 || in.ExpiringSoonDays > 365:
-		return "“Expiring soon” must be between 1 and 365 days"
+		return msg("soonDays")
 	case in.PaperlessURL != "" && !strings.HasPrefix(in.PaperlessURL, "http://") && !strings.HasPrefix(in.PaperlessURL, "https://"):
-		return "Paperless URL must start with http:// or https://"
+		return msg("paperlessUrl")
 	case in.PaperlessPublicURL != "" && !strings.HasPrefix(in.PaperlessPublicURL, "http://") && !strings.HasPrefix(in.PaperlessPublicURL, "https://"):
-		return "Paperless link address must start with http:// or https://"
+		return msg("paperlessLinkAddress")
 	}
 	if _, err := notify.ParseDays(in.NotifyDays); err != nil {
-		return "Reminder days: " + err.Error()
+		return err
 	}
 	if !admin && in.PaperlessURL != "" && in.PaperlessURL != st.PaperlessURL {
-		return "Only admins can change the Paperless URL"
+		return msg("paperlessUrlAdmin")
 	}
 	urls := notify.ParseURLs(in.NotifyURLs)
 	if err := notify.Validate(urls); err != nil {
-		return "Notification URL not recognised: " + err.Error()
+		return i18n.NewError("server.notifyUrl", i18n.Args{"detail": err.Error()})
 	}
 	if err := policy.CheckAll(urls, admin); err != nil {
-		return err.Error()
+		return err
 	}
 	st.DateFormat, st.Currency, st.Theme, st.ExpiringSoonDays = in.DateFormat, in.Currency, in.Theme, in.ExpiringSoonDays
+	st.Language = in.Language
 	st.NotifyURLs, st.NotifyDays = strings.TrimSpace(in.NotifyURLs), strings.TrimSpace(in.NotifyDays)
 	if admin {
 		st.PaperlessURL = in.PaperlessURL
@@ -166,7 +183,7 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 	if in.PaperlessToken != nil {
 		st.PaperlessToken = strings.TrimSpace(*in.PaperlessToken)
 	}
-	return ""
+	return nil
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -179,8 +196,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if msg := in.apply(st, isAdmin(r), s.notifyPolicy()); msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
+	if err := in.apply(st, isAdmin(r), s.notifyPolicy()); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 	if err := s.store.SaveSettings(r.Context(), userID(r), st); err != nil {
@@ -203,14 +220,20 @@ func (s *Server) testNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	urls := notify.ParseURLs(in.NotifyURLs)
 	if len(urls) == 0 {
-		writeError(w, http.StatusBadRequest, "Add at least one notification URL first")
+		writeMsg(w, http.StatusBadRequest, "server.notifyNeedsUrl", nil)
 		return
 	}
 	if err := s.notifyPolicy().CheckAll(urls, isAdmin(r)); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := notify.Send(urls, "Warranteed test", "Notifications are working. You'll be reminded before warranties expire."); err != nil {
+	st, err := s.store.Settings(r.Context(), userID(r))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	lang := st.EffectiveLanguage()
+	if err := notify.Send(urls, i18n.T(lang, "server.testTitle", nil), i18n.T(lang, "server.testBody", nil)); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -243,18 +266,18 @@ func (s *Server) testPaperless(w http.ResponseWriter, r *http.Request) {
 		probe.PaperlessToken = strings.TrimSpace(*in.Token)
 	}
 	if probe.PaperlessURL != "" && probe.PaperlessToken == "" {
-		writeError(w, http.StatusBadRequest, "Enter an API token")
+		writeMsg(w, http.StatusBadRequest, "server.paperlessNeedsToken", nil)
 		return
 	}
 	pc := s.paperlessFor(&probe, admin)
 	if pc == nil {
 		switch {
 		case !admin && s.cfg.Paperless.URL == "":
-			writeError(w, http.StatusBadRequest, "Paperless isn't set up on this server — ask an admin")
+			writeMsg(w, http.StatusBadRequest, "server.paperlessNotSetUp", nil)
 		case !admin:
-			writeError(w, http.StatusBadRequest, "Enter your Paperless API token")
+			writeMsg(w, http.StatusBadRequest, "server.paperlessNeedsYourToken", nil)
 		default:
-			writeError(w, http.StatusBadRequest, "Enter the Paperless URL and API token")
+			writeMsg(w, http.StatusBadRequest, "server.paperlessNeedsUrlToken", nil)
 		}
 		return
 	}
@@ -262,7 +285,7 @@ func (s *Server) testPaperless(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	info, err := pc.Check(ctx)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
 	writeJSON(w, 200, info)
