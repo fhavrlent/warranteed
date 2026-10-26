@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
@@ -117,15 +118,15 @@ var officeTypes = map[string]string{
 
 // paperlessRejection explains why a file can't go to Paperless. The check is
 // on content, so a file whose name claims a supported type is called out.
-func paperlessRejection(filename string) string {
+func paperlessRejection(filename string) error {
 	ext := strings.ToLower(filepath.Ext(filename))
 	if ext == "" {
-		return "Paperless can't store this type of file — store it here instead"
+		return i18n.NewError("server.paperlessNoType", nil)
 	}
 	if paperless.Accepts(extensionTypes[ext]) || paperless.Accepts(officeTypes[ext]) {
-		return fmt.Sprintf("%q isn't really a %s file, so Paperless can't take it", filename, ext)
+		return i18n.NewError("server.paperlessFakeType", i18n.Args{"name": filename, "ext": ext})
 	}
-	return fmt.Sprintf("Paperless can't store %s files — store it here instead", ext)
+	return i18n.NewError("server.paperlessBadType", i18n.Args{"ext": ext})
 }
 
 // extensionTypes are the non-office types Paperless accepts, by their usual
@@ -171,25 +172,25 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	limit := s.cfg.MaxUploadMB << 20
 	r.Body = http.MaxBytesReader(w, r.Body, limit+1<<20)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload failed — files can be at most %d MB", s.cfg.MaxUploadMB))
+		writeMsg(w, http.StatusRequestEntityTooLarge, "server.uploadTooLarge", i18n.Args{"mb": s.cfg.MaxUploadMB})
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
 
 	kind := r.FormValue("kind")
 	if !store.ValidKind(kind) {
-		writeError(w, http.StatusBadRequest, "Choose a document type")
+		writeMsg(w, http.StatusBadRequest, "server.uploadNeedsKind", nil)
 		return
 	}
 	target := r.FormValue("storage")
 	file, hdr, err := r.FormFile("file")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "No file in upload")
+		writeMsg(w, http.StatusBadRequest, "server.uploadNoFile", nil)
 		return
 	}
 	defer file.Close()
 	if hdr.Size > limit {
-		writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Files can be at most %d MB", s.cfg.MaxUploadMB))
+		writeMsg(w, http.StatusRequestEntityTooLarge, "server.uploadTooLarge", i18n.Args{"mb": s.cfg.MaxUploadMB})
 		return
 	}
 
@@ -202,7 +203,7 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	filename := cleanFilename(hdr.Filename)
 	mimeType := detectType(head[:n], filename)
 	if kind == "photo" && !strings.HasPrefix(mimeType, "image/") {
-		writeError(w, http.StatusBadRequest, "Product photos must be images")
+		writeMsg(w, http.StatusBadRequest, "server.photoNotImage", nil)
 		return
 	}
 
@@ -218,7 +219,7 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 
 	if target == store.StoragePaperless && kind != "photo" {
 		if !paperless.Accepts(mimeType) {
-			writeError(w, http.StatusBadRequest, paperlessRejection(filename))
+			writeErr(w, http.StatusBadRequest, paperlessRejection(filename))
 			return
 		}
 		pc, err := s.userPaperless(r.Context(), uid)
@@ -227,11 +228,16 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if pc == nil {
-			writeError(w, http.StatusBadRequest, "Paperless is not configured — set it up in Settings")
+			writeMsg(w, http.StatusBadRequest, "server.paperlessNotConfigured", nil)
+			return
+		}
+		st, err := s.store.Settings(r.Context(), uid)
+		if err != nil {
+			fail(w, err)
 			return
 		}
 		// "Dishwasher – Warranty terms"; for Other the file name says more.
-		detail := store.AttachmentKinds[kind]
+		detail := i18n.T(st.EffectiveLanguage(), "kinds."+kind, nil)
 		if kind == "other" {
 			detail = strings.TrimSuffix(filename, filepath.Ext(filename))
 		}
@@ -245,7 +251,7 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 			Body:     file,
 		})
 		if err != nil {
-			writeError(w, http.StatusBadGateway, err.Error())
+			writeErr(w, http.StatusBadGateway, err)
 			return
 		}
 		a.Storage, a.PaperlessTaskID, a.Status = store.StoragePaperless, taskID, store.StatusProcessing
@@ -290,7 +296,7 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 		in.Kind = "other"
 	}
 	if len(in.DocumentIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "Pick at least one document")
+		writeMsg(w, http.StatusBadRequest, "server.linkNeedsDocument", nil)
 		return
 	}
 	if _, err := s.store.GetWarranty(r.Context(), uid, wid); err != nil {
@@ -303,14 +309,14 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pc == nil {
-		writeError(w, http.StatusBadRequest, "Paperless is not configured")
+		writeMsg(w, http.StatusBadRequest, "server.paperlessNotConfigured", nil)
 		return
 	}
 	var out []*store.Attachment
 	for _, docID := range in.DocumentIDs {
 		doc, err := pc.Document(r.Context(), docID)
 		if err != nil {
-			writeError(w, http.StatusBadGateway, fmt.Sprintf("Document %d: %v", docID, err))
+			writeMsg(w, http.StatusBadGateway, "server.paperlessDocument", i18n.Args{"id": docID, "detail": err.Error()})
 			return
 		}
 		filename := doc.OriginalFileName
@@ -359,14 +365,14 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 	if in.Kind != nil {
 		kind = *in.Kind
 		if !store.ValidKind(kind) || (kind == "photo" && !strings.HasPrefix(a.MimeType, "image/")) {
-			writeError(w, http.StatusBadRequest, "Invalid attachment type")
+			writeMsg(w, http.StatusBadRequest, "server.attachmentKind", nil)
 			return
 		}
 	}
 	if in.Filename != nil {
 		name := strings.TrimSpace(*in.Filename)
 		if name == "" {
-			writeError(w, http.StatusBadRequest, "The name can't be empty")
+			writeMsg(w, http.StatusBadRequest, "server.attachmentName", nil)
 			return
 		}
 		ext := filepath.Ext(a.Filename)
@@ -416,17 +422,17 @@ func (s *Server) retryAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.Storage != store.StoragePaperless || a.PaperlessTaskID == "" {
-		writeError(w, http.StatusBadRequest, "Nothing to retry")
+		writeMsg(w, http.StatusBadRequest, "server.nothingToRetry", nil)
 		return
 	}
 	pc, err := s.attachmentPaperless(r.Context(), a, userID(r))
 	if err != nil || pc == nil {
-		writeError(w, http.StatusBadRequest, "Paperless is not configured")
+		writeMsg(w, http.StatusBadRequest, "server.paperlessNotConfigured", nil)
 		return
 	}
 	res, err := pc.Task(r.Context(), a.PaperlessTaskID)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
 	switch res.State {
@@ -477,7 +483,7 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		}
 		f, err := s.files.Open(a.LocalPath)
 		if err != nil {
-			writeError(w, http.StatusNotFound, "File is missing from storage")
+			writeMsg(w, http.StatusNotFound, "server.fileMissing", nil)
 			return
 		}
 		defer f.Close()
@@ -489,12 +495,12 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 	}
 
 	if a.PaperlessDocID == nil {
-		writeError(w, http.StatusConflict, "The document is still being processed by Paperless")
+		writeMsg(w, http.StatusConflict, "server.paperlessProcessing", nil)
 		return
 	}
 	pc, err := s.attachmentPaperless(r.Context(), a, userID(r))
 	if err != nil || pc == nil {
-		writeError(w, http.StatusBadGateway, "Paperless is not configured")
+		writeMsg(w, http.StatusBadGateway, "server.paperlessNotConfigured", nil)
 		return
 	}
 	variant := "preview"
@@ -513,9 +519,9 @@ func (s *Server) proxyPaperless(w http.ResponseWriter, r *http.Request, pc *pape
 		status := http.StatusBadGateway
 		if paperless.IsNotFound(err) {
 			status = http.StatusNotFound
-			err = errors.New("This document no longer exists in Paperless")
+			err = i18n.NewError("server.paperlessGone", nil)
 		}
-		writeError(w, status, err.Error())
+		writeErr(w, status, err)
 		return
 	}
 	defer resp.Body.Close()
@@ -552,14 +558,14 @@ func (s *Server) searchPaperless(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pc == nil {
-		writeError(w, http.StatusBadRequest, "Paperless is not configured")
+		writeMsg(w, http.StatusBadRequest, "server.paperlessNotConfigured", nil)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	docs, err := pc.Search(ctx, r.URL.Query().Get("q"))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
 	writeJSON(w, 200, docs)
@@ -568,12 +574,12 @@ func (s *Server) searchPaperless(w http.ResponseWriter, r *http.Request) {
 func (s *Server) paperlessThumb(w http.ResponseWriter, r *http.Request) {
 	docID, err := strconv.ParseInt(r.PathValue("doc"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+		writeMsg(w, http.StatusBadRequest, "server.badId", nil)
 		return
 	}
 	pc, err := s.userPaperless(r.Context(), userID(r))
 	if err != nil || pc == nil {
-		writeError(w, http.StatusBadRequest, "Paperless is not configured")
+		writeMsg(w, http.StatusBadRequest, "server.paperlessNotConfigured", nil)
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")

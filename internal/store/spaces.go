@@ -78,7 +78,7 @@ func targetSpace(ctx context.Context, tx *sql.Tx, userID int64, spaceID *int64) 
 			WHERE sp.id = ?`, userID, *spaceID).Scan(&id, &kind)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, "", invalid("You can't add warranties there")
+		return 0, "", invalid("spaceForbidden", nil)
 	}
 	return id, kind, err
 }

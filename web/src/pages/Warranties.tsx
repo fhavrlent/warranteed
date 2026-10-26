@@ -1,5 +1,6 @@
 import { ArrowDownUp, LayoutGrid, List, Lock, Paperclip, Plus, Search, ShieldCheck, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { Card, Kbd, Segmented } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
-import { thumbUrl, type Tag, type Warranty } from "@/lib/api";
+import { errorMessage, thumbUrl, type Tag, type Warranty } from "@/lib/api";
 import { usePrefs, useSharing, useTags, useWarranties } from "@/lib/queries";
 import { matcher } from "@/lib/search";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ const usePersisted = <T extends string>(key: string, def: T): [T, (v: T) => void
 };
 
 export const Warranties = () => {
+  const { t } = useTranslation();
   const { data: list, isLoading, error } = useWarranties();
   const { data: tags = [] } = useTags();
   const { soonDays, fmtDate, fmtMoney, currency } = usePrefs();
@@ -58,10 +60,10 @@ export const Warranties = () => {
   // Tags with the same name in different spaces filter together.
   const tagChips = useMemo(() => {
     const byName = new Map<string, Tag>();
-    for (const t of tags) {
-      const key = t.name.toLowerCase();
+    for (const tg of tags) {
+      const key = tg.name.toLowerCase();
       const seen = byName.get(key);
-      byName.set(key, seen ? { ...seen, count: (seen.count ?? 0) + (t.count ?? 0) } : t);
+      byName.set(key, seen ? { ...seen, count: (seen.count ?? 0) + (tg.count ?? 0) } : tg);
     }
     return [...byName.values()];
   }, [tags]);
@@ -127,7 +129,7 @@ export const Warranties = () => {
         default:
           if (s !== filter) return false;
       }
-      if (tag && !w.tags.some((t) => t.name.toLowerCase() === tag.toLowerCase())) return false;
+      if (tag && !w.tags.some((tg) => tg.name.toLowerCase() === tag.toLowerCase())) return false;
       if (who === "mine" && w.spaceKind !== "personal") return false;
       if (who === "shared" && w.spaceKind === "personal") return false;
       const score = match.score(
@@ -139,7 +141,7 @@ export const Warranties = () => {
           w.orderNumber,
           w.notes,
           ...w.serialNumbers,
-          ...w.tags.map((t) => t.name),
+          ...w.tags.map((tg) => tg.name),
         ].join("\u0000"),
       );
       scores.set(w.id, score);
@@ -175,15 +177,15 @@ export const Warranties = () => {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Warranties</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("list.title")}</h1>
           <p className="mt-1 text-sm text-fg-muted">
             {total === 0
-              ? "Nothing tracked yet."
-              : `${counts.active + counts.expiring + counts.lifetime} covered · ${total} total`}
+              ? t("list.empty")
+              : t("list.summary", { covered: counts.active + counts.expiring + counts.lifetime, total })}
           </p>
         </div>
         <Button onClick={() => setAdding(true)} size="md">
-          <Plus /> Add warranty
+          <Plus /> {t("list.add")}
           <Kbd>N</Kbd>
         </Button>
       </div>
@@ -191,27 +193,27 @@ export const Warranties = () => {
       {total > 0 && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
-            label="Covered"
+            label={t("list.statCovered")}
             value={counts.active + counts.lifetime + counts.expiring}
             onClick={() => setParam("filter", null)}
             active={filter === "current"}
             tone="ok"
           />
           <Stat
-            label={`Expiring in ${soonDays} days`}
+            label={t("list.statExpiring", { count: soonDays })}
             value={counts.expiring}
             onClick={() => setParam("filter", "expiring")}
             active={filter === "expiring"}
             tone="warn"
           />
           <Stat
-            label="Expired"
+            label={t("list.statExpired")}
             value={counts.expired}
             onClick={() => setParam("filter", "expired")}
             active={filter === "expired"}
             tone="bad"
           />
-          <Stat label="Value under warranty" value={fmtMoney(coveredValue)} small />
+          <Stat label={t("list.statValue")} value={fmtMoney(coveredValue)} small />
         </div>
       )}
 
@@ -232,7 +234,7 @@ export const Warranties = () => {
                 setParam("q", null);
                 e.currentTarget.blur();
               }}
-              placeholder="Search products, brands, serial numbers, stores…"
+              placeholder={t("list.search")}
               className="h-10 w-full rounded-xl border border-border bg-surface pr-16 pl-9 text-sm shadow-card outline-none placeholder:text-fg-subtle focus:border-primary focus:ring-3 focus:ring-ring/40"
             />
             <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2">
@@ -246,7 +248,7 @@ export const Warranties = () => {
                   setParam("q", null);
                 }}
                 className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer rounded-md p-1 text-fg-subtle hover:text-fg"
-                aria-label="Clear search"
+                aria-label={t("list.clearSearch")}
               >
                 <X className="size-4" />
               </button>
@@ -258,12 +260,12 @@ export const Warranties = () => {
                 value={who}
                 onChange={(v) => setParam("who", v === "all" ? null : v)}
                 options={[
-                  { value: "all", label: "Everyone's" },
+                  { value: "all", label: t("list.everyone") },
                   {
                     value: "shared",
                     label: (
                       <>
-                        <Users aria-hidden /> Household
+                        <Users aria-hidden /> {t("common.household")}
                       </>
                     ),
                   },
@@ -271,7 +273,7 @@ export const Warranties = () => {
                     value: "mine",
                     label: (
                       <>
-                        <Lock aria-hidden /> Only me
+                        <Lock aria-hidden /> {t("common.onlyMe")}
                       </>
                     ),
                   },
@@ -282,33 +284,33 @@ export const Warranties = () => {
               value={filter}
               onChange={(v) => setParam("filter", v === "current" ? null : v)}
               options={[
-                { value: "current", label: "Current" },
-                { value: "expired", label: "Expired", count: counts.expired || undefined },
-                { value: "archived", label: "Archived", count: counts.archived || undefined },
-                { value: "all", label: "All" },
+                { value: "current", label: t("list.filterCurrent") },
+                { value: "expired", label: t("list.filterExpired"), count: counts.expired || undefined },
+                { value: "archived", label: t("list.filterArchived"), count: counts.archived || undefined },
+                { value: "all", label: t("list.filterAll") },
               ]}
             />
             <div className="relative">
               <ArrowDownUp className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-fg-subtle" />
               <Select
-                aria-label="Sort"
+                aria-label={t("list.sort")}
                 value={sort}
                 onChange={(e) => setSort(e.target.value as Sort)}
                 className="h-9 w-auto rounded-lg pl-8 text-[13px]"
               >
-                <option value="expiry">Expiry date</option>
-                <option value="name">Name</option>
-                <option value="purchase">Purchase date</option>
-                <option value="price">Price</option>
-                <option value="added">Recently added</option>
+                <option value="expiry">{t("list.sortExpiry")}</option>
+                <option value="name">{t("list.sortName")}</option>
+                <option value="purchase">{t("list.sortPurchase")}</option>
+                <option value="price">{t("list.sortPrice")}</option>
+                <option value="added">{t("list.sortAdded")}</option>
               </Select>
             </div>
             <Segmented
               value={view}
               onChange={setView}
               options={[
-                { value: "grid", label: <LayoutGrid aria-label="Grid view" /> },
-                { value: "list", label: <List aria-label="List view" /> },
+                { value: "grid", label: <LayoutGrid aria-label={t("list.gridView")} /> },
+                { value: "list", label: <List aria-label={t("list.listView")} /> },
               ]}
             />
           </div>
@@ -317,21 +319,21 @@ export const Warranties = () => {
 
       {tagChips.length > 0 && total > 0 && (
         <div className="-mt-1 mb-5 flex flex-wrap gap-1.5">
-          {tagChips.map((t) => (
+          {tagChips.map((tg) => (
             <button
               type="button"
-              key={t.id}
-              onClick={() => setParam("tag", tag === t.name ? null : t.name)}
+              key={tg.id}
+              onClick={() => setParam("tag", tag === tg.name ? null : tg.name)}
               className={cn(
                 "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors",
-                tag === t.name
+                tag === tg.name
                   ? "border-primary bg-primary-soft text-primary"
                   : "border-border bg-surface text-fg-muted hover:text-fg",
               )}
             >
-              <span className={cn("size-2 rounded-full", tagDot[t.color])} />
-              {t.name}
-              <span className="text-fg-subtle tabular-nums">{t.count}</span>
+              <span className={cn("size-2 rounded-full", tagDot[tg.color])} />
+              {tg.name}
+              <span className="text-fg-subtle tabular-nums">{tg.count}</span>
             </button>
           ))}
         </div>
@@ -344,13 +346,13 @@ export const Warranties = () => {
           ))}
         </div>
       ) : error ? (
-        <Card className="p-8 text-center text-sm text-bad">{error.message}</Card>
+        <Card className="p-8 text-center text-sm text-bad">{errorMessage(error)}</Card>
       ) : total === 0 ? (
         <EmptyState onAdd={() => setAdding(true)} />
       ) : shown.length === 0 ? (
         <Card className="flex flex-col items-center gap-2 p-12 text-center">
-          <p className="font-medium">No matches</p>
-          <p className="text-sm text-fg-muted">Try a different search or filter.</p>
+          <p className="font-medium">{t("list.noMatches")}</p>
+          <p className="text-sm text-fg-muted">{t("list.noMatchesHint")}</p>
           <Button
             variant="outline"
             size="sm"
@@ -360,7 +362,7 @@ export const Warranties = () => {
               setParams({}, { replace: true });
             }}
           >
-            Clear filters
+            {t("list.clearFilters")}
           </Button>
         </Card>
       ) : view === "grid" ? (
@@ -372,11 +374,11 @@ export const Warranties = () => {
       ) : (
         <Card className="overflow-hidden">
           <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.1fr)_auto] gap-4 border-b border-border bg-surface-2 px-4 py-2 text-xs font-medium text-fg-subtle md:grid">
-            <span>Product</span>
-            <span>Purchased</span>
-            <span>Expires</span>
-            <span>Tags</span>
-            <span className="w-28 text-right">Status</span>
+            <span>{t("list.colProduct")}</span>
+            <span>{t("list.colPurchased")}</span>
+            <span>{t("list.colExpires")}</span>
+            <span>{t("list.colTags")}</span>
+            <span className="w-28 text-right">{t("list.colStatus")}</span>
           </div>
           {shown.map(({ w, s }) => (
             <Link
@@ -396,8 +398,8 @@ export const Warranties = () => {
               <span className="hidden text-sm text-fg-muted tabular-nums md:block">{fmtDate(w.purchaseDate)}</span>
               <span className="hidden text-sm tabular-nums md:block">{w.isLifetime ? "—" : fmtDate(w.expiresOn)}</span>
               <span className="hidden min-w-0 gap-1 overflow-hidden md:flex">
-                {w.tags.slice(0, 2).map((t) => (
-                  <TagChip key={t.id} tag={t} />
+                {w.tags.slice(0, 2).map((tg) => (
+                  <TagChip key={tg.id} tag={tg} />
                 ))}
                 {w.tags.length > 2 && <span className="text-xs text-fg-subtle">+{w.tags.length - 2}</span>}
               </span>
@@ -476,6 +478,7 @@ const ProductThumb = ({ w, className }: { w: Warranty; className?: string }) => 
 };
 
 const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: string | null) => string }) => {
+  const { t } = useTranslation();
   const docs = w.attachments.filter((a) => a.kind !== "photo").length;
   const { sharing } = useSharing();
   return (
@@ -492,7 +495,7 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
           <p className="flex items-center gap-1.5 truncate font-medium">
             <span className="truncate">{displayName(w)}</span>
             {sharing && w.spaceKind === "personal" && (
-              <Lock className="size-3.5 shrink-0 text-fg-subtle" aria-label="Only you can see this" />
+              <Lock className="size-3.5 shrink-0 text-fg-subtle" aria-label={t("list.private")} />
             )}
           </p>
           <p className="truncate text-[13px] text-fg-subtle">
@@ -511,8 +514,8 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
         <CoverageBar w={w} status={s} />
       </div>
       <div className="mt-3.5 flex min-h-5.5 items-center gap-1.5">
-        {w.tags.slice(0, 3).map((t) => (
-          <TagChip key={t.id} tag={t} />
+        {w.tags.slice(0, 3).map((tg) => (
+          <TagChip key={tg.id} tag={tg} />
         ))}
         {w.tags.length > 3 && <span className="text-xs text-fg-subtle">+{w.tags.length - 3}</span>}
         {docs > 0 && (
@@ -526,26 +529,26 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
   );
 };
 
-const EmptyState = ({ onAdd }: { onAdd: () => void }) => (
-  <Card className="flex flex-col items-center px-6 py-16 text-center">
-    <span className="flex size-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-      <ShieldCheck className="size-7" />
-    </span>
-    <h2 className="mt-5 text-lg font-semibold">Track your first warranty</h2>
-    <p className="mt-1.5 max-w-sm text-sm text-fg-muted">
-      Add what you bought, when, and for how long it's covered. Attach the receipt and you'll never dig through email
-      again.
-    </p>
-    <div className="mt-6 flex gap-2">
-      <Button onClick={onAdd}>
-        <Plus /> Add warranty
-      </Button>
-      <Link
-        to="/settings#data"
-        className="inline-flex h-9 items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium shadow-card hover:bg-surface-2"
-      >
-        Import CSV
-      </Link>
-    </div>
-  </Card>
-);
+const EmptyState = ({ onAdd }: { onAdd: () => void }) => {
+  const { t } = useTranslation();
+  return (
+    <Card className="flex flex-col items-center px-6 py-16 text-center">
+      <span className="flex size-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+        <ShieldCheck className="size-7" />
+      </span>
+      <h2 className="mt-5 text-lg font-semibold">{t("list.emptyTitle")}</h2>
+      <p className="mt-1.5 max-w-sm text-sm text-fg-muted">{t("list.emptyText")}</p>
+      <div className="mt-6 flex gap-2">
+        <Button onClick={onAdd}>
+          <Plus /> {t("list.add")}
+        </Button>
+        <Link
+          to="/settings#data"
+          className="inline-flex h-9 items-center rounded-lg border border-border bg-surface px-3.5 text-sm font-medium shadow-card hover:bg-surface-2"
+        >
+          {t("list.importCsv")}
+        </Link>
+      </div>
+    </Card>
+  );
+};

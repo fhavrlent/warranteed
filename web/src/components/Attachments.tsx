@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   api,
@@ -25,7 +26,7 @@ import {
   type PaperlessDoc,
   type Warranty,
 } from "@/lib/api";
-import { DOCUMENT_KINDS, kindMeta, kindsFor } from "@/lib/documents";
+import { DOCUMENT_KINDS, kindIcon, kindLabel, kindsFor } from "@/lib/documents";
 import { useInvalidate, usePrefs } from "@/lib/queries";
 import { cn, formatBytes } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -34,21 +35,25 @@ import { Input, Select } from "./ui/input";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/menu";
 import { UploadDialog } from "./UploadDialog";
 
-const PaperlessMark = ({ className }: { className?: string }) => (
-  <span
-    title="Stored in Paperless-ngx"
-    className={cn(
-      "inline-flex h-4.5 items-center rounded bg-emerald-600 px-1 text-[10px] font-semibold tracking-wide text-white uppercase",
-      className,
-    )}
-  >
-    Paperless
-  </span>
-);
+const PaperlessMark = ({ className }: { className?: string }) => {
+  const { t } = useTranslation();
+  return (
+    <span
+      title={t("attachments.inPaperless")}
+      className={cn(
+        "inline-flex h-4.5 items-center rounded bg-emerald-600 px-1 text-[10px] font-semibold tracking-wide text-white uppercase",
+        className,
+      )}
+    >
+      Paperless
+    </span>
+  );
+};
 
 const Thumb = ({ a }: { a: Attachment }) => {
+  const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
-  const Icon = kindMeta[a.kind].icon;
+  const Icon = kindIcon[a.kind];
   const hasThumb = a.status === "ready" && (a.storage === "paperless" || a.mimeType.startsWith("image/"));
   return (
     <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-t-xl bg-surface-2">
@@ -63,12 +68,12 @@ const Thumb = ({ a }: { a: Attachment }) => {
       ) : a.status === "processing" ? (
         <div className="flex flex-col items-center gap-2 text-fg-subtle">
           <Loader2 className="size-5 animate-spin" />
-          <span className="text-xs">Paperless is processing…</span>
+          <span className="text-xs">{t("attachments.processing")}</span>
         </div>
       ) : a.status === "failed" ? (
         <div className="flex flex-col items-center gap-2 px-3 text-center text-bad">
           <AlertTriangle className="size-5" />
-          <span className="line-clamp-2 text-xs">{a.error || "Upload failed"}</span>
+          <span className="line-clamp-2 text-xs">{a.error || t("attachments.failed")}</span>
         </div>
       ) : (
         <Icon className="size-8 text-fg-subtle" strokeWidth={1.5} />
@@ -78,6 +83,7 @@ const Thumb = ({ a }: { a: Attachment }) => {
 };
 
 export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
+  const { t } = useTranslation();
   const { settings } = usePrefs();
   const invalidate = useInvalidate();
   const paperless = settings?.paperlessEnabled ?? false;
@@ -120,20 +126,20 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Paperclip className="size-4 text-fg-subtle" />
-          Documents &amp; photos
+          {t("attachments.title")}
           <span className="font-normal text-fg-subtle tabular-nums">{docs.length || ""}</span>
         </h2>
         <div className="flex items-center gap-2">
           {paperless && (
             <Button size="sm" variant="outline" onClick={() => setPicker(true)}>
-              <Search /> Link from Paperless
+              <Search /> {t("attachments.linkFromPaperless")}
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()} loading={uploadingPhotos}>
-            {!uploadingPhotos && <Camera />} Photo
+            {!uploadingPhotos && <Camera />} {t("attachments.photo")}
           </Button>
           <Button size="sm" onClick={() => fileRef.current?.click()}>
-            <Upload /> Add documents
+            <Upload /> {t("attachments.addDocuments")}
           </Button>
           <input
             ref={fileRef}
@@ -182,16 +188,16 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
             className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-2xl border border-dashed border-border-strong px-6 py-10 text-center hover:border-primary hover:bg-primary-soft/30"
           >
             <Upload className="size-6 text-fg-subtle" />
-            <p className="text-sm font-medium">Drop documents here</p>
+            <p className="text-sm font-medium">{t("attachments.dropHere")}</p>
             <p className="text-xs text-fg-subtle">
-              Receipts, warranty terms and cards, manuals, repair reports
-              {paperless ? ", stored here or in Paperless" : ""}.
+              {paperless ? t("attachments.dropHintPaperless") : t("attachments.dropHint")}
             </p>
           </button>
         ) : (
           <div className="flex flex-col gap-6">
             {groups.map(({ kind, items }) => {
-              const { label, icon: Icon } = kindMeta[kind];
+              const label = kindLabel(kind);
+              const Icon = kindIcon[kind];
               return (
                 <section key={kind} aria-label={label}>
                   <h3 className="mb-2 flex items-center gap-2 text-[13px] font-medium">
@@ -233,12 +239,12 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
       <ConfirmDialog
         open={!!toDelete}
         onOpenChange={(o) => !o && setToDelete(null)}
-        title={toDelete?.storage === "paperless" ? "Unlink document?" : "Delete file?"}
-        confirmLabel={toDelete?.storage === "paperless" ? "Unlink" : "Delete"}
+        title={toDelete?.storage === "paperless" ? t("attachments.unlinkTitle") : t("attachments.deleteTitle")}
+        confirmLabel={toDelete?.storage === "paperless" ? t("attachments.unlink") : t("common.delete")}
         description={
           toDelete?.storage === "paperless"
-            ? "It will be removed from this warranty but stays in Paperless-ngx."
-            : `“${toDelete?.filename}” will be permanently deleted.`
+            ? t("attachments.unlinkText")
+            : t("attachments.deleteText", { name: toDelete?.filename ?? "" })
         }
         onConfirm={async () => {
           if (!toDelete) return;
@@ -270,6 +276,7 @@ const AttachmentCard = ({
   onChanged: () => void;
   webUrl?: string;
 }) => {
+  const { t } = useTranslation();
   const { fmtDate } = usePrefs();
   const ready = a.status === "ready";
   return (
@@ -291,7 +298,7 @@ const AttachmentCard = ({
           </p>
           <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap text-fg-subtle">
             <span className="truncate">
-              Added {fmtDate(a.createdAt.slice(0, 10))}
+              {t("attachments.added", { date: fmtDate(a.createdAt.slice(0, 10)) })}
               {a.size > 0 && ` · ${formatBytes(a.size)}`}
             </span>
           </p>
@@ -301,7 +308,7 @@ const AttachmentCard = ({
             <button
               type="button"
               className="-mr-1 cursor-pointer rounded-md p-1 text-fg-subtle hover:bg-surface-3 hover:text-fg"
-              aria-label="File actions"
+              aria-label={t("attachments.actions")}
             >
               <MoreHorizontal className="size-4" />
             </button>
@@ -309,7 +316,7 @@ const AttachmentCard = ({
           <MenuContent>
             {ready && (
               <MenuItem icon={<Download />} onSelect={() => window.open(fileUrl(a, true), "_blank")}>
-                Download
+                {t("attachments.download")}
               </MenuItem>
             )}
             {a.storage === "paperless" && a.paperlessDocId !== null && webUrl !== undefined && webUrl !== "" && (
@@ -317,7 +324,7 @@ const AttachmentCard = ({
                 icon={<ExternalLink />}
                 onSelect={() => window.open(`${webUrl}/documents/${a.paperlessDocId}/details`, "_blank", "noopener")}
               >
-                Open in Paperless
+                {t("attachments.openInPaperless")}
               </MenuItem>
             )}
             {a.status !== "ready" && a.storage === "paperless" && (
@@ -332,19 +339,19 @@ const AttachmentCard = ({
                   }
                 }}
               >
-                Check again
+                {t("attachments.checkAgain")}
               </MenuItem>
             )}
             <MenuItem icon={<Pencil />} onSelect={onRename}>
-              Rename
+              {t("attachments.rename")}
             </MenuItem>
             <MenuSeparator />
-            <MenuLabel>Type</MenuLabel>
+            <MenuLabel>{t("attachments.type")}</MenuLabel>
             {kindsFor(a.mimeType).map((k) => (
               <MenuItem
                 key={k}
                 icon={(() => {
-                  const I = kindMeta[k].icon;
+                  const I = kindIcon[k];
                   return <I />;
                 })()}
                 onSelect={async () => {
@@ -352,12 +359,12 @@ const AttachmentCard = ({
                   onChanged();
                 }}
               >
-                <span className={cn(k === a.kind && "font-semibold")}>{kindMeta[k].label}</span>
+                <span className={cn(k === a.kind && "font-semibold")}>{kindLabel(k)}</span>
               </MenuItem>
             ))}
             <MenuSeparator />
             <MenuItem danger icon={<Trash2 />} onSelect={onDelete}>
-              {a.storage === "paperless" ? "Unlink" : "Delete"}
+              {a.storage === "paperless" ? t("attachments.unlink") : t("common.delete")}
             </MenuItem>
           </MenuContent>
         </Menu>
@@ -368,6 +375,7 @@ const AttachmentCard = ({
 
 /** Renames the file as shown here; the extension is kept and Paperless is untouched. */
 const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () => void; onRenamed: () => void }) => {
+  const { t } = useTranslation();
   const dot = a.filename.lastIndexOf(".");
   const ext = dot > 0 ? a.filename.slice(dot) : "";
   const [name, setName] = useState(ext ? a.filename.slice(0, dot) : a.filename);
@@ -392,25 +400,26 @@ const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () =>
       open
       onOpenChange={(o) => !o && onClose()}
       size="sm"
-      title="Rename file"
-      description={
-        a.storage === "paperless"
-          ? "Changes the name shown here; the document in Paperless keeps its title."
-          : undefined
-      }
+      title={t("attachments.renameTitle")}
+      description={a.storage === "paperless" ? t("attachments.renamePaperless") : undefined}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="submit" form="rename-form" loading={saving} disabled={!name.trim()}>
-            Save
+            {t("common.save")}
           </Button>
         </>
       }
     >
       <form id="rename-form" onSubmit={save} className="flex items-center gap-2">
-        <Input data-autofocus aria-label="File name" value={name} onChange={(e) => setName(e.target.value)} />
+        <Input
+          data-autofocus
+          aria-label={t("attachments.fileName")}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         {ext && <span className="shrink-0 text-sm text-fg-subtle">{ext}</span>}
       </form>
     </Dialog>
@@ -418,6 +427,7 @@ const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () =>
 };
 
 const PreviewDialog = ({ a, onClose }: { a: Attachment | null; onClose: () => void }) => {
+  const { t } = useTranslation();
   const isImage = a?.mimeType.startsWith("image/") && a.storage === "local";
   return (
     <Dialog
@@ -429,10 +439,10 @@ const PreviewDialog = ({ a, onClose }: { a: Attachment | null; onClose: () => vo
         a && (
           <>
             <Button variant="ghost" onClick={() => window.open(fileUrl(a), "_blank")}>
-              <ExternalLink /> Open in new tab
+              <ExternalLink /> {t("attachments.openInTab")}
             </Button>
             <Button variant="outline" onClick={() => window.open(fileUrl(a, true), "_blank")}>
-              <Download /> Download
+              <Download /> {t("attachments.download")}
             </Button>
           </>
         )
@@ -473,6 +483,7 @@ const PaperlessPicker = ({
   warranty: Warranty;
   onLinked: () => void;
 }) => {
+  const { t } = useTranslation();
   const { fmtDate } = usePrefs();
   const [q, setQ] = useState(warranty.productName);
   const query = useDebounced(q, 300);
@@ -494,7 +505,7 @@ const PaperlessPicker = ({
     try {
       await api.linkPaperless(warranty.id, picked, kind);
       onLinked();
-      toast.success(picked.length === 1 ? "Document linked" : `${picked.length} documents linked`);
+      toast.success(t("picker.linked", { count: picked.length }));
       onOpenChange(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -508,27 +519,27 @@ const PaperlessPicker = ({
       open
       onOpenChange={onOpenChange}
       size="xl"
-      title="Link documents from Paperless"
-      description="Search your Paperless-ngx archive and attach existing documents to this warranty."
+      title={t("picker.title")}
+      description={t("picker.description")}
       footer={
         <>
           <Select
-            aria-label="Document type"
+            aria-label={t("picker.documentType")}
             value={kind}
             onChange={(e) => setKind(e.target.value as AttachmentKind)}
             className="mr-auto w-48"
           >
             {DOCUMENT_KINDS.filter((k) => k !== "photo").map((k) => (
               <option key={k} value={k}>
-                As {kindMeta[k].label.toLowerCase()}
+                {t("picker.as", { kind: kindLabel(k) })}
               </option>
             ))}
           </Select>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button disabled={!picked.length} loading={saving} onClick={link}>
-            Link {picked.length > 0 && picked.length}
+            {picked.length > 0 ? t("picker.linkN", { count: picked.length }) : t("picker.link")}
           </Button>
         </>
       }
@@ -539,7 +550,7 @@ const PaperlessPicker = ({
           data-autofocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by text, title or document ID"
+          placeholder={t("picker.search")}
           className="pl-9"
         />
         {loading && (
@@ -549,7 +560,7 @@ const PaperlessPicker = ({
       {error ? (
         <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>
       ) : results?.length === 0 && !loading ? (
-        <p className="py-10 text-center text-sm text-fg-muted">No documents found.</p>
+        <p className="py-10 text-center text-sm text-fg-muted">{t("picker.noResults")}</p>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(results ?? []).map((d) => {
@@ -578,7 +589,7 @@ const PaperlessPicker = ({
                   <p className="line-clamp-2 text-[13px] leading-snug font-medium">{d.title || d.originalFileName}</p>
                   <p className="mt-0.5 text-xs text-fg-subtle">
                     #{d.id} · {fmtDate(d.created)}
-                    {already && " · linked"}
+                    {already && ` · ${t("picker.alreadyLinked")}`}
                   </p>
                 </div>
               </button>

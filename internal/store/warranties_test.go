@@ -72,7 +72,7 @@ func TestDateFormats(t *testing.T) {
 			t.Errorf("no expectation for format %q", f)
 			continue
 		}
-		if got := dates.Format("2024-03-05", f); got != w {
+		if got := dates.Format("2024-03-05", f, "en"); got != w {
 			t.Errorf("%s: got %q want %q", f, got, w)
 		}
 	}

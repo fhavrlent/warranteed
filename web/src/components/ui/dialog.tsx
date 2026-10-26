@@ -1,6 +1,7 @@
 import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export const Dialog = ({
@@ -22,6 +23,7 @@ export const Dialog = ({
   className?: string;
   size?: "sm" | "md" | "lg" | "xl";
 }) => {
+  const { t } = useTranslation();
   const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-2xl", xl: "max-w-4xl" };
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
@@ -49,12 +51,14 @@ export const Dialog = ({
               {description ? (
                 <D.Description className="mt-1 text-sm text-fg-muted">{description}</D.Description>
               ) : (
-                <D.Description className="sr-only">{typeof title === "string" ? title : "Dialog"}</D.Description>
+                <D.Description className="sr-only">
+                  {typeof title === "string" ? title : t("common.dialog")}
+                </D.Description>
               )}
             </div>
             <D.Close
               className="-mt-1 -mr-2 rounded-md p-1.5 text-fg-subtle hover:bg-surface-3 hover:text-fg"
-              aria-label="Close"
+              aria-label={t("common.close")}
             >
               <X className="size-4" />
             </D.Close>
@@ -76,7 +80,7 @@ export const ConfirmDialog = ({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Delete",
+  confirmLabel,
   onConfirm,
   loading,
 }: {
@@ -87,32 +91,35 @@ export const ConfirmDialog = ({
   confirmLabel?: string;
   onConfirm: () => void;
   loading?: boolean;
-}) => (
-  <D.Root open={open} onOpenChange={onOpenChange}>
-    <D.Portal>
-      <D.Overlay className="animate-fade-in fixed inset-0 z-40 bg-black/40" />
-      <D.Content className="animate-pop-in fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface p-6 shadow-pop">
-        <D.Title className="text-base font-semibold">{title}</D.Title>
-        <D.Description className="mt-2 text-sm text-fg-muted">{description}</D.Description>
-        <div className="mt-6 flex justify-end gap-2">
-          <D.Close asChild>
+}) => {
+  const { t } = useTranslation();
+  return (
+    <D.Root open={open} onOpenChange={onOpenChange}>
+      <D.Portal>
+        <D.Overlay className="animate-fade-in fixed inset-0 z-40 bg-black/40" />
+        <D.Content className="animate-pop-in fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface p-6 shadow-pop">
+          <D.Title className="text-base font-semibold">{title}</D.Title>
+          <D.Description className="mt-2 text-sm text-fg-muted">{description}</D.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <D.Close asChild>
+              <button
+                type="button"
+                className="h-9 cursor-pointer rounded-lg px-3.5 text-sm font-medium text-fg-muted hover:bg-surface-3"
+              >
+                {t("common.cancel")}
+              </button>
+            </D.Close>
             <button
               type="button"
-              className="h-9 cursor-pointer rounded-lg px-3.5 text-sm font-medium text-fg-muted hover:bg-surface-3"
+              onClick={onConfirm}
+              disabled={loading}
+              className="h-9 cursor-pointer rounded-lg bg-bad px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
-              Cancel
+              {confirmLabel ?? t("common.delete")}
             </button>
-          </D.Close>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading}
-            className="h-9 cursor-pointer rounded-lg bg-bad px-3.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </D.Content>
-    </D.Portal>
-  </D.Root>
-);
+          </div>
+        </D.Content>
+      </D.Portal>
+    </D.Root>
+  );
+};

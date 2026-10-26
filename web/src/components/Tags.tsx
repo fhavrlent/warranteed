@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import type { Tag } from "@/lib/api";
 import { useTags } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -14,27 +15,30 @@ export const TagChip = ({
   tag: Pick<Tag, "name" | "color">;
   className?: string;
   onRemove?: () => void;
-}) => (
-  <span
-    className={cn(
-      "inline-flex h-5.5 items-center gap-1 rounded-md px-1.5 text-xs font-medium whitespace-nowrap",
-      tagClasses[tag.color] ?? tagClasses.slate,
-      className,
-    )}
-  >
-    {tag.name}
-    {onRemove && (
-      <button
-        type="button"
-        onClick={onRemove}
-        className="-mr-0.5 cursor-pointer rounded opacity-60 hover:opacity-100"
-        aria-label={`Remove ${tag.name}`}
-      >
-        <X className="size-3" />
-      </button>
-    )}
-  </span>
-);
+}) => {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5.5 items-center gap-1 rounded-md px-1.5 text-xs font-medium whitespace-nowrap",
+        tagClasses[tag.color] ?? tagClasses.slate,
+        className,
+      )}
+    >
+      {tag.name}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="-mr-0.5 cursor-pointer rounded opacity-60 hover:opacity-100"
+          aria-label={t("common.remove", { name: tag.name })}
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </span>
+  );
+};
 
 /** Free-form tag entry with suggestions from existing tags. */
 export const TagInput = ({
@@ -46,6 +50,7 @@ export const TagInput = ({
   onChange: (v: string[]) => void;
   id?: string;
 }) => {
+  const { t } = useTranslation();
   const { data: allTags = [] } = useTags();
   const [text, setText] = useState("");
   const [focus, setFocus] = useState(false);
@@ -78,18 +83,18 @@ export const TagInput = ({
         className={cn(fieldBase, "flex min-h-9 flex-wrap items-center gap-1 px-1.5 py-1.5")}
         onClick={() => inputRef.current?.focus()}
       >
-        {value.map((t) => (
+        {value.map((name) => (
           <TagChip
-            key={t}
-            tag={{ name: t, color: colorOf(t) }}
-            onRemove={() => onChange(value.filter((x) => x !== t))}
+            key={name}
+            tag={{ name, color: colorOf(name) }}
+            onRemove={() => onChange(value.filter((x) => x !== name))}
           />
         ))}
         <input
           id={id}
           ref={inputRef}
           value={text}
-          placeholder={value.length ? "" : "Add tags…"}
+          placeholder={value.length ? "" : t("tags.placeholder")}
           onFocus={() => setFocus(true)}
           onBlur={() => setTimeout(() => setFocus(false), 120)}
           onChange={(e) => {
@@ -144,7 +149,11 @@ export const TagInput = ({
                 active === suggestions.length && "bg-surface-3",
               )}
             >
-              Create <span className="font-medium text-fg">“{text.trim()}”</span>
+              <Trans
+                i18nKey="tags.create"
+                values={{ name: text.trim() }}
+                components={{ b: <span className="font-medium text-fg" /> }}
+              />
             </button>
           )}
         </div>

@@ -2,6 +2,8 @@ import * as P from "@radix-ui/react-popover";
 import { CalendarDays } from "lucide-react";
 import { useState } from "react";
 import { DayPicker } from "react-day-picker";
+import { useTranslation } from "react-i18next";
+import { dateLocale } from "@/i18n";
 import { formatDate, fromISO, parseUserDate, toISO, weekStartsOn } from "@/lib/dates";
 import { usePrefs } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -31,6 +33,7 @@ export const DateInput = ({
   placeholder?: string;
   autoFocus?: boolean;
 }) => {
+  const { t } = useTranslation();
   const { dateFormat } = usePrefs();
   // While the user is typing, `draft` holds their text; otherwise the field
   // shows the formatted value, so it follows value and format changes.
@@ -86,14 +89,14 @@ export const DateInput = ({
         <P.Trigger asChild>
           <button
             type="button"
-            aria-label="Open calendar"
+            aria-label={t("date.openCalendar")}
             className="absolute top-1/2 right-1 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-fg-subtle hover:bg-surface-3 hover:text-fg"
           >
             <CalendarDays className="size-4" />
           </button>
         </P.Trigger>
       </div>
-      {bad && <p className="mt-1 text-xs text-bad">Use the format {sample}</p>}
+      {bad && <p className="mt-1 text-xs text-bad">{t("date.useFormat", { sample })}</p>}
       <P.Portal>
         <P.Content
           align="end"
@@ -102,6 +105,7 @@ export const DateInput = ({
         >
           <DayPicker
             mode="single"
+            locale={dateLocale()}
             selected={selected}
             defaultMonth={selected}
             weekStartsOn={weekStartsOn(dateFormat)}
@@ -126,7 +130,7 @@ export const DateInput = ({
                 setOpen(false);
               }}
             >
-              Today
+              {t("date.today")}
             </button>
             {value && (
               <button
@@ -138,7 +142,7 @@ export const DateInput = ({
                   setOpen(false);
                 }}
               >
-                Clear
+                {t("date.clear")}
               </button>
             )}
           </div>

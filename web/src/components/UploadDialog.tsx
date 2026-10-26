@@ -1,5 +1,6 @@
 import { Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { api, errorMessage } from "@/lib/api";
 import { storageFor, toPending } from "@/lib/documents";
@@ -24,6 +25,7 @@ export const UploadDialog = ({
   onClose: () => void;
   onUploaded: () => void;
 }) => {
+  const { t } = useTranslation();
   const { settings } = usePrefs();
   const paperless = settings?.paperlessEnabled ?? false;
   const [files, setFiles] = useState(() => toPending(initialFiles));
@@ -54,8 +56,7 @@ export const UploadDialog = ({
     setUploading(false);
     onUploaded();
     if (failed < files.length) {
-      const done = files.length - failed;
-      toast.success(done === 1 ? "File added" : `${done} files added`);
+      toast.success(t("upload.added", { count: files.length - failed }));
     }
     onClose();
   };
@@ -64,18 +65,19 @@ export const UploadDialog = ({
     <Dialog
       open
       onOpenChange={(o) => !o && !uploading && onClose()}
-      title="Add documents"
-      description="Tell us what each file is, so it's easy to find when you need to make a claim."
+      title={t("upload.title")}
+      description={t("upload.description")}
       footer={
         <>
           <Button variant="ghost" className="mr-auto" onClick={() => moreRef.current?.click()} disabled={uploading}>
-            Add more files
+            {t("upload.addMore")}
           </Button>
           <Button variant="ghost" onClick={onClose} disabled={uploading}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={upload} loading={uploading} disabled={files.length === 0}>
-            {!uploading && <Upload />} Upload {files.length > 1 && files.length}
+            {!uploading && <Upload />}{" "}
+            {files.length > 1 ? t("upload.uploadN", { count: files.length }) : t("upload.upload")}
           </Button>
         </>
       }
@@ -88,23 +90,21 @@ export const UploadDialog = ({
           toPaperless={paperless && target === "paperless"}
         />
         {attempted && untyped > 0 && (
-          <p className="text-[13px] text-bad">
-            Choose a type for {untyped === 1 ? "the highlighted file" : `the ${untyped} highlighted files`}.
-          </p>
+          <p className="text-[13px] text-bad">{t("upload.chooseTypes", { count: untyped })}</p>
         )}
         {paperless && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-2 px-4 py-3">
             <div>
-              <p className="text-[13px] font-medium">Where to store documents</p>
-              {hasPhotos && <p className="text-xs text-fg-subtle">Product photos are always stored here.</p>}
+              <p className="text-[13px] font-medium">{t("upload.where")}</p>
+              {hasPhotos && <p className="text-xs text-fg-subtle">{t("upload.photosHere")}</p>}
             </div>
             <Segmented
               size="sm"
               value={target}
               onChange={setTarget}
               options={[
-                { value: "local", label: "Here" },
-                { value: "paperless", label: "Paperless" },
+                { value: "local", label: t("upload.here") },
+                { value: "paperless", label: t("upload.paperless") },
               ]}
             />
           </div>

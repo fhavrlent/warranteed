@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -90,8 +91,14 @@ type importResult struct {
 }
 
 type importError struct {
-	Row     int    `json:"row"`
-	Message string `json:"message"`
+	Row     int       `json:"row"`
+	Message string    `json:"message"`
+	Code    string    `json:"code"`
+	Params  i18n.Args `json:"params,omitempty"`
+}
+
+func rowError(row int, e *i18n.Error) importError {
+	return importError{Row: row, Message: e.Error(), Code: e.Key, Params: e.Args}
 }
 
 func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +106,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	file, _, err := r.FormFile("file")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Choose a CSV file to import")
+		writeMsg(w, http.StatusBadRequest, "server.csvNoFile", nil)
 		return
 	}
 	defer file.Close()
@@ -114,7 +121,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 	cr.TrimLeadingSpace = true
 	header, err := cr.Read()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "The file is empty or not a CSV")
+		writeMsg(w, http.StatusBadRequest, "server.csvEmpty", nil)
 		return
 	}
 	col := map[string]int{}
@@ -125,7 +132,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, required := range []string{"product_name", "purchase_date"} {
 		if _, ok := col[required]; !ok {
-			writeError(w, http.StatusBadRequest, "Missing column "+required)
+			writeMsg(w, http.StatusBadRequest, "server.csvMissingColumn", i18n.Args{"column": required})
 			return
 		}
 	}
@@ -162,7 +169,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		}
 		rowNum++
 		if err != nil {
-			res.Errors = append(res.Errors, importError{rowNum, "Could not parse row: " + err.Error()})
+			res.Errors = append(res.Errors, rowError(rowNum, i18n.NewError("server.csvBadRow", i18n.Args{"detail": err.Error()})))
 			continue
 		}
 		get := func(name string) string {
@@ -171,9 +178,9 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 			}
 			return ""
 		}
-		in, archived, msg := rowToInput(get, st)
-		if msg != "" {
-			res.Errors = append(res.Errors, importError{rowNum, msg})
+		in, archived, rerr := rowToInput(get, st)
+		if rerr != nil {
+			res.Errors = append(res.Errors, rowError(rowNum, rerr))
 			continue
 		}
 		if id, ok := spaceByKind[strings.ToLower(get("space"))]; ok {
@@ -187,7 +194,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		id, err := s.store.CreateWarranty(r.Context(), uid, in)
 		if err != nil {
 			if ve, ok := err.(*store.ValidationError); ok {
-				res.Errors = append(res.Errors, importError{rowNum, ve.Msg})
+				res.Errors = append(res.Errors, rowError(rowNum, ve))
 				continue
 			}
 			fail(w, err)
@@ -202,7 +209,7 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, res)
 }
 
-func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInput, bool, string) {
+func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInput, bool, *i18n.Error) {
 	in := &store.WarrantyInput{
 		ProductName: get("product_name"),
 		Brand:       get("brand"),
@@ -219,14 +226,14 @@ func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInp
 	}
 	purchase, ok := parseDate(get("purchase_date"), st.DateFormat)
 	if !ok {
-		return nil, false, fmt.Sprintf("Unrecognised purchase_date %q", get("purchase_date"))
+		return nil, false, i18n.NewError("server.csvBadDate", i18n.Args{"column": "purchase_date", "value": get("purchase_date")})
 	}
 	in.PurchaseDate = purchase
 
 	if p := get("price"); p != "" {
 		v, ok := parsePrice(p)
 		if !ok {
-			return nil, false, fmt.Sprintf("Invalid price %q", p)
+			return nil, false, i18n.NewError("server.csvBadPrice", i18n.Args{"value": p})
 		}
 		in.Price = &v
 	}
@@ -237,20 +244,20 @@ func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInp
 		if m := get("warranty_months"); m != "" {
 			n, err := strconv.Atoi(m)
 			if err != nil {
-				return nil, false, fmt.Sprintf("Invalid warranty_months %q", m)
+				return nil, false, i18n.NewError("server.csvBadMonths", i18n.Args{"value": m})
 			}
 			in.WarrantyMonths = &n
 		} else if e := get("warranty_end_date"); e != "" {
 			end, ok := parseDate(e, st.DateFormat)
 			if !ok {
-				return nil, false, fmt.Sprintf("Unrecognised warranty_end_date %q", e)
+				return nil, false, i18n.NewError("server.csvBadDate", i18n.Args{"column": "warranty_end_date", "value": e})
 			}
 			in.WarrantyEndDate = &end
 		} else {
-			return nil, false, "Needs warranty_months, warranty_end_date, or lifetime=true"
+			return nil, false, i18n.NewError("server.csvNoWarranty", nil)
 		}
 	}
-	return in, parseBool(get("archived")), ""
+	return in, parseBool(get("archived")), nil
 }
 
 // parsePrice reads prices as shops and spreadsheets write them: "1 379",

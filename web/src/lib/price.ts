@@ -1,3 +1,5 @@
+import i18n from "@/i18n";
+
 /**
  * Reads a price the way shops write it: "1 379", "1 379,50", "1.379,50",
  * "1,379.50", "1'379", optionally with a currency ("1 379 Kč", "€1,379").
@@ -30,9 +32,9 @@ export const parsePrice = (input: string): number | null => {
   return Number(normalized);
 };
 
-/** Shows a price grouped in the user's locale, e.g. 1379.5 -> "1 379,50" in Czech. */
+/** Shows a price grouped for the app's language, e.g. 1379.5 -> "1 379,50" in Czech. */
 export const formatPriceInput = (value: number): string =>
-  new Intl.NumberFormat(undefined, {
+  new Intl.NumberFormat(i18n.language, {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(value);

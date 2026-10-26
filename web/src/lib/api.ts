@@ -1,3 +1,5 @@
+import i18n from "@/i18n";
+
 export interface Tag {
   id: number;
   name: string;
@@ -82,6 +84,8 @@ export interface Settings {
   dateFormat: string;
   currency: string;
   theme: "system" | "light" | "dark";
+  /** Language code, or "" to follow the browser. */
+  language: string;
   expiringSoonDays: number;
   notifyUrls: string;
   notifyDays: string;
@@ -102,6 +106,8 @@ export interface Settings {
   paperlessEnabled: boolean;
   paperlessWebUrl: string;
   dateFormats: string[];
+  /** Languages the server has translations for. */
+  languages: string[];
   timezone: string;
 }
 
@@ -116,6 +122,7 @@ export type SettingsInput = Omit<
   | "notifyAllowedHosts"
   | "isAdmin"
   | "dateFormats"
+  | "languages"
   | "timezone"
 > & { paperlessToken?: string };
 
@@ -147,20 +154,38 @@ export interface PaperlessInfo {
 export interface ImportResult {
   imported: number;
   skipped: number;
-  errors: { row: number; message: string }[];
+  errors: { row: number; message: string; code: string; params?: Record<string, unknown> }[];
 }
 
+/** Server messages come with a translation key; untranslated ones (e.g. from Paperless) as plain text. */
+export const translateServer = (message: string, code?: string, params?: Record<string, unknown>): string =>
+  code && i18n.exists(code) ? (i18n.t as (key: string, options?: object) => string)(code, params) : message;
+
 /** A user-facing message for anything thrown. */
-export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+export const errorMessage = (e: unknown): string => {
+  if (e instanceof ApiError) return translateServer(e.message, e.code, e.params);
+  return e instanceof Error ? e.message : String(e);
+};
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
+    public params?: Record<string, unknown>,
   ) {
     super(message);
   }
 }
+
+interface ErrorBody {
+  error: string;
+  code?: string;
+  params?: Record<string, unknown>;
+}
+
+const isErrorBody = (data: unknown): data is ErrorBody =>
+  typeof data === "object" && data !== null && "error" in data && typeof data.error === "string";
 
 const request = async <T>(method: string, url: string, body?: unknown): Promise<T> => {
   const init: RequestInit = { method, headers: {}, credentials: "same-origin" };
@@ -174,24 +199,22 @@ const request = async <T>(method: string, url: string, body?: unknown): Promise<
   try {
     res = await fetch(url, init);
   } catch {
-    throw new ApiError(0, "Can't reach the server. Check your connection.");
+    throw new ApiError(0, i18n.t("errors.offline"));
   }
   if (res.status === 401 && !url.startsWith("/api/auth/")) {
     const ret = encodeURIComponent(location.pathname + location.search);
     if (!location.pathname.startsWith("/login")) location.assign(`/login?return=${ret}`);
-    throw new ApiError(401, "Signed out");
+    throw new ApiError(401, i18n.t("errors.signedOut"));
   }
   if (!res.ok) {
-    let msg = res.statusText || "Request failed";
+    let body: ErrorBody = { error: res.statusText || i18n.t("errors.requestFailed") };
     try {
       const data: unknown = await res.json();
-      if (typeof data === "object" && data !== null && "error" in data && typeof data.error === "string") {
-        msg = data.error;
-      }
+      if (isErrorBody(data)) body = data;
     } catch {
       /* not JSON */
     }
-    throw new ApiError(res.status, msg);
+    throw new ApiError(res.status, body.error, body.code, body.params);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

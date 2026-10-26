@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import i18n from "@/i18n";
 
 export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
 
@@ -11,7 +12,9 @@ export const formatBytes = (n: number): string => {
 
 export const formatMoney = (amount: number, currency: string): string => {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+    return new Intl.NumberFormat(i18n.language, { style: "currency", currency, maximumFractionDigits: 2 }).format(
+      amount,
+    );
   } catch {
     return `${amount.toFixed(2)} ${currency}`;
   }

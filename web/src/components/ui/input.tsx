@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export const fieldBase =
@@ -30,20 +31,23 @@ export const Field = ({
   className?: string;
   htmlFor?: string;
   optional?: boolean;
-}) => (
-  <div className={cn("flex flex-col gap-1.5", className)}>
-    <label htmlFor={htmlFor} className="text-[13px] font-medium text-fg">
-      {label}
-      {optional && <span className="ml-1 font-normal text-fg-subtle">optional</span>}
-    </label>
-    {children}
-    {error ? (
-      <p className="text-xs text-bad">{error}</p>
-    ) : hint ? (
-      <p className="text-xs text-fg-subtle">{hint}</p>
-    ) : null}
-  </div>
-);
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <label htmlFor={htmlFor} className="text-[13px] font-medium text-fg">
+        {label}
+        {optional && <span className="ml-1 font-normal text-fg-subtle">{t("common.optional")}</span>}
+      </label>
+      {children}
+      {error ? (
+        <p className="text-xs text-bad">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-fg-subtle">{hint}</p>
+      ) : null}
+    </div>
+  );
+};
 
 export const Select = ({ className, children, ...props }: ComponentProps<"select">) => (
   <select

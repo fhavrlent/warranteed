@@ -14,7 +14,9 @@ import (
 
 	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/config"
+	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/notify"
+	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -159,7 +161,7 @@ func sameOrigin(cfg *config.Config, next http.Handler) http.Handler {
 				}
 			}
 			if origin != "" && !strings.HasPrefix(origin+"/", allowed+"/") && !sameHost(origin, r.Host) {
-				writeError(w, http.StatusForbidden, "cross-origin request blocked")
+				writeMsg(w, http.StatusForbidden, "server.crossOrigin", nil)
 				return
 			}
 		}
@@ -209,7 +211,7 @@ func recoverer(next http.Handler) http.Handler {
 					panic(v)
 				}
 				slog.Error("panic", "path", r.URL.Path, "panic", v)
-				writeError(w, http.StatusInternalServerError, "internal error")
+				writeMsg(w, http.StatusInternalServerError, "server.internal", nil)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -224,8 +226,39 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// apiError is the body of every error response. Code is a key in the
+// translation files, which the web app shows in the user's language; Error is
+// the English text for logs and other clients.
+type apiError struct {
+	Error  string    `json:"error"`
+	Code   string    `json:"code,omitempty"`
+	Params i18n.Args `json:"params,omitempty"`
+}
+
+// writeError sends text that has no translation, e.g. an error from Paperless.
 func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+	writeJSON(w, status, apiError{Error: msg})
+}
+
+// writeMsg sends a translatable message.
+func writeMsg(w http.ResponseWriter, status int, key string, args i18n.Args) {
+	writeJSON(w, status, apiError{Error: i18n.T(i18n.Fallback, key, args), Code: key, Params: args})
+}
+
+// writeErr sends err, translated when it is an *i18n.Error or Paperless
+// refusing the token. Other errors from Paperless or notification services
+// are passed on as they are.
+func writeErr(w http.ResponseWriter, status int, err error) {
+	var ie *i18n.Error
+	var pe *paperless.Error
+	switch {
+	case errors.As(err, &ie):
+		writeMsg(w, status, ie.Key, ie.Args)
+	case errors.As(err, &pe) && (pe.Status == http.StatusUnauthorized || pe.Status == http.StatusForbidden):
+		writeMsg(w, status, "server.paperlessTokenRejected", nil)
+	default:
+		writeError(w, status, err.Error())
+	}
 }
 
 // fail maps store errors to HTTP responses.
@@ -233,19 +266,19 @@ func fail(w http.ResponseWriter, err error) {
 	var ve *store.ValidationError
 	switch {
 	case errors.As(err, &ve):
-		writeError(w, http.StatusBadRequest, ve.Msg)
+		writeMsg(w, http.StatusBadRequest, ve.Key, ve.Args)
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not found")
+		writeMsg(w, http.StatusNotFound, "server.notFound", nil)
 	default:
 		slog.Error("request error", "err", err)
-		writeError(w, http.StatusInternalServerError, "something went wrong")
+		writeMsg(w, http.StatusInternalServerError, "server.internal", nil)
 	}
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := dec.Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeMsg(w, http.StatusBadRequest, "server.badRequest", nil)
 		return false
 	}
 	return true
@@ -254,7 +287,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 func pathID(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
 	if err != nil || id <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid id")
+		writeMsg(w, http.StatusBadRequest, "server.badId", nil)
 		return 0, false
 	}
 	return id, true

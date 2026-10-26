@@ -12,13 +12,15 @@ import {
   Users,
 } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { TagChip } from "@/components/Tags";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Card, Segmented, Switch } from "@/components/ui/misc";
-import { api, errorMessage, type ImportResult, type Settings as SettingsT, type Tag } from "@/lib/api";
+import { browserLanguage, LANGUAGES } from "@/i18n";
+import { api, errorMessage, translateServer, type ImportResult, type Settings as SettingsT, type Tag } from "@/lib/api";
 import { formatDate, todayISO } from "@/lib/dates";
 import {
   keys,
@@ -46,15 +48,16 @@ const TAG_COLORS = [
   "violet",
   "pink",
   "rose",
-];
+] as const;
 
 export const Settings = () => {
+  const { t } = useTranslation();
   const { data: settings, isLoading } = useSettingsQuery();
   if (isLoading || !settings) return <div className="h-96 animate-pulse rounded-2xl bg-surface-3/60" />;
   return (
     <div className="animate-fade-in">
-      <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 mb-8 text-sm text-fg-muted">Changes save automatically.</p>
+      <h1 className="text-2xl font-semibold tracking-tight">{t("settings.title")}</h1>
+      <p className="mt-1 mb-8 text-sm text-fg-muted">{t("settings.autosave")}</p>
       <div className="flex flex-col gap-6">
         <Display s={settings} />
         <Notifications s={settings} />
@@ -107,16 +110,27 @@ const useAutoSave = (s: SettingsT) => {
 };
 
 const Display = ({ s }: { s: SettingsT }) => {
+  const { t } = useTranslation();
   const update = useAutoSave(s);
   const [soon, setSoon] = useState(String(s.expiringSoonDays));
   const sample = todayISO();
   return (
-    <Section
-      icon={<Palette />}
-      title="Display"
-      description="How dates and prices appear everywhere in the app, including date fields and reminders."
-    >
-      <Field label="Date format">
+    <Section icon={<Palette />} title={t("settings.display.title")} description={t("settings.display.description")}>
+      <Field label={t("settings.display.language")} hint={t("settings.display.languageHint")}>
+        <Select value={s.language} onChange={(e) => update({ language: e.target.value })} className="sm:w-72">
+          <option value="">
+            {t("settings.display.languageAuto", { language: LANGUAGES[browserLanguage()]?.name ?? "English" })}
+          </option>
+          {s.languages
+            .filter((code) => code in LANGUAGES)
+            .map((code) => (
+              <option key={code} value={code}>
+                {LANGUAGES[code]?.name ?? code}
+              </option>
+            ))}
+        </Select>
+      </Field>
+      <Field label={t("settings.display.dateFormat")}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {s.dateFormats.map((f) => (
             <button
@@ -137,14 +151,14 @@ const Display = ({ s }: { s: SettingsT }) => {
         </div>
       </Field>
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Default currency" hint="Used for new warranties and totals.">
+        <Field label={t("settings.display.currency")} hint={t("settings.display.currencyHint")}>
           <Select value={s.currency} onChange={(e) => update({ currency: e.target.value })}>
             {[...new Set([s.currency, ...CURRENCIES])].map((c) => (
               <option key={c}>{c}</option>
             ))}
           </Select>
         </Field>
-        <Field label="“Expiring soon” means within" hint="Days before expiry.">
+        <Field label={t("settings.display.soon")} hint={t("settings.display.soonHint")}>
           <div className="flex items-center gap-2">
             <Input
               inputMode="numeric"
@@ -162,11 +176,11 @@ const Display = ({ s }: { s: SettingsT }) => {
               }}
               className="w-24 tabular-nums"
             />
-            <span className="text-sm text-fg-muted">days</span>
+            <span className="text-sm text-fg-muted">{t("settings.display.days")}</span>
           </div>
         </Field>
       </div>
-      <Field label="Theme">
+      <Field label={t("settings.display.theme")}>
         <Segmented
           value={s.theme}
           onChange={(theme) => {
@@ -174,9 +188,9 @@ const Display = ({ s }: { s: SettingsT }) => {
             void update({ theme });
           }}
           options={[
-            { value: "system", label: "System" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
+            { value: "system", label: t("theme.system") },
+            { value: "light", label: t("theme.light") },
+            { value: "dark", label: t("theme.dark") },
           ]}
         />
       </Field>
@@ -185,6 +199,7 @@ const Display = ({ s }: { s: SettingsT }) => {
 };
 
 const Notifications = ({ s }: { s: SettingsT }) => {
+  const { t } = useTranslation();
   const update = useAutoSave(s);
   // Unsaved edits; null means "show the saved value".
   const [urlsDraft, setUrlsDraft] = useState<string | null>(null);
@@ -207,34 +222,32 @@ const Notifications = ({ s }: { s: SettingsT }) => {
   return (
     <Section
       icon={<Bell />}
-      title="Reminders"
+      title={t("settings.reminders.title")}
       description={
-        <>
-          Get a message before warranties expire. Each reminder is sent once. Uses{" "}
-          <a
-            className="text-primary hover:underline"
-            href="https://shoutrrr.nickfedor.com/latest/services/overview/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Shoutrrr URLs
-          </a>{" "}
-          for ntfy, Gotify, Discord, Telegram, email, Pushover and more.
-        </>
+        <Trans
+          i18nKey="settings.reminders.description"
+          components={{
+            link: (
+              <a
+                className="text-primary hover:underline"
+                href="https://shoutrrr.nickfedor.com/latest/services/overview/"
+                target="_blank"
+                rel="noreferrer"
+              />
+            ),
+          }}
+        />
       }
     >
       {!s.isAdmin && (
         <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-fg-muted">
-          Discord, Telegram, Slack, Pushover, Pushbullet, IFTTT and Join work out of the box.{" "}
+          {t("settings.reminders.builtIn")}{" "}
           {s.notifyAllowedHosts.length > 0
-            ? `Self-hosted services (ntfy, Gotify, webhooks, email) can send to: ${s.notifyAllowedHosts.join(", ")}.`
-            : "Self-hosted services (ntfy, Gotify, webhooks, email) need an admin to allow their host first."}
+            ? t("settings.reminders.allowedHosts", { hosts: s.notifyAllowedHosts.join(", ") })
+            : t("settings.reminders.needsAdmin")}
         </p>
       )}
-      <Field
-        label="Notification URLs"
-        hint="One per line, e.g. ntfy://ntfy.sh/my-topic or smtp://user:pass@host:587/?to=me@example.com"
-      >
+      <Field label={t("settings.reminders.urls")} hint={t("settings.reminders.urlsHint")}>
         <Textarea
           value={urls}
           onChange={(e) => setUrlsDraft(e.target.value)}
@@ -245,7 +258,7 @@ const Notifications = ({ s }: { s: SettingsT }) => {
         />
       </Field>
       <div className="flex flex-wrap items-end gap-3">
-        <Field label="Remind me" hint="Days before expiry, comma separated." className="w-56">
+        <Field label={t("settings.reminders.days")} hint={t("settings.reminders.daysHint")} className="w-56">
           <Input
             value={days}
             onChange={(e) => setDaysDraft(e.target.value)}
@@ -261,7 +274,7 @@ const Notifications = ({ s }: { s: SettingsT }) => {
             setTesting(true);
             try {
               await api.testNotification(urls);
-              toast.success("Test notification sent");
+              toast.success(t("settings.reminders.testSent"));
             } catch (e) {
               toast.error(errorMessage(e));
             } finally {
@@ -269,15 +282,16 @@ const Notifications = ({ s }: { s: SettingsT }) => {
             }
           }}
         >
-          Send test
+          {t("settings.reminders.test")}
         </Button>
       </div>
-      <p className="-mt-2 text-xs text-fg-subtle">Checked daily in the server's timezone ({s.timezone}).</p>
+      <p className="-mt-2 text-xs text-fg-subtle">{t("settings.reminders.schedule", { timezone: s.timezone })}</p>
     </Section>
   );
 };
 
 const Paperless = ({ s }: { s: SettingsT }) => {
+  const { t } = useTranslation();
   const update = useAutoSave(s);
   const [url, setUrl] = useState(s.paperlessUrl);
   const [publicUrl, setPublicUrl] = useState(s.paperlessPublicUrl);
@@ -291,7 +305,7 @@ const Paperless = ({ s }: { s: SettingsT }) => {
     try {
       const info = await api.testPaperless(url, token || undefined);
       setStatus(
-        `Connected to Paperless-ngx ${info.version || ""} (API v${info.apiVersion}) · ${info.documents} documents`,
+        t("settings.paperless.connected", { version: info.version, api: info.apiVersion, count: info.documents }),
       );
     } catch (e) {
       toast.error(errorMessage(e));
@@ -308,38 +322,33 @@ const Paperless = ({ s }: { s: SettingsT }) => {
     });
     if (ok) {
       setToken("");
-      toast.success("Paperless connection saved");
+      toast.success(t("settings.paperless.saved"));
     }
   };
 
   return (
-    <Section
-      icon={<Plug />}
-      title="Paperless-ngx"
-      description="Store receipts and manuals in your Paperless-ngx archive instead of here, or link documents that are already there."
-    >
+    <Section icon={<Plug />} title="Paperless-ngx" description={t("settings.paperless.description")}>
       {!s.canSetPaperlessUrl && !s.paperlessServerUrl ? (
         <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-fg-muted">
-          Paperless isn&apos;t set up on this server. An admin can enable it with <code>PAPERLESS_URL</code>.
+          <Trans i18nKey="settings.paperless.notSetUp" components={{ code: <code /> }} />
         </p>
       ) : (
         <>
           {s.paperlessServerToken && (
             <p className="rounded-lg bg-primary-soft/60 px-3 py-2 text-[13px] text-fg">
-              As an admin you can use the server&apos;s Paperless connection. Fill these in only to use a different
-              instance or your own token.
+              {t("settings.paperless.adminServer")}
             </p>
           )}
           {!s.canSetPaperlessUrl && (
             <p className="rounded-lg bg-primary-soft/60 px-3 py-2 text-[13px] text-fg">
-              Connect with your own Paperless account&apos;s token. You&apos;ll only see documents that account can see.
+              {t("settings.paperless.ownToken")}
             </p>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             {s.canSetPaperlessUrl ? (
               <Field
-                label="Paperless URL"
-                hint={s.paperlessServerUrl ? `Leave empty to use ${s.paperlessServerUrl}` : undefined}
+                label={t("settings.paperless.url")}
+                hint={s.paperlessServerUrl ? t("settings.paperless.urlHint", { url: s.paperlessServerUrl }) : undefined}
               >
                 <Input
                   value={url}
@@ -348,17 +357,13 @@ const Paperless = ({ s }: { s: SettingsT }) => {
                 />
               </Field>
             ) : (
-              <Field label="Paperless">
+              <Field label={t("settings.paperless.server")}>
                 <p className="flex h-9 items-center truncate text-sm text-fg-muted">{s.paperlessServerUrl}</p>
               </Field>
             )}
             <Field
-              label="API token"
-              hint={
-                s.hasPaperlessToken
-                  ? "A token is saved. Enter a new one to replace it."
-                  : "Profile → API Auth Token in Paperless."
-              }
+              label={t("settings.paperless.token")}
+              hint={s.hasPaperlessToken ? t("settings.paperless.tokenSaved") : t("settings.paperless.tokenHint")}
             >
               <Input
                 type="password"
@@ -370,9 +375,9 @@ const Paperless = ({ s }: { s: SettingsT }) => {
             </Field>
             {s.canSetPaperlessUrl && (
               <Field
-                label="Link address"
+                label={t("settings.paperless.linkAddress")}
                 optional
-                hint="Where your browser opens Paperless, if the URL above is an internal address (e.g. http://paperless:8000 in Docker)."
+                hint={t("settings.paperless.linkAddressHint")}
                 className="sm:col-span-2"
               >
                 <Input
@@ -385,13 +390,13 @@ const Paperless = ({ s }: { s: SettingsT }) => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={test} loading={testing}>
-              Test connection
+              {t("settings.paperless.test")}
             </Button>
             <Button
               onClick={saveConnection}
               disabled={url === s.paperlessUrl && publicUrl === s.paperlessPublicUrl && !token}
             >
-              Save
+              {t("common.save")}
             </Button>
             {(s.paperlessUrl || s.hasPaperlessToken) && (
               <Button
@@ -404,7 +409,7 @@ const Paperless = ({ s }: { s: SettingsT }) => {
                   }
                 }}
               >
-                Disconnect
+                {t("settings.paperless.disconnect")}
               </Button>
             )}
           </div>
@@ -423,8 +428,8 @@ const Paperless = ({ s }: { s: SettingsT }) => {
         )}
       >
         <span>
-          <span className="block text-sm font-medium">Upload documents to Paperless by default</span>
-          <span className="block text-xs text-fg-subtle">Product photos always stay here.</span>
+          <span className="block text-sm font-medium">{t("settings.paperless.default")}</span>
+          <span className="block text-xs text-fg-subtle">{t("settings.paperless.defaultHint")}</span>
         </span>
         <Switch
           checked={s.paperlessDefault}
@@ -437,29 +442,26 @@ const Paperless = ({ s }: { s: SettingsT }) => {
 };
 
 const Tags = () => {
+  const { t } = useTranslation();
   const { data: tags = [] } = useTags();
   const invalidate = useInvalidate();
   const [deleting, setDeleting] = useState<Tag | null>(null);
   return (
-    <Section
-      icon={<TagIcon />}
-      title="Tags"
-      description="Rename, recolour or remove tags. Tags are created from the warranty form."
-    >
+    <Section icon={<TagIcon />} title={t("settings.tags.title")} description={t("settings.tags.description")}>
       {tags.length === 0 ? (
-        <p className="text-sm text-fg-subtle">No tags yet.</p>
+        <p className="text-sm text-fg-subtle">{t("settings.tags.none")}</p>
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border">
-          {tags.map((t) => (
-            <TagRow key={t.id} t={t} onChanged={invalidate} onDelete={() => setDeleting(t)} />
+          {tags.map((tag) => (
+            <TagRow key={tag.id} tag={tag} onChanged={invalidate} onDelete={() => setDeleting(tag)} />
           ))}
         </ul>
       )}
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title={`Delete tag “${deleting?.name}”?`}
-        description={`It will be removed from ${deleting?.count ?? 0} warranties. The warranties themselves are kept.`}
+        title={t("settings.tags.deleteTitle", { name: deleting?.name ?? "" })}
+        description={t("settings.tags.deleteText", { count: deleting?.count ?? 0 })}
         onConfirm={async () => {
           if (deleting) await api.deleteTag(deleting.id).catch((e: unknown) => toast.error(errorMessage(e)));
           invalidate();
@@ -470,12 +472,13 @@ const Tags = () => {
   );
 };
 
-const TagRow = ({ t, onChanged, onDelete }: { t: Tag; onChanged: () => void; onDelete: () => void }) => {
+const TagRow = ({ tag, onChanged, onDelete }: { tag: Tag; onChanged: () => void; onDelete: () => void }) => {
+  const { t } = useTranslation();
   const [nameDraft, setNameDraft] = useState<string | null>(null);
-  const name = nameDraft ?? t.name;
+  const name = nameDraft ?? tag.name;
   const save = async (n: string, color: string) => {
     try {
-      await api.updateTag(t.id, n, color);
+      await api.updateTag(tag.id, n, color);
       onChanged();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -485,34 +488,36 @@ const TagRow = ({ t, onChanged, onDelete }: { t: Tag; onChanged: () => void; onD
   };
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2">
-      <TagChip tag={{ name, color: t.color }} className="hidden sm:inline-flex" />
+      <TagChip tag={{ name, color: tag.color }} className="hidden sm:inline-flex" />
       <Input
         value={name}
         onChange={(e) => setNameDraft(e.target.value)}
         onBlur={() => {
-          if (name.trim() && name !== t.name) void save(name, t.color);
+          if (name.trim() && name !== tag.name) void save(name, tag.color);
           else setNameDraft(null);
         }}
         className="h-8 w-40"
-        aria-label="Tag name"
+        aria-label={t("settings.tags.name")}
       />
       <div className="flex flex-wrap gap-1">
         {TAG_COLORS.map((c) => (
           <button
             type="button"
             key={c}
-            onClick={() => save(t.name, c)}
-            aria-label={c}
+            onClick={() => save(tag.name, c)}
+            aria-label={t(`settings.tags.colors.${c}`)}
             className={cn(
               "size-5 cursor-pointer rounded-full ring-offset-2 ring-offset-surface",
               tagDot[c],
-              t.color === c && "ring-2 ring-fg",
+              tag.color === c && "ring-2 ring-fg",
             )}
           />
         ))}
       </div>
-      <span className="ml-auto text-xs text-fg-subtle tabular-nums">{t.count} used</span>
-      <Button variant="ghost" size="icon-sm" aria-label={`Delete ${t.name}`} onClick={onDelete}>
+      <span className="ml-auto text-xs text-fg-subtle tabular-nums">
+        {t("settings.tags.used", { count: tag.count ?? 0 })}
+      </span>
+      <Button variant="ghost" size="icon-sm" aria-label={t("common.remove", { name: tag.name })} onClick={onDelete}>
         <Trash2 />
       </Button>
     </li>
@@ -521,6 +526,7 @@ const TagRow = ({ t, onChanged, onDelete }: { t: Tag; onChanged: () => void; onD
 
 /** Moves private warranties into the household in one go. Hidden until someone else joins. */
 const Household = () => {
+  const { t } = useTranslation();
   const { sharing, household } = useSharing();
   const { data: list = [] } = useWarranties();
   const invalidate = useInvalidate();
@@ -534,7 +540,7 @@ const Household = () => {
     try {
       const { moved } = await api.moveAllToSpace(household.id);
       invalidate();
-      toast.success(moved === 1 ? "1 warranty shared" : `${moved} warranties shared`);
+      toast.success(t("settings.household.shared", { count: moved }));
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -546,27 +552,25 @@ const Household = () => {
   return (
     <Section
       icon={<Users />}
-      title="Household"
-      description={`${household.members} people share the household. New warranties are shared by default; you can make any of them private.`}
+      title={t("common.household")}
+      description={t("settings.household.description", { count: household.members })}
     >
       {privateCount === 0 ? (
-        <p className="text-sm text-fg-muted">All your warranties are shared with the household.</p>
+        <p className="text-sm text-fg-muted">{t("settings.household.allShared")}</p>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-4 py-3">
-          <span className="text-sm">
-            {privateCount === 1 ? "1 warranty is" : `${privateCount} warranties are`} visible only to you.
-          </span>
+          <span className="text-sm">{t("settings.household.private", { count: privateCount })}</span>
           <Button variant="outline" onClick={() => setConfirming(true)}>
-            Share all with household
+            {t("settings.household.shareAll")}
           </Button>
         </div>
       )}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
-        title="Share all with the household?"
-        description={`Everyone in the household will see and be able to edit your ${privateCount} private warranties, including their documents. You can make individual ones private again later.`}
-        confirmLabel="Share all"
+        title={t("settings.household.confirmTitle")}
+        description={t("settings.household.confirmText", { count: privateCount })}
+        confirmLabel={t("settings.household.confirm")}
         loading={moving}
         onConfirm={() => void moveAll()}
       />
@@ -575,6 +579,7 @@ const Household = () => {
 };
 
 const Data = () => {
+  const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -601,17 +606,17 @@ const Data = () => {
     <Section
       id="data"
       icon={<Database />}
-      title="Import & export"
-      description="Export everything to CSV, or import a CSV in the same format. Rows that already exist are skipped."
+      title={t("settings.data.title")}
+      description={t("settings.data.description")}
     >
       <div className="flex flex-wrap gap-2">
         <a href="/api/export.csv">
           <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3.5 text-sm font-medium shadow-card hover:bg-surface-2">
-            <Download className="size-4" /> Export CSV
+            <Download className="size-4" /> {t("settings.data.export")}
           </span>
         </a>
         <Button variant="outline" onClick={() => fileRef.current?.click()} loading={importing}>
-          {!importing && <FileUp />} Import CSV
+          {!importing && <FileUp />} {t("settings.data.import")}
         </Button>
         <input
           ref={fileRef}
@@ -624,14 +629,16 @@ const Data = () => {
       {result && (
         <div className="rounded-xl border border-border bg-surface-2 p-4 text-sm">
           <p className="font-medium">
-            Imported {result.imported} · skipped {result.skipped} existing
-            {result.errors.length > 0 && <span className="text-bad"> · {result.errors.length} with problems</span>}
+            {t("settings.data.result", { imported: result.imported, skipped: result.skipped })}
+            {result.errors.length > 0 && (
+              <span className="text-bad"> · {t("settings.data.problems", { count: result.errors.length })}</span>
+            )}
           </p>
           {result.errors.length > 0 && (
             <ul className="mt-2 max-h-48 overflow-y-auto text-[13px] text-fg-muted">
               {result.errors.map((e) => (
                 <li key={e.row}>
-                  Row {e.row}: {e.message}
+                  {t("settings.data.row", { row: e.row, message: translateServer(e.message, e.code, e.params) })}
                 </li>
               ))}
             </ul>

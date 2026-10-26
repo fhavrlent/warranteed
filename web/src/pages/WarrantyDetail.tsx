@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { AttachmentsPanel } from "@/components/Attachments";
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { displayName, photoOf, statusOf, expiryText, toInput } from "@/lib/warranty";
 
 export const WarrantyDetail = () => {
+  const { t } = useTranslation();
   const id = Number(useParams().id);
   const { data: w, isLoading, error } = useWarranty(id);
   const { soonDays, fmtDate, fmtMoney } = usePrefs();
@@ -44,9 +46,9 @@ export const WarrantyDetail = () => {
   if (error || !w) {
     return (
       <Card className="flex flex-col items-center gap-3 p-12 text-center">
-        <p className="font-medium">This warranty doesn't exist</p>
+        <p className="font-medium">{t("detail.notFound")}</p>
         <Link to="/" className="text-sm font-medium text-primary hover:underline">
-          Back to warranties
+          {t("detail.back")}
         </Link>
       </Card>
     );
@@ -59,7 +61,7 @@ export const WarrantyDetail = () => {
     try {
       await api.archive(w.id, !w.archivedAt);
       invalidate();
-      toast.success(w.archivedAt ? "Restored from archive" : "Archived");
+      toast.success(w.archivedAt ? t("detail.restored") : t("detail.archived"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -69,7 +71,7 @@ export const WarrantyDetail = () => {
     try {
       await api.deleteWarranty(w.id);
       invalidate();
-      toast.success(`${w.productName} deleted`);
+      toast.success(t("detail.deleted", { name: w.productName }));
       void navigate("/", { replace: true });
     } catch (e) {
       toast.error(errorMessage(e));
@@ -92,15 +94,15 @@ export const WarrantyDetail = () => {
   };
 
   const coverage = w.isLifetime
-    ? "Lifetime"
+    ? t("detail.lifetime")
     : w.warrantyMonths
       ? durationLabel(w.warrantyMonths)
-      : `Until ${fmtDate(w.warrantyEndDate)}`;
+      : t("detail.until", { date: fmtDate(w.warrantyEndDate) });
 
   return (
     <div className="animate-fade-in">
       <Link to="/" className="mb-5 inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg">
-        <ArrowLeft className="size-4" /> Warranties
+        <ArrowLeft className="size-4" /> {t("detail.backShort")}
       </Link>
 
       <div className="flex flex-col gap-6 lg:flex-row">
@@ -126,52 +128,49 @@ export const WarrantyDetail = () => {
                 <h1 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">{displayName(w)}</h1>
                 {(w.model || w.vendor) && (
                   <p className="mt-0.5 text-sm text-fg-muted">
-                    {[w.model, w.vendor && `from ${w.vendor}`].filter(Boolean).join(" · ")}
+                    {[w.model, w.vendor && t("detail.from", { vendor: w.vendor })].filter(Boolean).join(" · ")}
                   </p>
                 )}
                 {sharing && (
                   <p className="mt-1.5 flex items-center gap-1.5 text-xs text-fg-subtle">
                     {shared ? <Users className="size-3.5" /> : <Lock className="size-3.5" />}
-                    {shared ? "Shared with the household" : "Only you can see this"}
-                    {shared && !mine && ` · added by ${w.addedBy.name}`}
+                    {shared ? t("detail.shared") : t("detail.private")}
+                    {shared && !mine && ` · ${t("detail.addedBy", { name: w.addedBy.name })}`}
                   </p>
                 )}
               </div>
               <div className="flex shrink-0 gap-1.5">
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                  <Pencil /> <span className="hidden sm:inline">Edit</span>
+                  <Pencil /> <span className="hidden sm:inline">{t("detail.edit")}</span>
                 </Button>
                 <Menu>
                   <MenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="size-8" aria-label="More actions">
+                    <Button variant="outline" size="icon" className="size-8" aria-label={t("detail.moreActions")}>
                       <MoreHorizontal />
                     </Button>
                   </MenuTrigger>
                   <MenuContent>
                     <MenuItem icon={w.archivedAt ? <ArchiveRestore /> : <Archive />} onSelect={archive}>
-                      {w.archivedAt ? "Restore from archive" : "Archive"}
+                      {w.archivedAt ? t("detail.unarchive") : t("detail.archive")}
                     </MenuItem>
                     {sharing && !shared && household && (
-                      <MenuItem
-                        icon={<Users />}
-                        onSelect={() => void moveTo(household.id, "Shared with the household")}
-                      >
-                        Share with household
+                      <MenuItem icon={<Users />} onSelect={() => void moveTo(household.id, t("detail.shared"))}>
+                        {t("detail.share")}
                       </MenuItem>
                     )}
                     {sharing && shared && canManage && personal && (
-                      <MenuItem icon={<Lock />} onSelect={() => void moveTo(personal.id, "Only you can see it now")}>
-                        Make private
+                      <MenuItem icon={<Lock />} onSelect={() => void moveTo(personal.id, t("detail.madePrivate"))}>
+                        {t("detail.makePrivate")}
                       </MenuItem>
                     )}
                     <MenuSeparator />
                     {canManage ? (
                       <MenuItem danger icon={<Trash2 />} onSelect={() => setDeleting(true)}>
-                        Delete
+                        {t("common.delete")}
                       </MenuItem>
                     ) : (
                       <p className="max-w-56 px-2.5 py-1.5 text-xs text-fg-subtle">
-                        Only {w.addedBy.name} can delete this. You can archive it.
+                        {t("detail.onlyOwnerDeletes", { name: w.addedBy.name })}
                       </p>
                     )}
                   </MenuContent>
@@ -205,23 +204,27 @@ export const WarrantyDetail = () => {
 
         <aside className="flex w-full flex-col gap-6 lg:w-80">
           <Card className="divide-y divide-border">
-            <Detail label="Purchased">{fmtDate(w.purchaseDate)}</Detail>
-            <Detail label="Coverage">{coverage}</Detail>
-            <Detail label="Expires">{w.isLifetime ? "Never" : fmtDate(w.expiresOn)}</Detail>
-            {w.price != null && <Detail label="Price">{fmtMoney(w.price, w.currency)}</Detail>}
-            {w.vendor && <Detail label="Bought from">{w.vendor}</Detail>}
+            <Detail label={t("detail.purchased")}>{fmtDate(w.purchaseDate)}</Detail>
+            <Detail label={t("detail.coverage")}>{coverage}</Detail>
+            <Detail label={t("detail.expires")}>{w.isLifetime ? t("detail.never") : fmtDate(w.expiresOn)}</Detail>
+            {w.price != null && <Detail label={t("detail.price")}>{fmtMoney(w.price, w.currency)}</Detail>}
+            {w.vendor && <Detail label={t("detail.boughtFrom")}>{w.vendor}</Detail>}
             {w.orderNumber && (
-              <Detail label="Order no." copy={w.orderNumber}>
+              <Detail label={t("detail.orderNo")} copy={w.orderNumber}>
                 <span className="font-mono text-[13px]">{w.orderNumber}</span>
               </Detail>
             )}
             {w.serialNumbers.map((sn, i) => (
-              <Detail key={sn} label={w.serialNumbers.length > 1 ? `Serial ${i + 1}` : "Serial no."} copy={sn}>
+              <Detail
+                key={sn}
+                label={w.serialNumbers.length > 1 ? t("detail.serialN", { n: i + 1 }) : t("detail.serial")}
+                copy={sn}
+              >
                 <span className="font-mono text-[13px] break-all">{sn}</span>
               </Detail>
             ))}
             {w.productUrl && (
-              <Detail label="Link">
+              <Detail label={t("detail.link")}>
                 <a
                   href={w.productUrl}
                   target="_blank"
@@ -237,14 +240,14 @@ export const WarrantyDetail = () => {
 
           {w.notes && (
             <Card className="p-4">
-              <h3 className="mb-2 text-xs font-medium text-fg-subtle">Notes</h3>
+              <h3 className="mb-2 text-xs font-medium text-fg-subtle">{t("detail.notes")}</h3>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{w.notes}</p>
             </Card>
           )}
 
           <p className="px-1 text-xs text-fg-subtle">
-            Added {fmtDate(w.createdAt.slice(0, 10))}
-            {w.updatedAt !== w.createdAt && ` · updated ${fmtDate(w.updatedAt.slice(0, 10))}`}
+            {t("detail.added", { date: fmtDate(w.createdAt.slice(0, 10)) })}
+            {w.updatedAt !== w.createdAt && ` · ${t("detail.updated", { date: fmtDate(w.updatedAt.slice(0, 10)) })}`}
           </p>
         </aside>
       </div>
@@ -253,8 +256,8 @@ export const WarrantyDetail = () => {
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={`Delete ${w.productName}?`}
-        description="The warranty and its locally stored files will be deleted. Documents in Paperless are kept. Consider archiving instead."
+        title={t("detail.deleteTitle", { name: w.productName })}
+        description={t("detail.deleteText")}
         onConfirm={remove}
       />
     </div>
@@ -269,31 +272,34 @@ const hostOf = (url: string): string => {
   }
 };
 
-const Detail = ({ label, children, copy }: { label: string; children: ReactNode; copy?: string }) => (
-  <div className="group flex items-start justify-between gap-4 px-4 py-3">
-    <span className="shrink-0 text-[13px] text-fg-subtle">{label}</span>
-    <span className="flex min-w-0 items-center gap-1 text-right text-sm">
-      {children}
-      {copy && (
-        <button
-          type="button"
-          onClick={() => {
-            // The Clipboard API only exists on HTTPS (or localhost) pages.
-            if (!window.isSecureContext) {
-              toast.error("Copying needs HTTPS");
-              return;
-            }
-            navigator.clipboard.writeText(copy).then(
-              () => toast.success("Copied"),
-              () => toast.error("Couldn't copy"),
-            );
-          }}
-          className="cursor-pointer rounded p-0.5 text-fg-subtle opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100"
-          aria-label={`Copy ${label}`}
-        >
-          <Copy className="size-3.5" />
-        </button>
-      )}
-    </span>
-  </div>
-);
+const Detail = ({ label, children, copy }: { label: string; children: ReactNode; copy?: string }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="group flex items-start justify-between gap-4 px-4 py-3">
+      <span className="shrink-0 text-[13px] text-fg-subtle">{label}</span>
+      <span className="flex min-w-0 items-center gap-1 text-right text-sm">
+        {children}
+        {copy && (
+          <button
+            type="button"
+            onClick={() => {
+              // The Clipboard API only exists on HTTPS (or localhost) pages.
+              if (!window.isSecureContext) {
+                toast.error(t("common.copyNeedsHttps"));
+                return;
+              }
+              navigator.clipboard.writeText(copy).then(
+                () => toast.success(t("common.copied")),
+                () => toast.error(t("common.copyFailed")),
+              );
+            }}
+            className="cursor-pointer rounded p-0.5 text-fg-subtle opacity-0 group-hover:opacity-100 hover:text-fg focus:opacity-100"
+            aria-label={t("common.copy", { label })}
+          >
+            <Copy className="size-3.5" />
+          </button>
+        )}
+      </span>
+    </div>
+  );
+};

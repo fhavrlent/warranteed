@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"hash/fnv"
 	"strings"
 	"time"
+
+	"github.com/fhavrlent/warranteed/internal/i18n"
 )
 
 const DateLayout = "2006-01-02"
@@ -67,12 +68,12 @@ type WarrantyInput struct {
 	SpaceID *int64 `json:"spaceId"`
 }
 
-type ValidationError struct{ Msg string }
+// ValidationError is input the user can fix; its message is translatable.
+type ValidationError = i18n.Error
 
-func (e *ValidationError) Error() string { return e.Msg }
-
-func invalid(format string, args ...any) error {
-	return &ValidationError{Msg: fmt.Sprintf(format, args...)}
+// invalid returns the ValidationError for the "server.<key>" message.
+func invalid(key string, args i18n.Args) error {
+	return i18n.NewError("server."+key, args)
 }
 
 // Normalize trims input, validates it and returns the computed expiry date
@@ -86,17 +87,17 @@ func (in *WarrantyInput) Normalize() (*string, error) {
 	in.Currency = strings.ToUpper(in.Currency)
 
 	if in.ProductName == "" {
-		return nil, invalid("Product name is required")
+		return nil, invalid("productName", nil)
 	}
 	purchase, err := time.Parse(DateLayout, in.PurchaseDate)
 	if err != nil {
-		return nil, invalid("Purchase date must be a valid date")
+		return nil, invalid("purchaseDate", nil)
 	}
 	if in.WarrantyEndDate != nil && strings.TrimSpace(*in.WarrantyEndDate) == "" {
 		in.WarrantyEndDate = nil
 	}
 	if in.Price != nil && *in.Price < 0 {
-		return nil, invalid("Price cannot be negative")
+		return nil, invalid("negativePrice", nil)
 	}
 	if in.ProductURL != "" && !strings.HasPrefix(in.ProductURL, "http://") && !strings.HasPrefix(in.ProductURL, "https://") {
 		in.ProductURL = "https://" + in.ProductURL
@@ -117,19 +118,19 @@ func (in *WarrantyInput) Normalize() (*string, error) {
 	if in.WarrantyEndDate != nil {
 		end, err := time.Parse(DateLayout, *in.WarrantyEndDate)
 		if err != nil {
-			return nil, invalid("Warranty end date must be a valid date")
+			return nil, invalid("endDate", nil)
 		}
 		if end.Before(purchase) {
-			return nil, invalid("Warranty cannot end before the purchase date")
+			return nil, invalid("endBeforePurchase", nil)
 		}
 		in.WarrantyMonths = nil
 		return in.WarrantyEndDate, nil
 	}
 	if in.WarrantyMonths == nil || *in.WarrantyMonths <= 0 {
-		return nil, invalid("Set a warranty length, an end date, or mark it as lifetime")
+		return nil, invalid("noWarranty", nil)
 	}
 	if *in.WarrantyMonths > 1200 {
-		return nil, invalid("Warranty length is unreasonably long")
+		return nil, invalid("tooLong", nil)
 	}
 	end := AddMonths(purchase, *in.WarrantyMonths).Format(DateLayout)
 	return &end, nil
@@ -322,7 +323,7 @@ func (s *Store) UpdateWarranty(ctx context.Context, userID, id int64, in *Warran
 				return err
 			}
 			if cur.kind != SpacePersonal && kind == SpacePersonal && cur.addedBy != userID {
-				return invalid("Only %s, who added it, can make it private", cur.addedByName)
+				return invalid("onlyOwnerPrivate", i18n.Args{"name": cur.addedByName})
 			}
 		}
 		_, err = tx.ExecContext(ctx, `
@@ -437,7 +438,7 @@ func (s *Store) DeleteWarranty(ctx context.Context, userID, id int64) ([]string,
 			return err
 		}
 		if cur.kind != SpacePersonal && cur.addedBy != userID {
-			return invalid("Only %s, who added it, can delete it — you can archive it instead", cur.addedByName)
+			return invalid("onlyOwnerDelete", i18n.Args{"name": cur.addedByName})
 		}
 		rows, err := tx.QueryContext(ctx,
 			`SELECT local_path FROM attachments WHERE warranty_id = ? AND storage = 'local'`, id)
@@ -471,7 +472,7 @@ func (s *Store) MoveAllToSpace(ctx context.Context, userID, spaceID int64) (int,
 			return err
 		}
 		if kind == SpacePersonal {
-			return invalid("Choose a shared space")
+			return invalid("sharedSpace", nil)
 		}
 		personal, err := personalSpace(ctx, tx, userID)
 		if err != nil {
@@ -554,7 +555,7 @@ func ensureTag(ctx context.Context, tx *sql.Tx, spaceID int64, name string) (int
 		return 0, nil
 	}
 	if len(name) > 40 {
-		return 0, invalid("Tag %q is too long", name)
+		return 0, invalid("tagTooLong", i18n.Args{"name": name})
 	}
 	var id int64
 	err := tx.QueryRowContext(ctx, `
@@ -590,20 +591,20 @@ func (s *Store) ListTags(ctx context.Context, userID int64) ([]Tag, error) {
 func (s *Store) UpdateTag(ctx context.Context, userID, id int64, name, color string) error {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 40 {
-		return invalid("Tag name must be 1–40 characters")
+		return invalid("tagName", nil)
 	}
 	valid := false
 	for _, c := range TagColors {
 		valid = valid || c == color
 	}
 	if !valid {
-		return invalid("Unknown tag colour")
+		return invalid("tagColor", nil)
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE tags AS t SET name = ?, color = ? WHERE `+tagVisibleTo+` AND t.id = ?`,
 		name, color, userID, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			return invalid("A tag with that name already exists")
+			return invalid("tagExists", nil)
 		}
 		return err
 	}
