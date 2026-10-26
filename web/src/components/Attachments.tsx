@@ -129,16 +129,27 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
           {t("attachments.title")}
           <span className="font-normal text-fg-subtle tabular-nums">{docs.length || ""}</span>
         </h2>
-        <div className="flex items-center gap-2">
+        {/* On phones the main action gets its own row above the others. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {paperless && (
-            <Button size="sm" variant="outline" onClick={() => setPicker(true)}>
+            <Button size="sm" variant="outline" className="flex-1 sm:flex-none" onClick={() => setPicker(true)}>
               <Search /> {t("attachments.linkFromPaperless")}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()} loading={uploadingPhotos}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 sm:flex-none"
+            onClick={() => photoRef.current?.click()}
+            loading={uploadingPhotos}
+          >
             {!uploadingPhotos && <Camera />} {t("attachments.photo")}
           </Button>
-          <Button size="sm" onClick={() => fileRef.current?.click()}>
+          <Button
+            size="sm"
+            className="order-first w-full sm:order-none sm:w-auto"
+            onClick={() => fileRef.current?.click()}
+          >
             <Upload /> {t("attachments.addDocuments")}
           </Button>
           <input
