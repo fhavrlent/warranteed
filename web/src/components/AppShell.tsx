@@ -80,7 +80,7 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-border bg-bg/80 backdrop-blur-lg">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6">
-          <Link to="/" className="rounded-lg">
+          <Link to="/" className="flex rounded-lg">
             <Logo />
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
