@@ -1,5 +1,5 @@
 import { LogOut, Monitor, Moon, Settings as SettingsIcon, ShieldCheck, Sun } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { applyLanguage } from "@/i18n";
@@ -152,7 +152,10 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6 sm:pt-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6 sm:pt-8">
+        {/* Keeps the header in place while a page downloads. */}
+        <Suspense fallback={null}>{children}</Suspense>
+      </main>
     </div>
   );
 };

@@ -1,61 +1,63 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode } from "react";
+import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
 import { AppShell } from "./components/AppShell";
 import { LanguageRoot } from "./components/LanguageRoot";
-import "./i18n";
+import { initI18n } from "./i18n";
 import "./index.css";
 import { queryClient } from "./lib/queries";
-import { Login } from "./pages/Login";
-import { Settings } from "./pages/Settings";
-import { WarrantyDetail } from "./pages/WarrantyDetail";
+import { Login, Settings, WarrantyDetail } from "./pages/lazy";
 import { Warranties } from "./pages/Warranties";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root element missing");
+
+await initI18n();
 
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <LanguageRoot>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={
-                <AppShell>
-                  <Warranties />
-                </AppShell>
-              }
-            />
-            <Route
-              path="/w/:id"
-              element={
-                <AppShell>
-                  <WarrantyDetail />
-                </AppShell>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <AppShell>
-                  <Settings />
-                </AppShell>
-              }
-            />
-            <Route
-              path="*"
-              element={
-                <AppShell>
-                  <Warranties />
-                </AppShell>
-              }
-            />
-          </Routes>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/"
+                element={
+                  <AppShell>
+                    <Warranties />
+                  </AppShell>
+                }
+              />
+              <Route
+                path="/w/:id"
+                element={
+                  <AppShell>
+                    <WarrantyDetail />
+                  </AppShell>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <AppShell>
+                    <Settings />
+                  </AppShell>
+                }
+              />
+              <Route
+                path="*"
+                element={
+                  <AppShell>
+                    <Warranties />
+                  </AppShell>
+                }
+              />
+            </Routes>
+          </Suspense>
         </LanguageRoot>
       </BrowserRouter>
       <Toaster

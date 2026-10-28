@@ -6,16 +6,16 @@ All text, including reminder messages and errors from the server, lives in one J
 
 1. Copy `web/src/locales/en.json` to `web/src/locales/<code>.json`, where `<code>` is the two-letter [ISO 639-1 code](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes) (`de`, `fr`, `pl`, …).
 2. Translate the values. Keep the keys as they are.
-3. Register the language in [`web/src/i18n.ts`](web/src/i18n.ts): import the file and the [date-fns locale](https://github.com/date-fns/date-fns/tree/main/src/locale) for month and day names, and add a line to `LANGUAGES`:
+3. Register the language in [`web/src/i18n.ts`](web/src/i18n.ts) by adding an entry to `LANGUAGES`. It loads your file and the [date-fns locale](https://github.com/date-fns/date-fns/tree/main/src/locale) for month and day names; both are downloaded only by people using the language:
 
    ```ts
-   import { de as deDates } from "react-day-picker/locale/de";
-   import de from "./locales/de.json";
-
-   export const LANGUAGES = {
-     // …
-     de: { name: "Deutsch", translation: de, dates: deDates },
-   };
+   de: {
+     name: "Deutsch",
+     load: async () => {
+       const [texts, dates] = await Promise.all([import("./locales/de.json"), import("react-day-picker/locale/de")]);
+       return { translation: texts.default, dates: dates.de };
+     },
+   },
    ```
 
    `name` is the language's own name, as people who speak it would look for it.
