@@ -500,3 +500,109 @@ var acceptedTypes = map[string]bool{
 
 // Accepts reports whether Paperless-ngx can consume a file of this MIME type.
 func Accepts(mimeType string) bool { return acceptedTypes[mimeType] }
+
+// ---- custom fields ----
+
+// CustomField is a custom field's value on a document.
+type CustomField struct {
+	Field int64 `json:"field"`
+	Value any   `json:"value"`
+}
+
+var (
+	fieldIDMu sync.Mutex
+	fieldIDs  = map[string]int64{}
+)
+
+// CustomFieldID returns the ID of the custom field with this name, matched
+// without regard to case. When it doesn't exist it is created with dataType
+// if create is set, otherwise 0 is returned.
+func (c *Client) CustomFieldID(ctx context.Context, name, dataType string, create bool) (int64, error) {
+	key := c.BaseURL + "\x00" + strings.ToLower(name)
+	fieldIDMu.Lock()
+	id, ok := fieldIDs[key]
+	fieldIDMu.Unlock()
+	if ok {
+		return id, nil
+	}
+	var page struct {
+		Results []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := c.getJSON(ctx, "/api/custom_fields/?"+url.Values{"name__iexact": {name}}.Encode(), &page); err != nil {
+		return 0, err
+	}
+	for _, f := range page.Results {
+		if strings.EqualFold(f.Name, name) {
+			id = f.ID
+		}
+	}
+	if id == 0 && create {
+		body, _ := json.Marshal(map[string]string{"name": name, "data_type": dataType})
+		resp, err := c.do(ctx, http.MethodPost, "/api/custom_fields/", strings.NewReader(string(body)), "application/json")
+		if err != nil {
+			return 0, err
+		}
+		defer resp.Body.Close()
+		var created struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+			return 0, err
+		}
+		id = created.ID
+	}
+	if id != 0 {
+		fieldIDMu.Lock()
+		fieldIDs[key] = id
+		fieldIDMu.Unlock()
+	}
+	return id, nil
+}
+
+// forgetCustomFields drops cached field IDs, e.g. after a field was deleted.
+func (c *Client) forgetCustomFields() {
+	fieldIDMu.Lock()
+	defer fieldIDMu.Unlock()
+	for k := range fieldIDs {
+		if strings.HasPrefix(k, c.BaseURL+"\x00") {
+			delete(fieldIDs, k)
+		}
+	}
+}
+
+// DocumentCustomFields returns a document's custom field values.
+func (c *Client) DocumentCustomFields(ctx context.Context, id int64) ([]CustomField, error) {
+	var doc struct {
+		CustomFields []CustomField `json:"custom_fields"`
+	}
+	if err := c.getJSON(ctx, fmt.Sprintf("/api/documents/%d/?fields=custom_fields", id), &doc); err != nil {
+		return nil, err
+	}
+	return doc.CustomFields, nil
+}
+
+// SetDocumentCustomFields replaces all of a document's custom field values,
+// so callers send the ones they keep too.
+func (c *Client) SetDocumentCustomFields(ctx context.Context, id int64, fields []CustomField) error {
+	if fields == nil {
+		fields = []CustomField{}
+	}
+	body, err := json.Marshal(map[string]any{"custom_fields": fields})
+	if err != nil {
+		return err
+	}
+	resp, err := c.do(ctx, http.MethodPatch, fmt.Sprintf("/api/documents/%d/", id), strings.NewReader(string(body)), "application/json")
+	if err != nil {
+		var pe *Error
+		if errors.As(err, &pe) && pe.Status == http.StatusBadRequest {
+			// Most likely a cached field was deleted in Paperless.
+			c.forgetCustomFields()
+		}
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}

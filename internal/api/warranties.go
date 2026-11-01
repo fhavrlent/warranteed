@@ -89,11 +89,17 @@ func (s *Server) deleteWarranty(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	docs, err := s.store.WarrantyPaperlessDocs(r.Context(), id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	paths, err := s.store.DeleteWarranty(r.Context(), userID(r), id)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	s.syncBacklinksLater(docs...)
 	for _, p := range paths {
 		s.files.Remove(p)
 	}

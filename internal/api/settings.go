@@ -36,6 +36,9 @@ type settingsResponse struct {
 	HomeBoxServerURL string `json:"homeboxServerUrl"`
 	HasHomeBoxToken  bool   `json:"hasHomeboxToken"`
 	HomeBoxEnabled   bool   `json:"homeboxEnabled"`
+	// Names of the custom fields links are written to in Paperless.
+	PaperlessWarrantyField string `json:"paperlessWarrantyField"`
+	PaperlessHomeBoxField  string `json:"paperlessHomeboxField"`
 }
 
 // paperlessWebURL is where the user's browser opens their Paperless, or "".
@@ -55,21 +58,23 @@ func (s *Server) paperlessWebURL(st *store.Settings, admin bool) string {
 
 func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsResponse {
 	return settingsResponse{
-		Settings:             st,
-		HasPaperlessToken:    st.PaperlessToken != "",
-		PaperlessEnabled:     s.paperlessFor(st, admin) != nil,
-		PaperlessWebURL:      s.paperlessWebURL(st, admin),
-		PaperlessServerURL:   s.cfg.Paperless.PublicURL,
-		PaperlessServerToken: admin && s.cfg.Paperless.URL != "" && s.cfg.Paperless.Token != "",
-		CanSetPaperlessURL:   admin,
-		NotifyAllowedHosts:   s.cfg.NotifyAllowedHosts,
-		IsAdmin:              admin,
-		DateFormats:          dates.Formats,
-		Languages:            i18n.Languages(),
-		Timezone:             s.cfg.Location.String(),
-		HomeBoxServerURL:     s.cfg.HomeBox.PublicURL,
-		HasHomeBoxToken:      st.HomeBoxToken != "",
-		HomeBoxEnabled:       s.homeboxFor(st) != nil,
+		Settings:               st,
+		HasPaperlessToken:      st.PaperlessToken != "",
+		PaperlessEnabled:       s.paperlessFor(st, admin) != nil,
+		PaperlessWebURL:        s.paperlessWebURL(st, admin),
+		PaperlessServerURL:     s.cfg.Paperless.PublicURL,
+		PaperlessServerToken:   admin && s.cfg.Paperless.URL != "" && s.cfg.Paperless.Token != "",
+		CanSetPaperlessURL:     admin,
+		NotifyAllowedHosts:     s.cfg.NotifyAllowedHosts,
+		IsAdmin:                admin,
+		DateFormats:            dates.Formats,
+		Languages:              i18n.Languages(),
+		Timezone:               s.cfg.Location.String(),
+		HomeBoxServerURL:       s.cfg.HomeBox.PublicURL,
+		HasHomeBoxToken:        st.HomeBoxToken != "",
+		HomeBoxEnabled:         s.homeboxFor(st) != nil,
+		PaperlessWarrantyField: s.cfg.Paperless.WarrantyField,
+		PaperlessHomeBoxField:  s.cfg.Paperless.HomeBoxField,
 	}
 }
 
@@ -146,6 +151,7 @@ type settingsInput struct {
 	PaperlessToken     *string `json:"paperlessToken"` // nil keeps the stored token
 	PaperlessDefault   bool    `json:"paperlessDefault"`
 	HomeBoxToken       *string `json:"homeboxToken"` // nil keeps the stored token
+	PaperlessBacklinks bool    `json:"paperlessBacklinks"`
 }
 
 var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -192,6 +198,7 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 		st.PaperlessPublicURL = in.PaperlessPublicURL
 	}
 	st.PaperlessDefault = in.PaperlessDefault
+	st.PaperlessBacklinks = in.PaperlessBacklinks
 	if in.PaperlessToken != nil {
 		st.PaperlessToken = strings.TrimSpace(*in.PaperlessToken)
 	}

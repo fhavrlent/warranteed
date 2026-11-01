@@ -31,6 +31,8 @@ type Server struct {
 	version  string
 	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
 	homeboxBusy sync.Map
+	// backlinks tracks link updates running in the background.
+	backlinks sync.WaitGroup
 }
 
 func New(cfg *config.Config, st *store.Store, a *auth.Auth, n *notify.Notifier, files *Files, assets fs.FS, version string) *Server {
@@ -81,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/homebox/locations", s.homeboxLocations)
 
 	api.HandleFunc("GET /api/paperless/search", s.searchPaperless)
+	api.HandleFunc("POST /api/paperless/links", s.syncAllBacklinks)
 	api.HandleFunc("GET /api/paperless/documents/{doc}/thumb", s.paperlessThumb)
 
 	api.HandleFunc("GET /api/spaces", s.listSpaces)

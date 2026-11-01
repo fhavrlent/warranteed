@@ -212,6 +212,7 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		fail(w, err)
 		return
 	}
+	s.syncWarrantyBacklinksLater(r.Context(), id)
 
 	lang := st.EffectiveLanguage()
 	item, err = hb.Update(ctx, item.ID, func(it *homebox.Item) { fillHomeBoxItem(it, wr, st, existing) })
@@ -298,6 +299,7 @@ func (s *Server) unlinkHomeBox(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.syncWarrantyBacklinksLater(r.Context(), id)
 	wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
 	if err != nil {
 		fail(w, err)

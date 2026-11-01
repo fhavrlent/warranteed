@@ -79,6 +79,8 @@ Set `PAPERLESS_URL` to your Paperless instance. Each user then connects with the
 
 Removing a Paperless attachment only unlinks it; the document stays in Paperless.
 
+Under **Settings → Paperless-ngx**, each user can also have their documents link back: Warranteed fills a "Warranty" URL custom field on each of their documents attached to a warranty, and a "HomeBox" one when the warranty is linked to a HomeBox item, so a receipt in Paperless leads to its warranty and the item. The fields are created on first use; rename them with `PAPERLESS_WARRANTY_FIELD` and `PAPERLESS_HOMEBOX_FIELD` (e.g. `Záruka`). Their Paperless token must be allowed to edit documents, and to create custom fields if those don't exist yet. A value someone typed into these fields by hand is never overwritten.
+
 ## HomeBox
 
 With [HomeBox](https://homebox.software) (v0.27 or later), a warranty can be added to your inventory or linked to an item that's already there. Set `HOMEBOX_URL` to your HomeBox instance, and `HOMEBOX_PUBLIC_URL` if that's an internal address. Each user adds their own API key under **Settings → HomeBox** (in HomeBox: *Profile → API keys*). Keys expire after 30 days unless you give them a later date.
@@ -115,6 +117,8 @@ smtp://user:password@smtp.example.com:587/?from=warranty@example.com&to=me@examp
 | `PAPERLESS_URL` | | Paperless-ngx URL |
 | `PAPERLESS_TOKEN` | | API token used for admins only |
 | `PAPERLESS_PUBLIC_URL` | `PAPERLESS_URL` | Paperless URL used for browser links |
+| `PAPERLESS_WARRANTY_FIELD` | `Warranty` | Paperless custom field that links a document to its warranty |
+| `PAPERLESS_HOMEBOX_FIELD` | `HomeBox` | Paperless custom field that links a document to its HomeBox item |
 | `HOMEBOX_URL` | | HomeBox URL |
 | `HOMEBOX_PUBLIC_URL` | `HOMEBOX_URL` | HomeBox URL used for browser links |
 | `TZ` | | Timezone |

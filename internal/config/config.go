@@ -62,6 +62,10 @@ type Paperless struct {
 	URL       string
 	PublicURL string
 	Token     string
+	// Names of the custom fields that link a document to its warranty and
+	// HomeBox item.
+	WarrantyField string
+	HomeBoxField  string
 }
 
 // HomeBox is set by the admin only, so users can't point the server at
@@ -124,6 +128,9 @@ func Load() (*Config, error) {
 			URL:       strings.TrimSuffix(os.Getenv("PAPERLESS_URL"), "/"),
 			PublicURL: strings.TrimSuffix(os.Getenv("PAPERLESS_PUBLIC_URL"), "/"),
 			Token:     os.Getenv("PAPERLESS_TOKEN"),
+
+			WarrantyField: env("PAPERLESS_WARRANTY_FIELD", "Warranty"),
+			HomeBoxField:  env("PAPERLESS_HOMEBOX_FIELD", "HomeBox"),
 		},
 		HomeBox: HomeBox{
 			URL:       strings.TrimSuffix(os.Getenv("HOMEBOX_URL"), "/"),

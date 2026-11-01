@@ -338,6 +338,7 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, a)
+		s.syncBacklinksLater(store.PaperlessDoc{Owner: uid, DocID: doc.ID})
 	}
 	writeJSON(w, http.StatusCreated, out)
 }
@@ -401,9 +402,17 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	doc, err := s.store.AttachmentPaperlessDoc(r.Context(), id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	if err := s.store.DeleteAttachment(r.Context(), id); err != nil {
 		fail(w, err)
 		return
+	}
+	if doc != nil {
+		s.syncBacklinksLater(*doc)
 	}
 	if a.Storage == store.StorageLocal {
 		s.files.Remove(a.LocalPath)
@@ -437,7 +446,11 @@ func (s *Server) retryAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	switch res.State {
 	case paperless.TaskSucceeded:
-		err = s.store.CompleteAttachment(r.Context(), id, res.DocID)
+		if err = s.store.CompleteAttachment(r.Context(), id, res.DocID); err == nil {
+			if doc, derr := s.store.AttachmentPaperlessDoc(r.Context(), id); derr == nil && doc != nil {
+				s.syncBacklinksLater(*doc)
+			}
+		}
 	case paperless.TaskFailed:
 		err = s.store.FailAttachment(r.Context(), id, res.Error)
 	}
@@ -658,6 +671,7 @@ func (s *Server) pollOne(ctx context.Context, p store.PendingPaperless, giveUp t
 	case paperless.TaskSucceeded:
 		if err := s.store.CompleteAttachment(ctx, p.AttachmentID, res.DocID); err == nil {
 			slog.Info("paperless document ready", "attachment", p.AttachmentID, "doc", res.DocID)
+			s.syncBacklinksLater(store.PaperlessDoc{Owner: p.UserID, DocID: res.DocID})
 		}
 	case paperless.TaskFailed:
 		s.store.FailAttachment(ctx, p.AttachmentID, res.Error)
