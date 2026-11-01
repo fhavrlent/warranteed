@@ -263,6 +263,29 @@
     "noResults": "No documents found.",
     "alreadyLinked": "linked"
   },
+  "homebox": {
+    "assetId": "Asset ID",
+    "open": "Open in HomeBox",
+    "unlink": "Unlink",
+    "unlinkTitle": "Unlink from HomeBox?",
+    "unlinkText": "The warranty forgets its HomeBox item. The item itself stays in HomeBox.",
+    "unlinked": "Unlinked from HomeBox",
+    "add": "Add to HomeBox",
+    "addTitle": "Add to HomeBox",
+    "addDescription": "Creates an item with the serial number, purchase and warranty details, and links back to this warranty and its receipts in Paperless.",
+    "location": "Location",
+    "noLocation": "No location",
+    "create": "Create item",
+    "created": "Added to HomeBox",
+    "linkExisting": "Link existing item",
+    "linkTitle": "Link a HomeBox item",
+    "linkDescription": "Pick the item this warranty belongs to. Empty purchase and warranty fields on it are filled in; nothing already there is changed.",
+    "search": "Search by name, serial number or #asset ID",
+    "noResults": "No items found.",
+    "linkButton": "Link",
+    "linked": "Linked to HomeBox",
+    "connectHint": "Add your HomeBox API key to link this warranty to an item."
+  },
   "upload": {
     "title": "Add documents",
     "description": "Tell us what each file is, so it's easy to find when you need to make a claim.",
@@ -333,6 +356,15 @@
       "saved": "Paperless connection saved",
       "default": "Upload documents to Paperless by default",
       "defaultHint": "Product photos always stay here."
+    },
+    "homebox": {
+      "description": "Keep your inventory in HomeBox in step: add a warranty's product as an item, or link it to one that's already there.",
+      "notSetUp": "HomeBox isn't set up on this server. An admin can enable it with <code>HOMEBOX_URL</code>.",
+      "key": "API key",
+      "keySaved": "A key is saved. Enter a new one to replace it.",
+      "keyHint": "In HomeBox: Profile → API keys. Keys expire after 30 days unless you set a later date.",
+      "connected": "Connected as {{name}}",
+      "saved": "HomeBox key saved"
     },
     "household": {
       "description_one": "{{count}} person shares the household. New warranties are shared by default; you can make any of them private.",
@@ -453,6 +485,17 @@
     "tagColor": "Unknown tag colour",
     "tagExists": "A tag with that name already exists",
     "spaceForbidden": "You can't add warranties there",
+    "homeboxNotConfigured": "HomeBox isn't set up — add your API key in Settings",
+    "homeboxNeedsToken": "Enter your HomeBox API key",
+    "homeboxKeyRejected": "HomeBox rejected the API key. It may have expired — create a new one in HomeBox.",
+    "homeboxItemGone": "That item no longer exists in HomeBox",
+    "homeboxNeedsItem": "Choose a HomeBox item",
+    "homeboxAlreadyLinked": "This warranty is already linked to a HomeBox item",
+    "homeboxBusy": "This warranty is being linked to HomeBox right now. Try again in a moment.",
+    "homeboxLinkWarranty": "Warranty in Warranteed",
+    "homeboxLinkReceipt": "Receipt in Paperless: {{name}}",
+    "homeboxOrder": "Order number: {{number}}",
+    "homeboxSerials": "Serial numbers: {{list}}",
     "testTitle": "Warranteed test",
     "testBody": "Notifications are working. You'll be reminded before warranties expire."
   },

@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { AttachmentsPanel } from "@/components/Attachments";
+import { HomeBoxCard } from "@/components/HomeBox";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,8 @@ export const WarrantyDetail = () => {
               </Detail>
             )}
           </Card>
+
+          <HomeBoxCard warranty={w} />
 
           {w.notes && (
             <Card className="p-4">

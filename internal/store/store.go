@@ -266,6 +266,7 @@ type Settings struct {
 	PaperlessURL       string `json:"paperlessUrl"`
 	PaperlessPublicURL string `json:"paperlessPublicUrl"`
 	PaperlessToken     string `json:"-"`
+	HomeBoxToken       string `json:"-"`
 	PaperlessDefault   bool   `json:"paperlessDefault"`
 }
 
@@ -273,10 +274,10 @@ func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	var st Settings
 	err := s.db.QueryRowContext(ctx, `
 		SELECT date_format, currency, theme, language, browser_language, expiring_soon_days, notify_urls, notify_days,
-		       paperless_url, paperless_public_url, paperless_token, paperless_default
+		       paperless_url, paperless_public_url, paperless_token, paperless_default, homebox_token
 		FROM user_settings WHERE user_id = ?`, userID,
 	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.Language, &st.BrowserLanguage, &st.ExpiringSoonDays, &st.NotifyURLs,
-		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault)
+		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.HomeBoxToken)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -304,9 +305,10 @@ func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) er
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
 			date_format = ?, currency = ?, theme = ?, language = ?, expiring_soon_days = ?, notify_urls = ?,
-			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?
+			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?,
+			homebox_token = ?
 		WHERE user_id = ?`,
 		st.DateFormat, st.Currency, st.Theme, st.Language, st.ExpiringSoonDays, st.NotifyURLs,
-		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, userID)
+		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.HomeBoxToken, userID)
 	return err
 }

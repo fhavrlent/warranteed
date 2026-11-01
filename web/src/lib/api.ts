@@ -49,6 +49,22 @@ export interface Warranty {
   spaceId: number;
   spaceKind: SpaceKind;
   addedBy: { id: number; name: string };
+  /** The linked HomeBox item, if any. */
+  homebox: HomeBoxLink | null;
+}
+
+export interface HomeBoxLink {
+  id: string;
+  /** As printed on HomeBox labels, e.g. "000-123". */
+  assetId: string;
+}
+
+export interface HomeBoxItem {
+  id: string;
+  name: string;
+  assetId: string;
+  /** Name of the location it's in, or "". */
+  location: string;
 }
 
 export type SpaceKind = "personal" | "household" | "custom";
@@ -109,6 +125,11 @@ export interface Settings {
   /** Languages the server has translations for. */
   languages: string[];
   timezone: string;
+  /** The server's HomeBox (HOMEBOX_PUBLIC_URL), empty if none. */
+  homeboxServerUrl: string;
+  hasHomeboxToken: boolean;
+  /** HomeBox is set up and the user has an API key. */
+  homeboxEnabled: boolean;
 }
 
 export type SettingsInput = Omit<
@@ -124,7 +145,10 @@ export type SettingsInput = Omit<
   | "dateFormats"
   | "languages"
   | "timezone"
-> & { paperlessToken?: string };
+  | "homeboxServerUrl"
+  | "hasHomeboxToken"
+  | "homeboxEnabled"
+> & { paperlessToken?: string; homeboxToken?: string };
 
 export interface User {
   id: number;
@@ -231,6 +255,8 @@ export const api = {
     request<{ ok: boolean }>("POST", "/api/settings/test-notification", { notifyUrls }),
   testPaperless: (url: string, token?: string) =>
     request<PaperlessInfo>("POST", "/api/settings/test-paperless", { url, token }),
+  testHomebox: (token?: string) =>
+    request<{ name: string; email: string }>("POST", "/api/settings/test-homebox", { token }),
 
   warranties: () => request<Warranty[]>("GET", "/api/warranties"),
   warranty: (id: number) => request<Warranty>("GET", `/api/warranties/${id}`),
@@ -254,6 +280,14 @@ export const api = {
   deleteAttachment: (id: number) => request<undefined>("DELETE", `/api/attachments/${id}`),
   retryAttachment: (id: number) => request<Attachment>("POST", `/api/attachments/${id}/retry`),
   searchPaperless: (q: string) => request<PaperlessDoc[]>("GET", `/api/paperless/search?q=${encodeURIComponent(q)}`),
+
+  homeboxLocations: () => request<HomeBoxItem[]>("GET", "/api/homebox/locations"),
+  searchHomebox: (q: string) => request<HomeBoxItem[]>("GET", `/api/homebox/search?q=${encodeURIComponent(q)}`),
+  createHomeboxItem: (warrantyId: number, locationId: string) =>
+    request<Warranty>("POST", `/api/warranties/${warrantyId}/homebox`, { locationId }),
+  linkHomeboxItem: (warrantyId: number, itemId: string) =>
+    request<Warranty>("PUT", `/api/warranties/${warrantyId}/homebox`, { itemId }),
+  unlinkHomebox: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/homebox`),
 
   spaces: () => request<Space[]>("GET", "/api/spaces"),
   moveAllToSpace: (spaceId: number) => request<{ moved: number }>("POST", `/api/spaces/${spaceId}/move-all`),

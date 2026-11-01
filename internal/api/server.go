@@ -10,6 +10,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/auth"
@@ -28,6 +29,8 @@ type Server struct {
 	files    *Files
 	assets   fs.FS
 	version  string
+	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
+	homeboxBusy sync.Map
 }
 
 func New(cfg *config.Config, st *store.Store, a *auth.Auth, n *notify.Notifier, files *Files, assets fs.FS, version string) *Server {
@@ -53,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /api/settings", s.putSettings)
 	api.HandleFunc("POST /api/settings/test-notification", s.testNotification)
 	api.HandleFunc("POST /api/settings/test-paperless", s.testPaperless)
+	api.HandleFunc("POST /api/settings/test-homebox", s.testHomeBox)
 
 	api.HandleFunc("GET /api/warranties", s.listWarranties)
 	api.HandleFunc("POST /api/warranties", s.createWarranty)
@@ -69,6 +73,12 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PATCH /api/attachments/{id}", s.patchAttachment)
 	api.HandleFunc("DELETE /api/attachments/{id}", s.deleteAttachment)
 	api.HandleFunc("POST /api/attachments/{id}/retry", s.retryAttachment)
+
+	api.HandleFunc("POST /api/warranties/{id}/homebox", s.createHomeBoxItem)
+	api.HandleFunc("PUT /api/warranties/{id}/homebox", s.linkHomeBoxItem)
+	api.HandleFunc("DELETE /api/warranties/{id}/homebox", s.unlinkHomeBox)
+	api.HandleFunc("GET /api/homebox/search", s.searchHomeBox)
+	api.HandleFunc("GET /api/homebox/locations", s.homeboxLocations)
 
 	api.HandleFunc("GET /api/paperless/search", s.searchPaperless)
 	api.HandleFunc("GET /api/paperless/documents/{doc}/thumb", s.paperlessThumb)

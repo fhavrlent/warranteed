@@ -29,6 +29,7 @@ type Config struct {
 
 	OIDC      OIDC
 	Paperless Paperless
+	HomeBox   HomeBox
 
 	// Secret derives the key that encrypts stored refresh tokens. When empty,
 	// a key is generated in DataDir/secret.key.
@@ -61,6 +62,13 @@ type Paperless struct {
 	URL       string
 	PublicURL string
 	Token     string
+}
+
+// HomeBox is set by the admin only, so users can't point the server at
+// addresses of their choosing; each user brings their own API key.
+type HomeBox struct {
+	URL       string
+	PublicURL string
 }
 
 func (c *Config) Secure() bool { return c.AppURL.Scheme == "https" }
@@ -117,10 +125,17 @@ func Load() (*Config, error) {
 			PublicURL: strings.TrimSuffix(os.Getenv("PAPERLESS_PUBLIC_URL"), "/"),
 			Token:     os.Getenv("PAPERLESS_TOKEN"),
 		},
+		HomeBox: HomeBox{
+			URL:       strings.TrimSuffix(os.Getenv("HOMEBOX_URL"), "/"),
+			PublicURL: strings.TrimSuffix(os.Getenv("HOMEBOX_PUBLIC_URL"), "/"),
+		},
 	}
 	c.FilesDir = env("WARRANTEED_FILES_DIR", filepath.Join(c.DataDir, "files"))
 	if c.Paperless.PublicURL == "" {
 		c.Paperless.PublicURL = c.Paperless.URL
+	}
+	if c.HomeBox.PublicURL == "" {
+		c.HomeBox.PublicURL = c.HomeBox.URL
 	}
 
 	if c.OIDC.Issuer == "" && !c.DevLogin {

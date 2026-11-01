@@ -142,6 +142,8 @@ export const Warranties = () => {
           w.notes,
           ...w.serialNumbers,
           ...w.tags.map((tg) => tg.name),
+          // The asset ID on a HomeBox label finds the warranty too.
+          w.homebox?.assetId ?? "",
         ].join("\u0000"),
       );
       scores.set(w.id, score);
