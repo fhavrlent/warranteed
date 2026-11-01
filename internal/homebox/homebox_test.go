@@ -1,0 +1,85 @@
+package homebox
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+// The current item as HomeBox returns it, with related records as objects.
+const storedItem = `{
+	"id": "item-1", "assetId": "000-007", "name": "Dishwasher", "quantity": 1, "notes": "kept",
+	"serialNumber": "", "purchaseDate": "", "purchasePrice": 0, "locationId": "loc-1",
+	"parent": {"id": "loc-1", "name": "Kitchen"},
+	"entityType": {"id": "type-item", "name": "Item"},
+	"tags": [{"id": "tag-a"}, {"id": "tag-b"}],
+	"fields": [{"name": "Colour", "type": "text", "textValue": "white"}],
+	"attachments": []
+}`
+
+func TestUpdateKeepsOtherFields(t *testing.T) {
+	var sent map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			w.Write([]byte(storedItem))
+		case http.MethodPut:
+			json.NewDecoder(r.Body).Decode(&sent)
+			w.Write([]byte(storedItem))
+		}
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "key").Update(context.Background(), "item-1", func(it *Item) {
+		it.SerialNumber = "SN-1"
+		it.PurchaseDate = "2025-03-01"
+		it.PurchasePrice = 17490
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"serialNumber": "SN-1", "purchaseDate": "2025-03-01", "purchasePrice": 17490.0,
+		"notes": "kept", "assetId": "000-007", "locationId": "loc-1",
+		"parentId": "loc-1", "entityTypeId": "type-item",
+	}
+	for k, v := range want {
+		if sent[k] != v {
+			t.Errorf("%s = %v, want %v", k, sent[k], v)
+		}
+	}
+	if tags, _ := sent["tagIds"].([]any); len(tags) != 2 || tags[0] != "tag-a" {
+		t.Errorf("tagIds = %v", sent["tagIds"])
+	}
+	if fields, _ := sent["fields"].([]any); len(fields) != 1 {
+		t.Errorf("custom fields were dropped: %v", sent["fields"])
+	}
+}
+
+func TestErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/entities/missing" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	var he *Error
+	_, err := New(srv.URL, "expired").Self(context.Background())
+	if !errors.As(err, &he) || !he.Unauthorized() {
+		t.Errorf("expected an unauthorized error, got %v", err)
+	}
+	_, err = New(srv.URL, "key").Get(context.Background(), "missing")
+	if !errors.As(err, &he) || !he.NotFound() {
+		t.Errorf("expected not found, got %v", err)
+	}
+}

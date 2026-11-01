@@ -24,6 +24,7 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 
 - Sign-in through an OpenID Connect provider (Pocket ID, Authentik, Keycloak, …). There are no local passwords.
 - Store receipts and manuals locally or in Paperless-ngx, or link documents already in Paperless.
+- Add warranties to your HomeBox inventory, or link them to items already there.
 - Expiry reminders via ntfy, Gotify, Discord, Telegram, email and other services.
 - Tags, serial numbers, archiving, search, CSV export and import.
 - Light and dark theme, usable on phones.
@@ -78,6 +79,12 @@ Set `PAPERLESS_URL` to your Paperless instance. Each user then connects with the
 
 Removing a Paperless attachment only unlinks it; the document stays in Paperless.
 
+## HomeBox
+
+With [HomeBox](https://homebox.software) (v0.27 or later), a warranty can be added to your inventory or linked to an item that's already there. Set `HOMEBOX_URL` to your HomeBox instance, and `HOMEBOX_PUBLIC_URL` if that's an internal address. Each user adds their own API key under **Settings → HomeBox** (in HomeBox: *Profile → API keys*). Keys expire after 30 days unless you give them a later date.
+
+On a warranty, **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, plus links back to the warranty and to its receipts in Paperless. **Link existing item** searches HomeBox instead and only fills in fields that are empty. The warranty then shows the item's asset ID, the number on HomeBox labels, and searching for it in Warranteed finds the warranty.
+
 ## Reminders
 
 Under **Settings → Reminders**, add one or more [Shoutrrr URLs](https://shoutrrr.nickfedor.com/latest/services/overview/) and the number of days before expiry to send a reminder (e.g. `30, 7`). Reminders are checked once a day after `WARRANTEED_NOTIFY_HOUR` in the `TZ` timezone. Each reminder is sent once.
@@ -108,6 +115,8 @@ smtp://user:password@smtp.example.com:587/?from=warranty@example.com&to=me@examp
 | `PAPERLESS_URL` | | Paperless-ngx URL |
 | `PAPERLESS_TOKEN` | | API token used for admins only |
 | `PAPERLESS_PUBLIC_URL` | `PAPERLESS_URL` | Paperless URL used for browser links |
+| `HOMEBOX_URL` | | HomeBox URL |
+| `HOMEBOX_PUBLIC_URL` | `HOMEBOX_URL` | HomeBox URL used for browser links |
 | `TZ` | | Timezone |
 | `WARRANTEED_NOTIFY_HOUR` | `9` | Hour (0–23) after which reminders are sent |
 | `WARRANTEED_NOTIFY_ALLOWED_HOSTS` | | Comma-separated hosts non-admins may use with self-hosted notification services |

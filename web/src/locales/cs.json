@@ -285,6 +285,29 @@
     "noResults": "Žádné dokumenty nenalezeny.",
     "alreadyLinked": "připojeno"
   },
+  "homebox": {
+    "assetId": "ID majetku",
+    "open": "Otevřít v HomeBoxu",
+    "unlink": "Odpojit",
+    "unlinkTitle": "Odpojit od HomeBoxu?",
+    "unlinkText": "Záruka zapomene svou položku v HomeBoxu. Položka v HomeBoxu zůstane.",
+    "unlinked": "Odpojeno od HomeBoxu",
+    "add": "Přidat do HomeBoxu",
+    "addTitle": "Přidat do HomeBoxu",
+    "addDescription": "Vytvoří položku se sériovým číslem, údaji o nákupu a záruce a s odkazy zpět na tuto záruku a její účtenky v Paperless.",
+    "location": "Umístění",
+    "noLocation": "Bez umístění",
+    "create": "Vytvořit položku",
+    "created": "Přidáno do HomeBoxu",
+    "linkExisting": "Propojit s existující položkou",
+    "linkTitle": "Propojit s položkou v HomeBoxu",
+    "linkDescription": "Vyberte položku, ke které záruka patří. Doplní se prázdné údaje o nákupu a záruce; nic, co tam už je, se nezmění.",
+    "search": "Hledat podle názvu, sériového čísla nebo #ID majetku",
+    "noResults": "Žádné položky nenalezeny.",
+    "linkButton": "Propojit",
+    "linked": "Propojeno s HomeBoxem",
+    "connectHint": "Přidejte svůj API klíč do HomeBoxu a záruku propojíte s položkou."
+  },
   "upload": {
     "title": "Přidat dokumenty",
     "description": "Řekněte, co je každý soubor zač, ať ho snadno najdete, až budete reklamovat.",
@@ -361,6 +384,15 @@
       "saved": "Připojení k Paperless uloženo",
       "default": "Ukládat dokumenty do Paperless",
       "defaultHint": "Fotky produktů zůstávají vždy tady."
+    },
+    "homebox": {
+      "description": "Udržujte inventář v HomeBoxu v souladu: přidejte produkt ze záruky jako položku, nebo ho propojte s položkou, která už tam je.",
+      "notSetUp": "HomeBox na tomto serveru není nastavený. Správce ho může zapnout pomocí <code>HOMEBOX_URL</code>.",
+      "key": "API klíč",
+      "keySaved": "Klíč je uložený. Pro výměnu zadejte nový.",
+      "keyHint": "V HomeBoxu: Profil → API klíče. Klíče vyprší po 30 dnech, pokud nenastavíte pozdější datum.",
+      "connected": "Připojeno jako {{name}}",
+      "saved": "Klíč k HomeBoxu uložen"
     },
     "household": {
       "description_one": "Domácnost sdílí {{count}} člověk. Nové záruky se sdílejí automaticky; kteroukoli můžete nastavit jako soukromou.",
@@ -495,6 +527,16 @@
     "tagColor": "Neznámá barva štítku",
     "tagExists": "Štítek s tímto názvem už existuje",
     "spaceForbidden": "Sem nemůžete přidávat záruky",
+    "homeboxNotConfigured": "HomeBox není nastavený — přidejte svůj API klíč v Nastavení",
+    "homeboxNeedsToken": "Zadejte svůj API klíč do HomeBoxu",
+    "homeboxKeyRejected": "HomeBox odmítl API klíč. Možná vypršel — vytvořte v HomeBoxu nový.",
+    "homeboxItemGone": "Tato položka už v HomeBoxu neexistuje",
+    "homeboxNeedsItem": "Vyberte položku v HomeBoxu",
+    "homeboxAlreadyLinked": "Tato záruka už je propojená s položkou v HomeBoxu",
+    "homeboxLinkWarranty": "Záruka ve Warranteed",
+    "homeboxLinkReceipt": "Účtenka v Paperless: {{name}}",
+    "homeboxOrder": "Číslo objednávky: {{number}}",
+    "homeboxSerials": "Sériová čísla: {{list}}",
     "testTitle": "Warranteed – test",
     "testBody": "Oznámení fungují. Než záruka vyprší, dostanete připomínku."
   },

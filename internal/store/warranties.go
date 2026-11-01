@@ -38,6 +38,13 @@ type Warranty struct {
 	SpaceID         int64        `json:"spaceId"`
 	SpaceKind       string       `json:"spaceKind"`
 	AddedBy         UserRef      `json:"addedBy"`
+	HomeBox         *HomeBoxLink `json:"homebox"`
+}
+
+// HomeBoxLink is the HomeBox item a warranty belongs to.
+type HomeBoxLink struct {
+	ID      string `json:"id"`
+	AssetID string `json:"assetId"`
 }
 
 // UserRef names a user without exposing their details.
@@ -154,18 +161,23 @@ const visibleTo = `w.space_id IN (SELECT space_id FROM space_members WHERE user_
 
 const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_number, w.purchase_date,
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
-	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, '')`
+	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
+	w.homebox_id, w.homebox_asset_id`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
 func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	var w Warranty
+	var homeboxID, homeboxAssetID string
 	err := row.Scan(&w.ID, &w.ProductName, &w.Brand, &w.Model, &w.Vendor, &w.OrderNumber, &w.PurchaseDate,
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
-		&w.AddedBy.ID, &w.AddedBy.Name)
+		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID)
 	if err != nil {
 		return nil, err
+	}
+	if homeboxID != "" {
+		w.HomeBox = &HomeBoxLink{ID: homeboxID, AssetID: homeboxAssetID}
 	}
 	w.SerialNumbers, w.Tags, w.Attachments = []string{}, []Tag{}, []Attachment{}
 	return &w, nil
@@ -408,6 +420,24 @@ func pruneTags(ctx context.Context, tx *sql.Tx, spaceID int64) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM tags WHERE space_id = ?
 		AND id NOT IN (SELECT tag_id FROM warranty_tags)`, spaceID)
 	return err
+}
+
+// SetHomeBox links a warranty to a HomeBox item; nil removes the link.
+func (s *Store) SetHomeBox(ctx context.Context, userID, id int64, link *HomeBoxLink) error {
+	itemID, assetID := "", ""
+	if link != nil {
+		itemID, assetID = link.ID, link.AssetID
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE warranties AS w SET homebox_id = ?, homebox_asset_id = ?, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
+		itemID, assetID, now(), userID, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool) error {

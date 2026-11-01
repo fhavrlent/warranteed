@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
+  Boxes,
   CheckCircle2,
   Database,
   Download,
@@ -62,6 +63,7 @@ export const Settings = () => {
         <Display s={settings} />
         <Notifications s={settings} />
         <Paperless s={settings} />
+        <HomeBox s={settings} />
         <Household />
         <Tags />
         <Data />
@@ -98,7 +100,7 @@ const Section = ({
 /** Saves a partial change immediately and reports errors. */
 const useAutoSave = (s: SettingsT) => {
   const save = useSaveSettings();
-  return async (patch: Partial<SettingsT> & { paperlessToken?: string }) => {
+  return async (patch: Partial<SettingsT> & { paperlessToken?: string; homeboxToken?: string }) => {
     try {
       await save.mutateAsync({ ...s, ...patch });
       return true;
@@ -437,6 +439,83 @@ const Paperless = ({ s }: { s: SettingsT }) => {
           onCheckedChange={(v) => update({ paperlessDefault: v })}
         />
       </label>
+    </Section>
+  );
+};
+
+const HomeBox = ({ s }: { s: SettingsT }) => {
+  const { t } = useTranslation();
+  const update = useAutoSave(s);
+  const [token, setToken] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const test = async () => {
+    setTesting(true);
+    setStatus(null);
+    try {
+      const user = await api.testHomebox(token || undefined);
+      setStatus(t("settings.homebox.connected", { name: user.name || user.email }));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const save = async () => {
+    if (await update({ homeboxToken: token })) {
+      setToken("");
+      toast.success(t("settings.homebox.saved"));
+    }
+  };
+
+  return (
+    <Section id="homebox" icon={<Boxes />} title="HomeBox" description={t("settings.homebox.description")}>
+      {!s.homeboxServerUrl ? (
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-fg-muted">
+          <Trans i18nKey="settings.homebox.notSetUp" components={{ code: <code /> }} />
+        </p>
+      ) : (
+        <>
+          <Field
+            label={t("settings.homebox.key")}
+            hint={s.hasHomeboxToken ? t("settings.homebox.keySaved") : t("settings.homebox.keyHint")}
+          >
+            <Input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={s.hasHomeboxToken ? "••••••••••••" : ""}
+              autoComplete="off"
+            />
+          </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={test} loading={testing} disabled={!token && !s.hasHomeboxToken}>
+              {t("settings.paperless.test")}
+            </Button>
+            <Button onClick={save} disabled={!token}>
+              {t("common.save")}
+            </Button>
+            {s.hasHomeboxToken && (
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  if (await update({ homeboxToken: "" })) setStatus(null);
+                }}
+              >
+                {t("settings.paperless.disconnect")}
+              </Button>
+            )}
+          </div>
+          {status && (
+            <p className="flex items-center gap-2 text-[13px] text-ok">
+              <CheckCircle2 className="size-4" />
+              {status}
+            </p>
+          )}
+        </>
+      )}
     </Section>
   );
 };
