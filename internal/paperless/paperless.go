@@ -510,11 +510,20 @@ type CustomField struct {
 }
 
 var (
-	// fieldIDMu is held through a whole lookup, so two callers can't both
-	// miss the field and create it twice.
-	fieldIDMu sync.Mutex
+	fieldIDMu sync.Mutex // guards fieldIDs only, briefly
 	fieldIDs  = map[string]int64{}
+	// fieldLocks has a mutex per instance and field name, held through a whole
+	// lookup so two callers can't both miss the field and create it twice. A
+	// slow Paperless only holds up lookups of its own fields.
+	fieldLocks sync.Map
 )
+
+func cachedFieldID(key string) (int64, bool) {
+	fieldIDMu.Lock()
+	defer fieldIDMu.Unlock()
+	id, ok := fieldIDs[key]
+	return id, ok
+}
 
 // FieldTypeError means a custom field with the wanted name exists but holds
 // another kind of value, so it can't be used.
@@ -531,10 +540,15 @@ func (e *FieldTypeError) Error() string {
 // if create is set, otherwise 0 is returned. A field of another type gives a
 // *FieldTypeError.
 func (c *Client) CustomFieldID(ctx context.Context, name, dataType string, create bool) (int64, error) {
-	fieldIDMu.Lock()
-	defer fieldIDMu.Unlock()
 	key := c.BaseURL + "\x00" + strings.ToLower(name)
-	if id, ok := fieldIDs[key]; ok {
+	if id, ok := cachedFieldID(key); ok {
+		return id, nil
+	}
+	lock, _ := fieldLocks.LoadOrStore(key, new(sync.Mutex))
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
+	// Another caller may have found or created it while we waited.
+	if id, ok := cachedFieldID(key); ok {
 		return id, nil
 	}
 	var page struct {
@@ -573,7 +587,9 @@ func (c *Client) CustomFieldID(ctx context.Context, name, dataType string, creat
 		id = created.ID
 	}
 	if id != 0 {
+		fieldIDMu.Lock()
 		fieldIDs[key] = id
+		fieldIDMu.Unlock()
 	}
 	return id, nil
 }
