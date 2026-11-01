@@ -109,6 +109,11 @@ export interface Settings {
   /** Address the browser uses for Paperless links (admins), empty = the Paperless URL. */
   paperlessPublicUrl: string;
   paperlessDefault: boolean;
+  /** Write links to the warranty and HomeBox item into the user's Paperless documents. */
+  paperlessBacklinks: boolean;
+  /** Names of the custom fields those links go in. */
+  paperlessWarrantyField: string;
+  paperlessHomeboxField: string;
   hasPaperlessToken: boolean;
   /** The server's Paperless instance (PAPERLESS_URL), empty if none. */
   paperlessServerUrl: string;
@@ -148,6 +153,8 @@ export type SettingsInput = Omit<
   | "homeboxServerUrl"
   | "hasHomeboxToken"
   | "homeboxEnabled"
+  | "paperlessWarrantyField"
+  | "paperlessHomeboxField"
 > & { paperlessToken?: string; homeboxToken?: string };
 
 export interface User {
@@ -279,6 +286,12 @@ export const api = {
     request<Attachment>("PATCH", `/api/attachments/${id}`, patch),
   deleteAttachment: (id: number) => request<undefined>("DELETE", `/api/attachments/${id}`),
   retryAttachment: (id: number) => request<Attachment>("POST", `/api/attachments/${id}/retry`),
+  syncPaperlessLinks: () =>
+    request<{
+      documents: number;
+      failed: number;
+      error?: { error: string; code?: string; params?: Record<string, unknown> };
+    }>("POST", "/api/paperless/links"),
   searchPaperless: (q: string) => request<PaperlessDoc[]>("GET", `/api/paperless/search?q=${encodeURIComponent(q)}`),
 
   homeboxLocations: () => request<HomeBoxItem[]>("GET", "/api/homebox/locations"),

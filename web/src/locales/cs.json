@@ -383,7 +383,18 @@
       "connected_other": "Připojeno k Paperless-ngx {{version}} (API v{{api}}) · {{count}} dokumentů",
       "saved": "Připojení k Paperless uloženo",
       "default": "Ukládat dokumenty do Paperless",
-      "defaultHint": "Fotky produktů zůstávají vždy tady."
+      "defaultHint": "Fotky produktů zůstávají vždy tady.",
+      "backlinks": "Odkazovat z dokumentů zpět na záruku",
+      "backlinksHint": "Vyplní u vašich dokumentů v Paperless pole s odkazem „{{warranty}}“. Token musí smět upravovat dokumenty.",
+      "backlinksHintHomebox": "Vyplní u vašich dokumentů v Paperless pole s odkazy „{{warranty}}“ a „{{homebox}}“. Token musí smět upravovat dokumenty.",
+      "backlinksDone_one": "Odkazy aktualizovány u {{count}} dokumentu",
+      "backlinksDone_few": "Odkazy aktualizovány u {{count}} dokumentů",
+      "backlinksDone_many": "Odkazy aktualizovány u {{count}} dokumentu",
+      "backlinksDone_other": "Odkazy aktualizovány u {{count}} dokumentů",
+      "backlinksFailed_one": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentu",
+      "backlinksFailed_few": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentů",
+      "backlinksFailed_many": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentu",
+      "backlinksFailed_other": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentů"
     },
     "homebox": {
       "description": "Udržujte inventář v HomeBoxu v souladu: přidejte produkt ze záruky jako položku, nebo ho propojte s položkou, která už tam je.",
@@ -489,6 +500,8 @@
     "paperlessNeedsUrlToken": "Zadejte adresu Paperless a API token",
     "paperlessNotConfigured": "Paperless není nastavený — nastavte ho v Nastavení",
     "paperlessTokenRejected": "Paperless odmítl API token",
+    "paperlessCantEdit": "Váš token do Paperless nemůže upravovat dokumenty ani vytvářet vlastní pole",
+    "paperlessFieldType": "V Paperless už existuje pole „{{name}}“, které není typu URL. Přejmenujte ho, nebo nastavte jiný název přes PAPERLESS_WARRANTY_FIELD či PAPERLESS_HOMEBOX_FIELD.",
     "paperlessNoType": "Tento typ souboru Paperless neumí uložit — uložte ho tady",
     "paperlessFakeType": "„{{name}}“ ve skutečnosti není soubor {{ext}}, Paperless ho proto nepřijme",
     "paperlessBadType": "Paperless neumí uložit soubor typu {{ext}} — uložte ho tady",

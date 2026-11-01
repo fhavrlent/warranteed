@@ -316,6 +316,29 @@ const Paperless = ({ s }: { s: SettingsT }) => {
     }
   };
 
+  const [syncing, setSyncing] = useState(false);
+
+  // Turning links on adds them to documents already attached to warranties.
+  const setBacklinks = async (on: boolean) => {
+    if (!(await update({ paperlessBacklinks: on })) || !on) return;
+    setSyncing(true);
+    try {
+      const res = await api.syncPaperlessLinks();
+      if (res.failed > 0) {
+        const why = res.error ? translateServer(res.error.error, res.error.code, res.error.params) : "";
+        toast.error(t("settings.paperless.backlinksFailed", { count: res.documents, failed: res.failed }), {
+          description: why,
+        });
+      } else {
+        toast.success(t("settings.paperless.backlinksDone", { count: res.documents }));
+      }
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const saveConnection = async () => {
     const ok = await update({
       paperlessUrl: url,
@@ -437,6 +460,29 @@ const Paperless = ({ s }: { s: SettingsT }) => {
           checked={s.paperlessDefault}
           disabled={!s.paperlessEnabled}
           onCheckedChange={(v) => update({ paperlessDefault: v })}
+        />
+      </label>
+      <label
+        className={cn(
+          "flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-3",
+          !s.paperlessEnabled && "opacity-50",
+        )}
+      >
+        <span>
+          <span className="block text-sm font-medium">{t("settings.paperless.backlinks")}</span>
+          <span className="block text-xs text-fg-subtle">
+            {s.homeboxServerUrl
+              ? t("settings.paperless.backlinksHintHomebox", {
+                  warranty: s.paperlessWarrantyField,
+                  homebox: s.paperlessHomeboxField,
+                })
+              : t("settings.paperless.backlinksHint", { warranty: s.paperlessWarrantyField })}
+          </span>
+        </span>
+        <Switch
+          checked={s.paperlessBacklinks}
+          disabled={!s.paperlessEnabled || syncing}
+          onCheckedChange={(v) => void setBacklinks(v)}
         />
       </label>
     </Section>

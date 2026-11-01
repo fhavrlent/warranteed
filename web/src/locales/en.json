@@ -355,7 +355,14 @@
       "connected_other": "Connected to Paperless-ngx {{version}} (API v{{api}}) · {{count}} documents",
       "saved": "Paperless connection saved",
       "default": "Upload documents to Paperless by default",
-      "defaultHint": "Product photos always stay here."
+      "defaultHint": "Product photos always stay here.",
+      "backlinks": "Link documents back to their warranty",
+      "backlinksHint": "Fills a “{{warranty}}” link field on your documents in Paperless. Your token must be allowed to edit documents.",
+      "backlinksHintHomebox": "Fills the “{{warranty}}” and “{{homebox}}” link fields on your documents in Paperless. Your token must be allowed to edit documents.",
+      "backlinksDone_one": "Links updated on {{count}} document",
+      "backlinksDone_other": "Links updated on {{count}} documents",
+      "backlinksFailed_one": "Couldn't update links on {{failed}} of {{count}} document",
+      "backlinksFailed_other": "Couldn't update links on {{failed}} of {{count}} documents"
     },
     "homebox": {
       "description": "Keep your inventory in HomeBox in step: add a warranty's product as an item, or link it to one that's already there.",
@@ -447,6 +454,8 @@
     "paperlessNeedsUrlToken": "Enter the Paperless URL and API token",
     "paperlessNotConfigured": "Paperless is not configured — set it up in Settings",
     "paperlessTokenRejected": "Paperless rejected the API token",
+    "paperlessCantEdit": "Your Paperless token can't edit documents or create custom fields",
+    "paperlessFieldType": "Paperless already has a field called “{{name}}” that isn't a URL field. Rename it, or choose another name with PAPERLESS_WARRANTY_FIELD or PAPERLESS_HOMEBOX_FIELD.",
     "paperlessNoType": "Paperless can't store this type of file — store it here instead",
     "paperlessFakeType": "“{{name}}” isn't really a {{ext}} file, so Paperless can't take it",
     "paperlessBadType": "Paperless can't store {{ext}} files — store it here instead",

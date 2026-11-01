@@ -116,3 +116,83 @@ func (s *Store) PendingPaperless(ctx context.Context) ([]PendingPaperless, error
 	}
 	return out, rows.Err()
 }
+
+// docOwner is whose Paperless connection an attachment (alias a, on warranty
+// w) was stored through.
+const docOwner = `COALESCE(a.added_by, w.user_id)`
+
+// PaperlessDoc is a document in one user's Paperless.
+type PaperlessDoc struct {
+	Owner int64
+	DocID int64
+}
+
+func (s *Store) paperlessDocs(ctx context.Context, where string, arg int64) ([]PaperlessDoc, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT `+docOwner+`, a.paperless_doc_id
+		FROM attachments a JOIN warranties w ON w.id = a.warranty_id
+		WHERE a.storage = 'paperless' AND a.paperless_doc_id IS NOT NULL AND `+where, arg)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PaperlessDoc
+	for rows.Next() {
+		var d PaperlessDoc
+		if err := rows.Scan(&d.Owner, &d.DocID); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// WarrantyPaperlessDocs lists the Paperless documents attached to a warranty.
+func (s *Store) WarrantyPaperlessDocs(ctx context.Context, warrantyID int64) ([]PaperlessDoc, error) {
+	return s.paperlessDocs(ctx, `w.id = ?`, warrantyID)
+}
+
+// OwnerPaperlessDocs lists the documents attached through a user's Paperless.
+func (s *Store) OwnerPaperlessDocs(ctx context.Context, owner int64) ([]PaperlessDoc, error) {
+	return s.paperlessDocs(ctx, docOwner+` = ?`, owner)
+}
+
+// AttachmentPaperlessDoc returns the Paperless document an attachment holds,
+// if any.
+func (s *Store) AttachmentPaperlessDoc(ctx context.Context, attachmentID int64) (*PaperlessDoc, error) {
+	docs, err := s.paperlessDocs(ctx, `a.id = ?`, attachmentID)
+	if err != nil || len(docs) == 0 {
+		return nil, err
+	}
+	return &docs[0], nil
+}
+
+// DocumentRef is one attachment of a Paperless document: whose Paperless it
+// came through and which warranty holds it.
+type DocumentRef struct {
+	Owner      int64
+	WarrantyID int64
+	HomeBoxID  string
+}
+
+// DocumentRefs lists every attachment of Paperless document docID, oldest
+// warranty first. Document IDs are per Paperless instance, so callers keep
+// only the owners whose Paperless is the one they mean.
+func (s *Store) DocumentRefs(ctx context.Context, docID int64) ([]DocumentRef, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT `+docOwner+`, w.id, w.homebox_id
+		FROM attachments a JOIN warranties w ON w.id = a.warranty_id
+		WHERE a.storage = 'paperless' AND a.paperless_doc_id = ?
+		ORDER BY w.id`, docID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DocumentRef
+	for rows.Next() {
+		var d DocumentRef
+		if err := rows.Scan(&d.Owner, &d.WarrantyID, &d.HomeBoxID); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
