@@ -33,6 +33,8 @@ type Server struct {
 	homeboxBusy sync.Map
 	// backlinks tracks link updates running in the background.
 	backlinks sync.WaitGroup
+	// docLocks has a mutex per Paperless document whose links are being updated.
+	docLocks sync.Map
 }
 
 func New(cfg *config.Config, st *store.Store, a *auth.Auth, n *notify.Notifier, files *Files, assets fs.FS, version string) *Server {

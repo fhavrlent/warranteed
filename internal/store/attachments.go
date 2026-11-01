@@ -166,27 +166,30 @@ func (s *Store) AttachmentPaperlessDoc(ctx context.Context, attachmentID int64) 
 	return &docs[0], nil
 }
 
-// DocumentWarranty is a warranty a Paperless document is attached to.
-type DocumentWarranty struct {
+// DocumentRef is one attachment of a Paperless document: whose Paperless it
+// came through and which warranty holds it.
+type DocumentRef struct {
+	Owner      int64
 	WarrantyID int64
 	HomeBoxID  string
 }
 
-// DocumentWarranties lists the warranties a document in owner's Paperless is
-// attached to, oldest first.
-func (s *Store) DocumentWarranties(ctx context.Context, doc PaperlessDoc) ([]DocumentWarranty, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT w.id, w.homebox_id
+// DocumentRefs lists every attachment of Paperless document docID, oldest
+// warranty first. Document IDs are per Paperless instance, so callers keep
+// only the owners whose Paperless is the one they mean.
+func (s *Store) DocumentRefs(ctx context.Context, docID int64) ([]DocumentRef, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT `+docOwner+`, w.id, w.homebox_id
 		FROM attachments a JOIN warranties w ON w.id = a.warranty_id
-		WHERE a.storage = 'paperless' AND a.paperless_doc_id = ? AND `+docOwner+` = ?
-		ORDER BY w.id`, doc.DocID, doc.Owner)
+		WHERE a.storage = 'paperless' AND a.paperless_doc_id = ?
+		ORDER BY w.id`, docID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []DocumentWarranty
+	var out []DocumentRef
 	for rows.Next() {
-		var d DocumentWarranty
-		if err := rows.Scan(&d.WarrantyID, &d.HomeBoxID); err != nil {
+		var d DocumentRef
+		if err := rows.Scan(&d.Owner, &d.WarrantyID, &d.HomeBoxID); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

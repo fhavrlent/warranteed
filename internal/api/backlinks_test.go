@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/fhavrlent/warranteed/internal/config"
 	"github.com/fhavrlent/warranteed/internal/db"
@@ -201,4 +203,122 @@ func TestBacklinksOff(t *testing.T) {
 	if pl.patches != 0 || len(pl.fields) != 0 {
 		t.Error("Paperless was changed for a user who didn't turn links on")
 	}
+}
+
+// Alice and Bob use the same Paperless (the server's) with their own tokens
+// and both attached receipt 5: it links to the older warranty, and keeps
+// linking to what's still attached when one of them detaches it.
+func TestBacklinksSharedDocument(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	st := store.New(database)
+	pl := &fakePaperless{fields: map[string]int64{}, values: map[int64][]paperless.CustomField{}}
+	plServer := httptest.NewServer(pl)
+	t.Cleanup(plServer.Close)
+
+	months := 24
+	doc := int64(5)
+	type person struct {
+		id       int64
+		warranty int64
+		att      *store.Attachment
+	}
+	join := func(name string, links bool) person {
+		u, _ := st.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: name, Name: name})
+		settings, _ := st.Settings(ctx, u.ID)
+		settings.PaperlessToken, settings.PaperlessBacklinks = name+"-token", links
+		st.SaveSettings(ctx, u.ID, settings)
+		wid, _ := st.CreateWarranty(ctx, u.ID, &store.WarrantyInput{ProductName: name + "'s grinder", PurchaseDate: "2025-03-01", WarrantyMonths: &months})
+		a := &store.Attachment{WarrantyID: wid, Kind: "purchase", Storage: store.StoragePaperless, Filename: "r.pdf",
+			PaperlessDocID: &doc, Status: store.StatusReady, AddedBy: &u.ID}
+		if err := st.CreateAttachment(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+		return person{u.ID, wid, a}
+	}
+	alice := join("alice", true)
+	bob := join("bob", false) // Bob never turned links on
+
+	appURL, _ := url.Parse("https://warranty.example.test")
+	cfg := &config.Config{AppURL: appURL, Paperless: config.Paperless{URL: plServer.URL, WarrantyField: "Warranty"}}
+	srv := New(cfg, st, nil, nil, nil, nil, "test")
+	sync := func(by int64) {
+		t.Helper()
+		if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: by, DocID: doc}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkTo := func(wid int64) string { return fmt.Sprintf("https://warranty.example.test/w/%d", wid) }
+
+	sync(bob.id) // Bob's attachment triggers it; Alice's credentials write it
+	if got := pl.value(doc, "Warranty"); got != linkTo(alice.warranty) {
+		t.Fatalf("link = %q, want Alice's older warranty", got)
+	}
+	st.DeleteAttachment(ctx, alice.att.ID)
+	sync(alice.id)
+	if got := pl.value(doc, "Warranty"); got != linkTo(bob.warranty) {
+		t.Errorf("after Alice detached: link = %q, want Bob's warranty", got)
+	}
+	st.DeleteAttachment(ctx, bob.att.ID)
+	sync(bob.id)
+	if got := pl.value(doc, "Warranty"); got != "" {
+		t.Errorf("after both detached: link = %q, want none", got)
+	}
+}
+
+// Updates of one document run one at a time.
+func TestBacklinksOneAtATime(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	st := store.New(database)
+	slow := &slowPaperless{fakePaperless: fakePaperless{fields: map[string]int64{}, values: map[int64][]paperless.CustomField{}}}
+	plServer := httptest.NewServer(slow)
+	t.Cleanup(plServer.Close)
+	alice, _ := st.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "alice", Name: "Alice"})
+	settings, _ := st.Settings(ctx, alice.ID)
+	settings.PaperlessURL, settings.PaperlessToken, settings.PaperlessBacklinks = plServer.URL, "token", true
+	st.SaveSettings(ctx, alice.ID, settings)
+	appURL, _ := url.Parse("https://warranty.example.test")
+	srv := New(&config.Config{AppURL: appURL, Paperless: config.Paperless{WarrantyField: "Warranty"}}, st, nil, nil, nil, nil, "test")
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() { srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: 9}) })
+	}
+	wg.Wait()
+	if slow.maxInFlight != 1 {
+		t.Errorf("document requests in flight at once: %d, want 1", slow.maxInFlight)
+	}
+}
+
+// slowPaperless takes a moment over document requests and records how many
+// overlap.
+type slowPaperless struct {
+	fakePaperless
+	gate                  sync.Mutex
+	inFlight, maxInFlight int
+}
+
+func (p *slowPaperless) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/documents/") {
+		p.gate.Lock()
+		p.inFlight++
+		p.maxInFlight = max(p.maxInFlight, p.inFlight)
+		p.gate.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		defer func() {
+			p.gate.Lock()
+			p.inFlight--
+			p.gate.Unlock()
+		}()
+	}
+	p.fakePaperless.ServeHTTP(w, r)
 }

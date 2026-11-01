@@ -313,3 +313,21 @@ func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) er
 		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, userID)
 	return err
 }
+
+// BacklinkUsers lists the users who turned on links in their Paperless documents.
+func (s *Store) BacklinkUsers(ctx context.Context) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM user_settings WHERE paperless_backlinks = 1 ORDER BY user_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/i18n"
@@ -23,19 +24,90 @@ import (
 // to the oldest warranty the document is attached to and the first HomeBox
 // item among its warranties, and are removed when there is none. A value
 // Warranteed didn't write, such as one a user typed in, is left alone.
+//
+// A document can be attached by several people using the same Paperless, so
+// every attachment through that instance counts, and the fields are written
+// with the credentials of someone on that Paperless who turned links on,
+// preferably doc.Owner, who triggered the update, then whoever has it
+// attached, then anyone else.
 func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) error {
-	st, err := s.store.Settings(ctx, doc.Owner)
-	if err != nil || !st.PaperlessBacklinks {
-		return err
-	}
 	pc, err := s.userPaperless(ctx, doc.Owner)
 	if err != nil || pc == nil {
 		return err
 	}
-	warranties, err := s.store.DocumentWarranties(ctx, doc)
+	// One update per document at a time, reading the latest state once it's
+	// its turn, so an older update can't finish last and win.
+	lock, _ := s.docLocks.LoadOrStore(fmt.Sprintf("%s\x00%d", pc.BaseURL, doc.DocID), new(sync.Mutex))
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
+
+	refs, err := s.store.DocumentRefs(ctx, doc.DocID)
 	if err != nil {
 		return err
 	}
+	// Owners whose Paperless is this one, and whether they turned links on.
+	type ownerInfo struct {
+		client *paperless.Client
+		on     bool
+	}
+	owners := map[int64]*ownerInfo{}
+	owner := func(uid int64) (*ownerInfo, error) {
+		if o, ok := owners[uid]; ok {
+			return o, nil
+		}
+		o := &ownerInfo{}
+		st, err := s.store.Settings(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		admin, err := s.store.IsAdmin(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		if c := s.paperlessFor(st, admin); c != nil && c.BaseURL == pc.BaseURL {
+			o.client, o.on = c, st.PaperlessBacklinks
+		}
+		owners[uid] = o
+		return o, nil
+	}
+	var warranties []store.DocumentRef
+	writer, err := owner(doc.Owner)
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		o, err := owner(ref.Owner)
+		if err != nil {
+			return err
+		}
+		if o.client == nil {
+			continue // the same ID in someone else's Paperless
+		}
+		warranties = append(warranties, ref)
+		if !writer.on && o.on {
+			writer = o
+		}
+	}
+	if !writer.on {
+		// Nobody with links on has it attached any more, but someone may have
+		// written links earlier that now need correcting or removing.
+		ids, err := s.store.BacklinkUsers(ctx)
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if o, err := owner(id); err != nil {
+				return err
+			} else if o.on {
+				writer = o
+				break
+			}
+		}
+	}
+	if !writer.on {
+		return nil
+	}
+	pc = writer.client
 
 	app := strings.TrimSuffix(s.cfg.AppURL.String(), "/")
 	wantWarranty, wantHomeBox := "", ""
