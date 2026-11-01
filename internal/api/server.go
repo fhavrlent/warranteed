@@ -10,6 +10,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/auth"
@@ -28,6 +29,8 @@ type Server struct {
 	files    *Files
 	assets   fs.FS
 	version  string
+	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
+	homeboxBusy sync.Map
 }
 
 func New(cfg *config.Config, st *store.Store, a *auth.Auth, n *notify.Notifier, files *Files, assets fs.FS, version string) *Server {

@@ -161,9 +161,11 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
   });
   const [picked, setPicked] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Only an item shown in the current results can be linked.
+  const pickedShown = picked !== null && (search.data ?? []).some((item) => item.id === picked);
 
   const link = async () => {
-    if (!picked) return;
+    if (!picked || !pickedShown) return;
     setSaving(true);
     try {
       await api.linkHomeboxItem(warranty.id, picked);
@@ -188,7 +190,7 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             {t("common.cancel")}
           </Button>
-          <Button onClick={link} loading={saving} disabled={!picked}>
+          <Button onClick={link} loading={saving} disabled={!pickedShown}>
             {t("homebox.linkButton")}
           </Button>
         </>
@@ -199,7 +201,10 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
         <Input
           data-autofocus
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPicked(null);
+          }}
           placeholder={t("homebox.search")}
           className="pl-9"
         />

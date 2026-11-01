@@ -533,6 +533,7 @@
     "homeboxItemGone": "Tato položka už v HomeBoxu neexistuje",
     "homeboxNeedsItem": "Vyberte položku v HomeBoxu",
     "homeboxAlreadyLinked": "Tato záruka už je propojená s položkou v HomeBoxu",
+    "homeboxBusy": "Tato záruka se právě propojuje s HomeBoxem. Zkuste to za chvíli znovu.",
     "homeboxLinkWarranty": "Záruka ve Warranteed",
     "homeboxLinkReceipt": "Účtenka v Paperless: {{name}}",
     "homeboxOrder": "Číslo objednávky: {{number}}",

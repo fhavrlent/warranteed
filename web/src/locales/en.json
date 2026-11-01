@@ -491,6 +491,7 @@
     "homeboxItemGone": "That item no longer exists in HomeBox",
     "homeboxNeedsItem": "Choose a HomeBox item",
     "homeboxAlreadyLinked": "This warranty is already linked to a HomeBox item",
+    "homeboxBusy": "This warranty is being linked to HomeBox right now. Try again in a moment.",
     "homeboxLinkWarranty": "Warranty in Warranteed",
     "homeboxLinkReceipt": "Receipt in Paperless: {{name}}",
     "homeboxOrder": "Order number: {{number}}",

@@ -30,6 +30,11 @@ const (
 
 type ctxKey struct{}
 
+// WithUser returns a context for requests made as user.
+func WithUser(ctx context.Context, user *store.User) context.Context {
+	return context.WithValue(ctx, ctxKey{}, user)
+}
+
 // UserFrom returns the authenticated user attached by Middleware.
 func UserFrom(ctx context.Context) *store.User {
 	u, _ := ctx.Value(ctxKey{}).(*store.User)
@@ -386,7 +391,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 		if admin != nil {
 			user.IsAdmin = *admin
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, user)))
+		next.ServeHTTP(w, r.WithContext(WithUser(r.Context(), user)))
 	})
 }
 

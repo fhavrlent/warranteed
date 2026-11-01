@@ -179,6 +179,13 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
+	// One add or link per warranty at a time, so two people (or tabs) can't
+	// both see it unlinked and create two items.
+	if _, busy := s.homeboxBusy.LoadOrStore(id, true); busy {
+		writeMsg(w, http.StatusConflict, "server.homeboxBusy", nil)
+		return
+	}
+	defer s.homeboxBusy.Delete(id)
 	uid := userID(r)
 	st, hb := s.userHomeBox(w, r)
 	if hb == nil {
@@ -222,16 +229,33 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		title: i18n.T(lang, "server.homeboxLinkWarranty", nil),
 		kind:  "warranty",
 	}}
-	if web := s.paperlessWebURL(st, isAdmin(r)); web != "" {
-		for _, a := range wr.Attachments {
-			if a.Kind == "purchase" && a.Storage == store.StoragePaperless && a.PaperlessDocID != nil {
-				links = append(links, link{
-					url:   fmt.Sprintf("%s/documents/%d/details", web, *a.PaperlessDocID),
-					title: i18n.T(lang, "server.homeboxLinkReceipt", i18n.Args{"name": a.Filename}),
-					kind:  "receipt",
-				})
-			}
+	// A receipt lives in the Paperless of whoever added it, which in a shared
+	// household may not be the person linking.
+	webURLs := map[int64]string{}
+	for _, a := range wr.Attachments {
+		if a.Kind != "purchase" || a.Storage != store.StoragePaperless || a.PaperlessDocID == nil {
+			continue
 		}
+		owner := uid
+		if a.AddedBy != nil {
+			owner = *a.AddedBy
+		}
+		web, ok := webURLs[owner]
+		if !ok {
+			if web, err = s.userPaperlessWebURL(r.Context(), owner); err != nil {
+				fail(w, err)
+				return
+			}
+			webURLs[owner] = web
+		}
+		if web == "" {
+			continue
+		}
+		links = append(links, link{
+			url:   fmt.Sprintf("%s/documents/%d/details", web, *a.PaperlessDocID),
+			title: i18n.T(lang, "server.homeboxLinkReceipt", i18n.Args{"name": a.Filename}),
+			kind:  "receipt",
+		})
 	}
 	for _, l := range links {
 		if have[l.url] {
@@ -249,6 +273,19 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, 200, wr)
+}
+
+// userPaperlessWebURL is where a user's Paperless opens in the browser, or "".
+func (s *Server) userPaperlessWebURL(ctx context.Context, userID int64) (string, error) {
+	st, err := s.store.Settings(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	admin, err := s.store.IsAdmin(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return s.paperlessWebURL(st, admin), nil
 }
 
 // unlinkHomeBox forgets the link; the item stays in HomeBox.
@@ -287,12 +324,18 @@ func fillHomeBoxItem(it *homebox.Item, wr *store.Warranty, st *store.Settings, o
 	if wr.Price != nil && (!onlyEmpty || it.PurchasePrice == 0) {
 		it.PurchasePrice = *wr.Price
 	}
-	if wr.IsLifetime {
-		it.LifetimeWarranty = true
-	} else if wr.ExpiresOn != nil {
-		set(&it.WarrantyExpires, *wr.ExpiresOn)
+	// Coverage is one thing: an item that already has an end date or a
+	// lifetime warranty keeps it, along with its warranty details.
+	if onlyEmpty && (it.LifetimeWarranty || it.WarrantyExpires != "" || it.WarrantyDetails != "") {
+		return
 	}
-	set(&it.WarrantyDetails, warrantyDetails(wr, st))
+	switch {
+	case wr.IsLifetime:
+		it.LifetimeWarranty, it.WarrantyExpires = true, ""
+	case wr.ExpiresOn != nil:
+		it.LifetimeWarranty, it.WarrantyExpires = false, *wr.ExpiresOn
+	}
+	it.WarrantyDetails = warrantyDetails(wr, st)
 }
 
 // warrantyDetails describes the coverage for HomeBox's warranty notes, e.g.

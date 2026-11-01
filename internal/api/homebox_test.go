@@ -39,6 +39,26 @@ func TestFillHomeBoxItem(t *testing.T) {
 		t.Errorf("empty fields weren't filled: %+v", existing)
 	}
 
+	// Coverage is kept as a whole: a lifetime warranty doesn't overwrite an
+	// item that already has an end date, nor its details.
+	lifetime := &store.Warranty{ProductName: "Knife", IsLifetime: true}
+	dated := homebox.Item{WarrantyExpires: "2026-01-01", WarrantyDetails: "Shop warranty"}
+	fillHomeBoxItem(&dated, lifetime, st, true)
+	if dated.LifetimeWarranty || dated.WarrantyExpires != "2026-01-01" || dated.WarrantyDetails != "Shop warranty" {
+		t.Errorf("existing coverage was changed: %+v", dated)
+	}
+	var bare homebox.Item
+	fillHomeBoxItem(&bare, lifetime, st, true)
+	if !bare.LifetimeWarranty || bare.WarrantyDetails != "Lifetime" {
+		t.Errorf("empty coverage wasn't filled: %+v", bare)
+	}
+	// A new item's lifetime warranty has no end date.
+	fresh = homebox.Item{WarrantyExpires: "2026-01-01"}
+	fillHomeBoxItem(&fresh, lifetime, st, false)
+	if !fresh.LifetimeWarranty || fresh.WarrantyExpires != "" {
+		t.Errorf("lifetime warranty kept an end date: %+v", fresh)
+	}
+
 	// Czech text for Czech users.
 	var cs homebox.Item
 	fillHomeBoxItem(&cs, wr, &store.Settings{DateFormat: "dd.MM.yyyy", Language: "cs"}, false)
