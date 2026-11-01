@@ -510,34 +510,52 @@ type CustomField struct {
 }
 
 var (
+	// fieldIDMu is held through a whole lookup, so two callers can't both
+	// miss the field and create it twice.
 	fieldIDMu sync.Mutex
 	fieldIDs  = map[string]int64{}
 )
 
+// FieldTypeError means a custom field with the wanted name exists but holds
+// another kind of value, so it can't be used.
+type FieldTypeError struct {
+	Name, Type string
+}
+
+func (e *FieldTypeError) Error() string {
+	return fmt.Sprintf("the Paperless custom field %q exists but is of type %q", e.Name, e.Type)
+}
+
 // CustomFieldID returns the ID of the custom field with this name, matched
 // without regard to case. When it doesn't exist it is created with dataType
-// if create is set, otherwise 0 is returned.
+// if create is set, otherwise 0 is returned. A field of another type gives a
+// *FieldTypeError.
 func (c *Client) CustomFieldID(ctx context.Context, name, dataType string, create bool) (int64, error) {
-	key := c.BaseURL + "\x00" + strings.ToLower(name)
 	fieldIDMu.Lock()
-	id, ok := fieldIDs[key]
-	fieldIDMu.Unlock()
-	if ok {
+	defer fieldIDMu.Unlock()
+	key := c.BaseURL + "\x00" + strings.ToLower(name)
+	if id, ok := fieldIDs[key]; ok {
 		return id, nil
 	}
 	var page struct {
 		Results []struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
+			ID       int64  `json:"id"`
+			Name     string `json:"name"`
+			DataType string `json:"data_type"`
 		} `json:"results"`
 	}
 	if err := c.getJSON(ctx, "/api/custom_fields/?"+url.Values{"name__iexact": {name}}.Encode(), &page); err != nil {
 		return 0, err
 	}
+	var id int64
 	for _, f := range page.Results {
-		if strings.EqualFold(f.Name, name) {
-			id = f.ID
+		if !strings.EqualFold(f.Name, name) {
+			continue
 		}
+		if f.DataType != dataType {
+			return 0, &FieldTypeError{Name: f.Name, Type: f.DataType}
+		}
+		id = f.ID
 	}
 	if id == 0 && create {
 		body, _ := json.Marshal(map[string]string{"name": name, "data_type": dataType})
@@ -555,9 +573,7 @@ func (c *Client) CustomFieldID(ctx context.Context, name, dataType string, creat
 		id = created.ID
 	}
 	if id != 0 {
-		fieldIDMu.Lock()
 		fieldIDs[key] = id
-		fieldIDMu.Unlock()
 	}
 	return id, nil
 }

@@ -158,9 +158,9 @@ func setLinkField(fields []paperless.CustomField, id int64, want, prefix string)
 		if f.Field != id {
 			continue
 		}
-		cur, _ := f.Value.(string)
-		if cur != "" && !strings.HasPrefix(cur, prefix) {
-			return fields, false
+		cur, isText := f.Value.(string)
+		if (f.Value != nil && !isText) || (cur != "" && !strings.HasPrefix(cur, prefix)) {
+			return fields, false // someone else's value
 		}
 		if want == "" {
 			return append(fields[:i:i], fields[i+1:]...), true
@@ -237,6 +237,11 @@ func (s *Server) syncAllBacklinks(w http.ResponseWriter, r *http.Request) {
 // is almost always a token that may read but not edit documents.
 func backlinkError(err error) *apiError {
 	var pe *paperless.Error
+	var fe *paperless.FieldTypeError
+	if errors.As(err, &fe) {
+		args := i18n.Args{"name": fe.Name}
+		return &apiError{Error: i18n.T(i18n.Fallback, "server.paperlessFieldType", args), Code: "server.paperlessFieldType", Params: args}
+	}
 	if errors.As(err, &pe) && (pe.Status == http.StatusForbidden || pe.Status == http.StatusUnauthorized) {
 		return &apiError{Error: i18n.T(i18n.Fallback, "server.paperlessCantEdit", nil), Code: "server.paperlessCantEdit"}
 	}

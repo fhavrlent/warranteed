@@ -501,6 +501,7 @@
     "paperlessNotConfigured": "Paperless není nastavený — nastavte ho v Nastavení",
     "paperlessTokenRejected": "Paperless odmítl API token",
     "paperlessCantEdit": "Váš token do Paperless nemůže upravovat dokumenty ani vytvářet vlastní pole",
+    "paperlessFieldType": "V Paperless už existuje pole „{{name}}“, které není typu URL. Přejmenujte ho, nebo nastavte jiný název přes PAPERLESS_WARRANTY_FIELD či PAPERLESS_HOMEBOX_FIELD.",
     "paperlessNoType": "Tento typ souboru Paperless neumí uložit — uložte ho tady",
     "paperlessFakeType": "„{{name}}“ ve skutečnosti není soubor {{ext}}, Paperless ho proto nepřijme",
     "paperlessBadType": "Paperless neumí uložit soubor typu {{ext}} — uložte ho tady",
