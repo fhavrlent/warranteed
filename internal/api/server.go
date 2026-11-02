@@ -38,6 +38,8 @@ type Server struct {
 	docLocks sync.Map
 	// background tracks drafts being created from Paperless.
 	background sync.WaitGroup
+	// draftLocks has a mutex per Paperless document a draft is being made from.
+	draftLocks sync.Map
 	// receipts reads receipts with Claude; nil without an API key.
 	receipts *receipts.Reader
 	// refillDelays are when a draft's Paperless custom fields are looked at

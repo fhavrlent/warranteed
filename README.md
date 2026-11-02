@@ -138,7 +138,7 @@ smtp://user:password@smtp.example.com:587/?from=warranty@example.com&to=me@examp
 | `WARRANTEED_WEBHOOK_SECRET` | | Turns on drafts from new Paperless documents; the webhook must send it in `X-Warranteed-Secret` |
 | `PAPERLESS_DRAFT_FIELDS` | | Paperless custom fields drafts can read details from, e.g. `product=Product, price=Price` |
 | `ANTHROPIC_API_KEY` | | Lets users have Claude read new documents for drafts |
-| `WARRANTEED_CLAUDE_MODEL` | `claude-opus-5-5` | Claude model that reads documents |
+| `WARRANTEED_CLAUDE_MODEL` | `claude-haiku-5-5` | Claude model that reads documents |
 | `HOMEBOX_URL` | | HomeBox URL |
 | `HOMEBOX_PUBLIC_URL` | `HOMEBOX_URL` | HomeBox URL used for browser links |
 | `TZ` | | Timezone |

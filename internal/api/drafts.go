@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/paperless"
@@ -142,6 +143,12 @@ func (s *Server) draftFromPaperless(ctx context.Context, docID int64) error {
 	if doc == nil {
 		return errors.New("no connected user can see the document")
 	}
+	// One delivery per document at a time: an overlapping repeat waits, then
+	// finds the draft and stops, instead of making (and paying for) another.
+	lock, _ := s.draftLocks.LoadOrStore(docID, new(sync.Mutex))
+	lock.(*sync.Mutex).Lock()
+	defer lock.(*sync.Mutex).Unlock()
+
 	owner := s.documentOwner(ctx, users, doc)
 	if owner == nil {
 		slog.Info("no draft from paperless: its owner doesn't get drafts", "doc", docID)
@@ -339,9 +346,16 @@ func (s *Server) fieldIDs(ctx context.Context, pc *paperless.Client) map[string]
 	return out
 }
 
+// hasFieldValues reports whether any of the mapped fields has a value yet.
 func hasFieldValues(doc *paperless.DocumentInfo, ids map[string]int64) bool {
-	d := fieldDetails(doc, ids)
-	return d.ProductName != "" || d.Price != nil || d.WarrantyMonths != nil || d.Model != "" || len(d.SerialNumbers) > 0
+	for _, id := range ids {
+		for _, f := range doc.CustomFields {
+			if f.Field == id && f.Value != nil && f.Value != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fieldDetails reads the configured custom fields' values off a document.
@@ -454,10 +468,10 @@ func (s *Server) refill(ctx context.Context, owner *paperlessUser, wid, docID in
 	}
 	in := inputOf(w)
 	applyDetails(in, fieldDetails(doc, ids))
-	if err := s.store.UpdateWarranty(ctx, owner.id, wid, in); err != nil {
-		return true, err
-	}
-	return true, s.store.MarkUnedited(ctx, wid)
+	// Saved only if nobody edited the draft meanwhile, also while the fields
+	// were being read.
+	_, err = s.store.FillDraft(ctx, owner.id, wid, in)
+	return true, err
 }
 
 // inputOf is a warranty's editable fields, to save it with changes.

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/fhavrlent/warranteed/internal/config"
 	"github.com/fhavrlent/warranteed/internal/db"
@@ -22,6 +24,7 @@ import (
 // correspondents like Paperless does.
 type draftPaperless struct {
 	mu     sync.Mutex
+	delay  time.Duration    // on document reads, to make deliveries overlap
 	users  map[string]int64 // token -> Paperless user ID
 	docs   map[int64]map[string]any
 	fields map[int64]string // custom field ID -> name
@@ -43,6 +46,11 @@ func (p *draftPaperless) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{"results": results})
 	case strings.HasPrefix(r.URL.Path, "/api/documents/"):
+		if p.delay > 0 {
+			p.mu.Unlock()
+			time.Sleep(p.delay)
+			p.mu.Lock()
+		}
 		var id int64
 		fmt.Sscanf(strings.TrimPrefix(r.URL.Path, "/api/documents/"), "%d", &id)
 		doc, ok := p.docs[id]
@@ -192,6 +200,16 @@ func TestDraftGoesToTheOwner(t *testing.T) {
 	if n := len(f.drafts(t, f.bob)); n != 0 {
 		t.Errorf("Bob sees Alice's draft (%d)", n)
 	}
+	// Nor can he open it, its receipt, or confirm it by ID.
+	if _, err := f.st.GetWarranty(ctx, f.bob, d0(drafts).ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Bob opened Alice's draft: %v", err)
+	}
+	if _, err := f.st.GetAttachment(ctx, f.bob, d0(drafts).Attachments[0].ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Bob opened the draft's receipt: %v", err)
+	}
+	if err := f.st.ConfirmWarranty(ctx, f.bob, d0(drafts).ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Bob confirmed Alice's draft: %v", err)
+	}
 	d := drafts[0]
 	if d.ProductName != "Dishwasher receipt" || d.PurchaseDate != "2025-03-01" || d.Vendor != "Datart" ||
 		len(d.Attachments) != 1 || *d.Attachments[0].PaperlessDocID != 1 || *d.WarrantyMonths != 24 || d.Currency != "CZK" {
@@ -282,5 +300,66 @@ func TestDraftFromCustomFields(t *testing.T) {
 	}
 	if unedited, _ := f.st.UneditedDraft(ctx, later.ID); !unedited {
 		t.Error("an automatic refill counted as an edit")
+	}
+}
+
+func d0(list []*store.Warranty) *store.Warranty { return list[0] }
+
+// Overlapping deliveries of the same document make one draft.
+func TestRepeatedWebhooksAtOnce(t *testing.T) {
+	f := newDraftFixture(t, "paperless", "off")
+	f.addDoc(1, 10, nil)
+	f.pl.delay = 50 * time.Millisecond
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() { f.srv.draftFromPaperless(context.Background(), 1) })
+	}
+	wg.Wait()
+	if n := len(f.drafts(t, f.alice)); n != 1 {
+		t.Errorf("drafts: %d, want 1", n)
+	}
+}
+
+// Details found later never overwrite someone's edits, and any mapped field
+// counts as filled in.
+func TestRefillKeepsEdits(t *testing.T) {
+	ctx := context.Background()
+	f := newDraftFixture(t, "fields", "off")
+	f.srv.refillDelays = nil
+	f.srv.cfg.Paperless.DraftFields = map[string]string{"purchase_date": "Purchase date"}
+	f.pl.fields = map[int64]string{4: "Purchase date"}
+	f.addDoc(1, 10, nil)
+	f.srv.draftFromPaperless(ctx, 1)
+	d := f.drafts(t, f.alice)[0]
+
+	// Alice corrects the draft before paperless-gpt is done.
+	in := inputOf(d)
+	in.ProductName = "Corrected by Alice"
+	if err := f.st.UpdateWarranty(ctx, f.alice, d.ID, in); err != nil {
+		t.Fatal(err)
+	}
+	f.addDoc(1, 10, []paperless.CustomField{{Field: 4, Value: "2024-12-24"}})
+	owner := &paperlessUser{id: f.alice, client: paperless.New(f.srv.cfg.Paperless.URL, "alice-token")}
+	settings, _ := f.st.Settings(ctx, f.alice)
+	f.srv.refill(ctx, owner, d.ID, 1, settings)
+	if w, _ := f.st.GetWarranty(ctx, f.alice, d.ID); w.ProductName != "Corrected by Alice" || w.PurchaseDate != "2025-03-01" {
+		t.Errorf("the refill overwrote Alice's draft: %q %s", w.ProductName, w.PurchaseDate)
+	}
+
+	// An unedited draft does take a date-only field.
+	f.addDoc(2, 10, nil)
+	f.srv.draftFromPaperless(ctx, 2)
+	var other *store.Warranty
+	for _, w := range f.drafts(t, f.alice) {
+		if w.ID != d.ID {
+			other = w
+		}
+	}
+	f.addDoc(2, 10, []paperless.CustomField{{Field: 4, Value: "2024-12-24"}})
+	if done, err := f.srv.refill(ctx, owner, other.ID, 2, settings); err != nil || !done {
+		t.Fatalf("refill: %v %v", done, err)
+	}
+	if w, _ := f.st.GetWarranty(ctx, f.alice, other.ID); w.PurchaseDate != "2024-12-24" {
+		t.Errorf("date field not applied: %s", w.PurchaseDate)
 	}
 }

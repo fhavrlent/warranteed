@@ -89,7 +89,8 @@ func (r *Reader) Read(ctx context.Context, data []byte, mimeType string) (*Detai
 			Effort: anthropic.BetaOutputConfigEffortLow,
 			Format: anthropic.BetaJSONOutputFormatParam{Schema: schema},
 		},
-		// A declined request is retried on the model's default fallback.
+		// A declined request is retried on the model's default fallback, where
+		// it has one; otherwise this changes nothing.
 		Fallbacks: anthropic.BetaFallbacksParamOfDefault(),
 		Betas:     []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01},
 	})

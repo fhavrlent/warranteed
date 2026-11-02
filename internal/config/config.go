@@ -153,7 +153,7 @@ func Load() (*Config, error) {
 		},
 		Claude: Claude{
 			APIKey: os.Getenv("ANTHROPIC_API_KEY"),
-			Model:  env("WARRANTEED_CLAUDE_MODEL", "claude-opus-5-5"),
+			Model:  env("WARRANTEED_CLAUDE_MODEL", "claude-haiku-5-5"),
 		},
 		HomeBox: HomeBox{
 			URL:       strings.TrimSuffix(os.Getenv("HOMEBOX_URL"), "/"),
