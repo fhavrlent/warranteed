@@ -14,31 +14,33 @@ import (
 const DateLayout = "2006-01-02"
 
 type Warranty struct {
-	ID              int64        `json:"id"`
-	ProductName     string       `json:"productName"`
-	Brand           string       `json:"brand"`
-	Model           string       `json:"model"`
-	Vendor          string       `json:"vendor"`
-	OrderNumber     string       `json:"orderNumber"`
-	PurchaseDate    string       `json:"purchaseDate"`
-	WarrantyMonths  *int         `json:"warrantyMonths"`
-	WarrantyEndDate *string      `json:"warrantyEndDate"`
-	IsLifetime      bool         `json:"isLifetime"`
-	ExpiresOn       *string      `json:"expiresOn"`
-	Price           *float64     `json:"price"`
-	Currency        string       `json:"currency"`
-	ProductURL      string       `json:"productUrl"`
-	Notes           string       `json:"notes"`
-	ArchivedAt      *string      `json:"archivedAt"`
-	CreatedAt       string       `json:"createdAt"`
-	UpdatedAt       string       `json:"updatedAt"`
-	SerialNumbers   []string     `json:"serialNumbers"`
-	Tags            []Tag        `json:"tags"`
-	Attachments     []Attachment `json:"attachments"`
-	SpaceID         int64        `json:"spaceId"`
-	SpaceKind       string       `json:"spaceKind"`
-	AddedBy         UserRef      `json:"addedBy"`
-	HomeBox         *HomeBoxLink `json:"homebox"`
+	ID              int64    `json:"id"`
+	ProductName     string   `json:"productName"`
+	Brand           string   `json:"brand"`
+	Model           string   `json:"model"`
+	Vendor          string   `json:"vendor"`
+	OrderNumber     string   `json:"orderNumber"`
+	PurchaseDate    string   `json:"purchaseDate"`
+	WarrantyMonths  *int     `json:"warrantyMonths"`
+	WarrantyEndDate *string  `json:"warrantyEndDate"`
+	IsLifetime      bool     `json:"isLifetime"`
+	ExpiresOn       *string  `json:"expiresOn"`
+	Price           *float64 `json:"price"`
+	Currency        string   `json:"currency"`
+	// Quantity is how many pieces were bought together; Price is per piece.
+	Quantity      int          `json:"quantity"`
+	ProductURL    string       `json:"productUrl"`
+	Notes         string       `json:"notes"`
+	ArchivedAt    *string      `json:"archivedAt"`
+	CreatedAt     string       `json:"createdAt"`
+	UpdatedAt     string       `json:"updatedAt"`
+	SerialNumbers []string     `json:"serialNumbers"`
+	Tags          []Tag        `json:"tags"`
+	Attachments   []Attachment `json:"attachments"`
+	SpaceID       int64        `json:"spaceId"`
+	SpaceKind     string       `json:"spaceKind"`
+	AddedBy       UserRef      `json:"addedBy"`
+	HomeBox       *HomeBoxLink `json:"homebox"`
 	// Draft is set on warranties created from a document in Paperless until
 	// someone confirms them.
 	Draft bool `json:"draft"`
@@ -78,10 +80,12 @@ type WarrantyInput struct {
 	IsLifetime      bool     `json:"isLifetime"`
 	Price           *float64 `json:"price"`
 	Currency        string   `json:"currency"`
-	ProductURL      string   `json:"productUrl"`
-	Notes           string   `json:"notes"`
-	SerialNumbers   []string `json:"serialNumbers"`
-	Tags            []string `json:"tags"`
+	// Quantity defaults to 1 when left out.
+	Quantity      int      `json:"quantity"`
+	ProductURL    string   `json:"productUrl"`
+	Notes         string   `json:"notes"`
+	SerialNumbers []string `json:"serialNumbers"`
+	Tags          []string `json:"tags"`
 	// SpaceID chooses who can see it; nil means the household when creating
 	// and "unchanged" when updating.
 	SpaceID *int64 `json:"spaceId"`
@@ -90,6 +94,9 @@ type WarrantyInput struct {
 	// Dates a draft's document gives; set by the server.
 	DateSold, DateReceived string `json:"-"`
 }
+
+// MaxQuantity is the most pieces one warranty can cover.
+const MaxQuantity = 9999
 
 // ValidationError is input the user can fix; its message is translatable.
 type ValidationError = i18n.Error
@@ -121,6 +128,12 @@ func (in *WarrantyInput) Normalize() (*string, error) {
 	}
 	if in.Price != nil && *in.Price < 0 {
 		return nil, invalid("negativePrice", nil)
+	}
+	if in.Quantity == 0 {
+		in.Quantity = 1
+	}
+	if in.Quantity < 1 || in.Quantity > MaxQuantity {
+		return nil, invalid("quantity", i18n.Args{"max": MaxQuantity})
 	}
 	if in.ProductURL != "" && !strings.HasPrefix(in.ProductURL, "http://") && !strings.HasPrefix(in.ProductURL, "https://") {
 		in.ProductURL = "https://" + in.ProductURL
@@ -180,7 +193,7 @@ const visibleTo = `w.space_id IN (SELECT sm.space_id FROM space_members sm
 const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_number, w.purchase_date,
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
 	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
-	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received`
+	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received, w.quantity`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
@@ -191,7 +204,7 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	err := row.Scan(&w.ID, &w.ProductName, &w.Brand, &w.Model, &w.Vendor, &w.OrderNumber, &w.PurchaseDate,
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
-		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received)
+		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received, &w.Quantity)
 	if err != nil {
 		return nil, err
 	}
@@ -326,11 +339,11 @@ func (s *Store) CreateWarranty(ctx context.Context, userID int64, in *WarrantyIn
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO warranties (user_id, space_id, product_name, brand, model, vendor, order_number, purchase_date,
 				warranty_months, warranty_end_date, is_lifetime, expires_on, price, currency, product_url, notes, draft,
-				date_sold, date_received)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+				date_sold, date_received, quantity)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			userID, spaceID, in.ProductName, in.Brand, in.Model, in.Vendor, in.OrderNumber, in.PurchaseDate,
 			in.WarrantyMonths, in.WarrantyEndDate, in.IsLifetime, expires, in.Price, in.Currency,
-			in.ProductURL, in.Notes, in.Draft, in.DateSold, in.DateReceived,
+			in.ProductURL, in.Notes, in.Draft, in.DateSold, in.DateReceived, in.Quantity,
 		).Scan(&id)
 		if err != nil {
 			return err
@@ -400,10 +413,10 @@ func updateWarranty(ctx context.Context, tx *sql.Tx, userID, id int64, in *Warra
 	_, err = tx.ExecContext(ctx, `
 			UPDATE warranties SET space_id = ?, product_name = ?, brand = ?, model = ?, vendor = ?, order_number = ?,
 				purchase_date = ?, warranty_months = ?, warranty_end_date = ?, is_lifetime = ?, expires_on = ?,
-				price = ?, currency = ?, product_url = ?, notes = ?, updated_at = ?, edited = 1
+				price = ?, currency = ?, quantity = ?, product_url = ?, notes = ?, updated_at = ?, edited = 1
 			WHERE id = ?`,
 		spaceID, in.ProductName, in.Brand, in.Model, in.Vendor, in.OrderNumber, in.PurchaseDate,
-		in.WarrantyMonths, in.WarrantyEndDate, in.IsLifetime, expires, in.Price, in.Currency,
+		in.WarrantyMonths, in.WarrantyEndDate, in.IsLifetime, expires, in.Price, in.Currency, in.Quantity,
 		in.ProductURL, in.Notes, now(), id)
 	if err != nil {
 		return err

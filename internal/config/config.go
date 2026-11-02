@@ -77,7 +77,7 @@ type Paperless struct {
 
 // DraftFieldKeys are the details a draft can take from Paperless custom fields.
 var DraftFieldKeys = []string{"product", "brand", "model", "vendor", "purchase_date", "price", "currency",
-	"warranty_months", "serial", "order"}
+	"quantity", "warranty_months", "serial", "order"}
 
 // Claude reads receipts for drafts when an Anthropic API key is set.
 type Claude struct {

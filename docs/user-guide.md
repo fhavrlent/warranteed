@@ -24,7 +24,7 @@ Click **Continue with …** and sign in with your identity provider. Warranteed 
 Click **Add warranty** and fill in:
 
 - **Product**, and optionally the brand and model.
-- **Purchase date**, where you bought it, the price and the order number.
+- **Purchase date**, where you bought it, the price of one piece, how many you bought and the order number.
 - **Warranty**, in one of three ways:
   - **Length** in years or months, from the purchase date;
   - **End date**, when the warranty card gives a date;
@@ -133,7 +133,7 @@ Under **Settings → Import & export**:
 - **Export CSV** downloads all your warranties.
 - **Import CSV** reads a file in the same format, for example from a spreadsheet. Rows that already exist are skipped, and rows with problems are listed with the reason.
 
-The columns are `product_name`, `brand`, `model`, `vendor`, `order_number`, `purchase_date`, `warranty_months`, `warranty_end_date`, `lifetime`, `price`, `currency`, `serial_numbers`, `tags`, `product_url`, `notes`, `archived` and `space`. Only `product_name` and `purchase_date` are required, plus one of `warranty_months`, `warranty_end_date` or `lifetime=true`. Separate several serial numbers or tags with `;`. Dates are `YYYY-MM-DD`.
+The columns are `product_name`, `brand`, `model`, `vendor`, `order_number`, `purchase_date`, `warranty_months`, `warranty_end_date`, `lifetime`, `price`, `currency`, `quantity`, `serial_numbers`, `tags`, `product_url`, `notes`, `archived` and `space`. Only `product_name` and `purchase_date` are required, plus one of `warranty_months`, `warranty_end_date` or `lifetime=true`. `price` is per piece, and an empty `quantity` means one. Separate several serial numbers or tags with `;`. Dates are `YYYY-MM-DD`.
 
 Documents aren't part of the CSV.
 

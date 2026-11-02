@@ -14,7 +14,7 @@ func TestFillHomeBoxItem(t *testing.T) {
 	wr := &store.Warranty{
 		ProductName: "Dishwasher", Brand: "Bosch", Model: "SMS6", Vendor: "Datart", OrderNumber: "A-1",
 		PurchaseDate: "2025-03-01", WarrantyMonths: &months, ExpiresOn: &expires, Price: &price,
-		SerialNumbers: []string{"SN-1", "SN-2"},
+		SerialNumbers: []string{"SN-1", "SN-2"}, Quantity: 2,
 	}
 	st := &store.Settings{DateFormat: "dd.MM.yyyy", Language: "en"}
 
@@ -22,7 +22,7 @@ func TestFillHomeBoxItem(t *testing.T) {
 	var fresh homebox.Item
 	fillHomeBoxItem(&fresh, wr, st, false)
 	if fresh.SerialNumber != "SN-1" || fresh.PurchasePrice != 17490 || fresh.WarrantyExpires != expires ||
-		fresh.PurchaseFrom != "Datart" || fresh.Manufacturer != "Bosch" {
+		fresh.PurchaseFrom != "Datart" || fresh.Manufacturer != "Bosch" || fresh.Quantity != 2 {
 		t.Errorf("new item: %+v", fresh)
 	}
 	if want := "2 years\nOrder number: A-1\nSerial numbers: SN-1, SN-2"; fresh.WarrantyDetails != want {
@@ -30,13 +30,20 @@ func TestFillHomeBoxItem(t *testing.T) {
 	}
 
 	// An existing item keeps what it has; only empty fields are filled in.
-	existing := homebox.Item{ModelNumber: "THEIRS", PurchasePrice: 15000, PurchaseDate: "2025-01-01"}
+	existing := homebox.Item{ModelNumber: "THEIRS", PurchasePrice: 15000, PurchaseDate: "2025-01-01", Quantity: 3}
 	fillHomeBoxItem(&existing, wr, st, true)
-	if existing.ModelNumber != "THEIRS" || existing.PurchasePrice != 15000 || existing.PurchaseDate != "2025-01-01" {
+	if existing.ModelNumber != "THEIRS" || existing.PurchasePrice != 15000 || existing.PurchaseDate != "2025-01-01" ||
+		existing.Quantity != 3 {
 		t.Errorf("existing values were overwritten: %+v", existing)
 	}
 	if existing.SerialNumber != "SN-1" || existing.WarrantyExpires != expires {
 		t.Errorf("empty fields weren't filled: %+v", existing)
+	}
+	// HomeBox's default quantity of 1 counts as empty.
+	single := homebox.Item{Quantity: 1}
+	fillHomeBoxItem(&single, wr, st, true)
+	if single.Quantity != 2 {
+		t.Errorf("quantity = %d, want 2", single.Quantity)
 	}
 
 	// Coverage is kept as a whole: a lifetime warranty doesn't overwrite an

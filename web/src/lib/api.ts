@@ -39,8 +39,11 @@ export interface Warranty {
   warrantyEndDate: string | null;
   isLifetime: boolean;
   expiresOn: string | null;
+  /** Price of one piece. */
   price: number | null;
   currency: string;
+  /** How many pieces were bought together. */
+  quantity: number;
   productUrl: string;
   notes: string;
   archivedAt: string | null;
@@ -100,6 +103,7 @@ export interface WarrantyInput {
   isLifetime: boolean;
   price: number | null;
   currency: string;
+  quantity: number;
   productUrl: string;
   notes: string;
   serialNumbers: string[];

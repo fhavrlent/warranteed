@@ -86,7 +86,7 @@ func newDraftFixture(t *testing.T, aliceSource, bobSource string) *draftFixture 
 	pl := &draftPaperless{
 		users:  map[string]int64{"alice-token": 10, "bob-token": 20},
 		docs:   map[int64]map[string]any{},
-		fields: map[int64]string{1: "Product", 2: "Price", 3: "Warranty months"},
+		fields: map[int64]string{1: "Product", 2: "Price", 3: "Warranty months", 4: "Quantity"},
 	}
 	plServer := httptest.NewServer(pl)
 	t.Cleanup(plServer.Close)
@@ -107,7 +107,7 @@ func newDraftFixture(t *testing.T, aliceSource, bobSource string) *draftFixture 
 		AppURL: appURL,
 		Paperless: config.Paperless{
 			URL: plServer.URL, WebhookSecret: "s3cret",
-			DraftFields: map[string]string{"product": "Product", "price": "Price", "warranty_months": "Warranty months"},
+			DraftFields: map[string]string{"product": "Product", "price": "Price", "warranty_months": "Warranty months", "quantity": "Quantity"},
 		},
 	}, st, nil, nil, nil, nil, "test")
 	return f
@@ -266,12 +266,12 @@ func TestDraftFromCustomFields(t *testing.T) {
 	f := newDraftFixture(t, "fields", "off")
 
 	// Filled in already: the draft takes the fields' values.
-	f.addDoc(1, 10, []paperless.CustomField{{Field: 1, Value: "Dishwasher Series 6"}, {Field: 2, Value: "CZK17490.00"}, {Field: 3, Value: float64(36)}})
+	f.addDoc(1, 10, []paperless.CustomField{{Field: 1, Value: "Dishwasher Series 6"}, {Field: 2, Value: "CZK17490.00"}, {Field: 3, Value: float64(36)}, {Field: 4, Value: float64(2)}})
 	if err := f.srv.draftFromPaperless(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
 	d := f.drafts(t, f.alice)[0]
-	if d.ProductName != "Dishwasher Series 6" || d.Price == nil || *d.Price != 17490 || *d.WarrantyMonths != 36 {
+	if d.ProductName != "Dishwasher Series 6" || d.Price == nil || *d.Price != 17490 || *d.WarrantyMonths != 36 || d.Quantity != 2 {
 		t.Errorf("draft from fields: %+v", d)
 	}
 

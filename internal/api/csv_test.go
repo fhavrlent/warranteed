@@ -8,11 +8,11 @@ import (
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
-const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,serial_numbers,tags,product_url,notes,archived,space
-Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,household
-Knife,,,,,2024-01-15,,,true,,,,,,,false,personal
-Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,Electronics,,,true,
-Broken,,,,,2024-01-01,,,false,,,,,,,false,
+const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,quantity,serial_numbers,tags,product_url,notes,archived,space
+Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,2,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,household
+Knife,,,,,2024-01-15,,,true,,,,,,,,false,personal
+Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,,Electronics,,,true,
+Broken,,,,,2024-01-01,,,false,,,,,,,,false,
 `
 
 func parseRows(t *testing.T) []func(string) string {
@@ -47,7 +47,7 @@ func TestImportRows(t *testing.T) {
 		t.Fatal(msg)
 	}
 	if *wm.WarrantyMonths != 30 || wm.Currency != "CZK" || wm.Model != "WM-900" ||
-		len(wm.SerialNumbers) != 2 || len(wm.Tags) != 2 || *wm.Price != 499.99 {
+		len(wm.SerialNumbers) != 2 || len(wm.Tags) != 2 || *wm.Price != 499.99 || wm.Quantity != 2 {
 		t.Fatalf("washing machine parsed wrong: %+v", wm)
 	}
 	exp, err := wm.Normalize()
@@ -58,6 +58,10 @@ func TestImportRows(t *testing.T) {
 	knife, _, msg := rowToInput(rows[1], st)
 	if msg != nil || !knife.IsLifetime || knife.Currency != "EUR" {
 		t.Fatalf("knife: %+v %v", knife, msg)
+	}
+	// No quantity means one piece.
+	if _, err := knife.Normalize(); err != nil || knife.Quantity != 1 {
+		t.Fatalf("knife quantity %d, err %v", knife.Quantity, err)
 	}
 
 	phone, archived, msg := rowToInput(rows[2], st)

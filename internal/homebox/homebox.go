@@ -207,6 +207,7 @@ type Item struct {
 	SerialNumber     string       `json:"serialNumber"`
 	ModelNumber      string       `json:"modelNumber"`
 	Manufacturer     string       `json:"manufacturer"`
+	Quantity         int          `json:"quantity"`
 	PurchaseDate     string       `json:"purchaseDate"`
 	PurchasePrice    float64      `json:"purchasePrice"`
 	PurchaseFrom     string       `json:"purchaseFrom"`
@@ -377,6 +378,7 @@ func (c *Client) Update(ctx context.Context, id string, change func(*Item)) (*It
 	body["serialNumber"] = item.SerialNumber
 	body["modelNumber"] = item.ModelNumber
 	body["manufacturer"] = item.Manufacturer
+	body["quantity"] = item.Quantity
 	body["purchaseDate"] = item.PurchaseDate
 	body["purchasePrice"] = item.PurchasePrice
 	body["purchaseFrom"] = item.PurchaseFrom
