@@ -62,3 +62,12 @@ func TestReceivedDate(t *testing.T) {
 		}
 	}
 }
+
+func TestPromptFollowsTheChoice(t *testing.T) {
+	if p := prompt(false); !strings.Contains(p, "worth tracking a warranty for") || strings.Contains(p, "%!") {
+		t.Errorf("worthy prompt: %s", p)
+	}
+	if p := prompt(true); !strings.Contains(p, "every product") || strings.Contains(p, "worth tracking") || strings.Contains(p, "%!") {
+		t.Errorf("every-product prompt: %s", p)
+	}
+}

@@ -437,7 +437,12 @@
       "warrantyStart": "Záruku počítat od",
       "warrantyStartHint": "U dokladů, které uvádějí obě data. Podle práva EU a Spojeného království běží záruka od převzetí zboží; většina záruk v USA a záruk výrobců od data nákupu. U každého konceptu to můžete přepnout.",
       "warrantyStartReceived": "Data převzetí",
-      "warrantyStartSold": "Data nákupu"
+      "warrantyStartSold": "Data nákupu",
+      "draftItems": "Koncepty vytvářet pro",
+      "draftItemsWorthy": "Produkty, u kterých má záruka smysl",
+      "draftItemsAll": "Každý produkt",
+      "draftItemsWorthyHint": "Přístroje, spotřebiče, nářadí a podobně; jídlo, knihy, hudba a další věci, které nikdo nereklamuje, se vynechají.",
+      "draftItemsAllHint": "Koncept dostane každý produkt na dokladu, nejvýš 30; vynechá se jen doprava, slevy a poplatky."
     },
     "homebox": {
       "description": "Udržujte inventář v HomeBoxu v souladu: přidejte produkt ze záruky jako položku, nebo ho propojte s položkou, která už tam je.",
@@ -609,7 +614,8 @@
     "draftExtensionUnnamed_few": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem",
     "draftExtensionUnnamed_many": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem",
     "draftExtensionUnnamed_other": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem",
-    "warrantyStart": "Vyberte, od kterého data se záruka počítá"
+    "warrantyStart": "Vyberte, od kterého data se záruka počítá",
+    "draftItems": "Vyberte, pro které produkty vytvářet koncepty"
   },
   "signIn": {
     "unreachable": "Poskytovatel identity není dostupný. Zkuste to za chvíli znovu.",

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/fhavrlent/warranteed/internal/config"
+	"github.com/fhavrlent/warranteed/internal/dates"
+	"github.com/fhavrlent/warranteed/internal/notify"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -36,5 +38,21 @@ func TestPaperlessAccess(t *testing.T) {
 		if gotURL != tc.wantURL || gotToken != tc.wantToken {
 			t.Errorf("%s: got (%q, %q), want (%q, %q)", tc.name, gotURL, gotToken, tc.wantURL, tc.wantToken)
 		}
+	}
+}
+
+func TestDraftItemsSetting(t *testing.T) {
+	st := &store.Settings{DraftItems: itemsWorthy}
+	in := settingsInput{DateFormat: dates.Formats[0], Currency: "CZK", Theme: "system", ExpiringSoonDays: 30, DraftItems: itemsAll}
+	if err := in.apply(st, false, notify.Policy{}); err != nil || st.DraftItems != itemsAll {
+		t.Fatalf("every product: %v, %q", err, st.DraftItems)
+	}
+	in.DraftItems = "some"
+	if err := in.apply(st, false, notify.Policy{}); err == nil {
+		t.Error("an unknown choice was accepted")
+	}
+	in.DraftItems = "" // older clients keep the setting
+	if err := in.apply(st, false, notify.Policy{}); err != nil || st.DraftItems != itemsAll {
+		t.Errorf("older client: %v, %q", err, st.DraftItems)
 	}
 }

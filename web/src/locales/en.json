@@ -401,7 +401,12 @@
       "warrantyStart": "Count warranties from",
       "warrantyStartHint": "For documents that give both dates. EU and UK law counts from when you received the goods; most US and manufacturer warranties count from the date of purchase. Each draft lets you switch.",
       "warrantyStartReceived": "Date received",
-      "warrantyStartSold": "Date of purchase"
+      "warrantyStartSold": "Date of purchase",
+      "draftItems": "Make drafts of",
+      "draftItemsWorthy": "Products worth a warranty",
+      "draftItemsAll": "Every product",
+      "draftItemsWorthyHint": "Devices, appliances, tools and the like; food, books, music and other things nobody claims a warranty on are left out.",
+      "draftItemsAllHint": "Every product on the document gets a draft, up to 30; only delivery, discounts and fees are left out."
     },
     "homebox": {
       "description": "Keep your inventory in HomeBox in step: add a warranty's product as an item, or link it to one that's already there.",
@@ -555,7 +560,8 @@
     "draftExtension_other": "Includes {{count}} months of extended warranty bought with it: {{name}}",
     "draftExtensionUnnamed_one": "Includes {{count}} month of extended warranty bought with it",
     "draftExtensionUnnamed_other": "Includes {{count}} months of extended warranty bought with it",
-    "warrantyStart": "Choose which date warranties count from"
+    "warrantyStart": "Choose which date warranties count from",
+    "draftItems": "Choose which products get drafts"
   },
   "signIn": {
     "unreachable": "Could not reach the identity provider. Try again in a moment.",

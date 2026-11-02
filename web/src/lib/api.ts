@@ -129,6 +129,8 @@ export interface Settings {
   draftSource: DraftSource;
   /** Which date drafts count warranties from when a document gives both. */
   warrantyStart: "received" | "sold";
+  /** Which products on a document Claude makes drafts of. */
+  draftItems: "worthy" | "all";
   /** The choices this server offers. */
   draftSources: DraftSource[];
   /** The server accepts Paperless's webhook for new documents. */

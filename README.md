@@ -105,7 +105,7 @@ Warranteed can turn receipts added to Paperless into draft warranties, so you on
 3. Each user picks under **Settings → Paperless-ngx → Drafts from new documents** whether they get drafts and where their details come from:
    - **the document's own details:** title, date and correspondent;
    - **Paperless custom fields**, for example ones [paperless-gpt](https://github.com/icereed/paperless-gpt) fills in. Map them with `PAPERLESS_DRAFT_FIELDS`, e.g. `product=Product, price=Price, warranty_months=Warranty months` (also `brand`, `model`, `vendor`, `purchase_date`, `currency`, `serial`, `order`). If the fields are still empty when the document arrives, the draft is filled in once they have values, unless it was edited already;
-   - **Claude**, which reads the document itself, when `ANTHROPIC_API_KEY` is set. The document is sent to Anthropic. A receipt for several devices gives a draft for each (up to 10), leaving out delivery, food and other things nobody claims a warranty on.
+   - **Claude**, which reads the document itself, when `ANTHROPIC_API_KEY` is set. The document is sent to Anthropic. A receipt for several devices gives a draft for each, leaving out delivery, food and other things nobody claims a warranty on, or, if you choose, a draft for every product (up to 30).
 
 A draft goes to whoever owns the document in Paperless, matched through their Paperless token; a document nobody here owns goes to an admin. Only people who opted in get drafts. Drafts are listed under **To review** only for the person they were made for, count toward no totals and send no reminders until confirmed.
 

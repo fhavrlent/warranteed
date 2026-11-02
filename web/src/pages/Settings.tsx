@@ -523,6 +523,27 @@ const Paperless = ({ s }: { s: SettingsT }) => {
           {s.draftSource === "claude" && (
             <Field
               className="mt-3"
+              label={t("settings.paperless.draftItems")}
+              hint={
+                s.draftItems === "all"
+                  ? t("settings.paperless.draftItemsAllHint")
+                  : t("settings.paperless.draftItemsWorthyHint")
+              }
+            >
+              <Select
+                value={s.draftItems}
+                onChange={(e) => update({ draftItems: e.target.value as SettingsT["draftItems"] })}
+                disabled={!s.paperlessEnabled || !s.webhookEnabled}
+                className="sm:w-80"
+              >
+                <option value="worthy">{t("settings.paperless.draftItemsWorthy")}</option>
+                <option value="all">{t("settings.paperless.draftItemsAll")}</option>
+              </Select>
+            </Field>
+          )}
+          {s.draftSource === "claude" && (
+            <Field
+              className="mt-3"
               label={t("settings.paperless.warrantyStart")}
               hint={t("settings.paperless.warrantyStartHint")}
             >
