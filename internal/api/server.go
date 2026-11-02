@@ -42,6 +42,10 @@ type Server struct {
 	background sync.WaitGroup
 	// draftLocks has a mutex per Paperless document a draft is being made from.
 	draftLocks sync.Map
+	// thumbLocks has a mutex per photo whose preview is being made, and
+	// thumbSlots limits how many are made at once, each taking a full decode.
+	thumbLocks sync.Map
+	thumbSlots chan struct{}
 	// receipts reads receipts with Claude; nil without an API key.
 	receipts *receipts.Reader
 	// refillDelays are when a draft's Paperless custom fields are looked at
@@ -51,7 +55,8 @@ type Server struct {
 
 func New(cfg *config.Config, st *store.Store, a *auth.Auth, n *notify.Notifier, files *Files, assets fs.FS, version string) *Server {
 	s := &Server{cfg: cfg, store: st, auth: a, notifier: n, files: files, assets: assets, version: version,
-		refillDelays: []time.Duration{time.Minute, 3 * time.Minute, 10 * time.Minute}}
+		refillDelays: []time.Duration{time.Minute, 3 * time.Minute, 10 * time.Minute},
+		thumbSlots:   make(chan struct{}, 2)}
 	if cfg.Claude.APIKey != "" {
 		s.receipts = receipts.New(cfg.Claude.APIKey, cfg.Claude.Model)
 	}
