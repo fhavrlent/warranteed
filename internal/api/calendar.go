@@ -40,8 +40,21 @@ func (s *Server) getCalendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, calendarLink{s.calendarURL(token)})
 }
 
-// newCalendar makes a new feed link; any old link stops working.
+// newCalendar makes a feed link. With ?replace=1 it replaces the one there
+// is, which stops working; otherwise an existing link is kept, so a page that
+// didn't know about it can't replace it by accident.
 func (s *Server) newCalendar(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("replace") != "1" {
+		token, err := s.store.CalendarToken(r.Context(), userID(r))
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		if token != "" {
+			writeJSON(w, 200, calendarLink{s.calendarURL(token)})
+			return
+		}
+	}
 	b := make([]byte, 24)
 	rand.Read(b)
 	token := base64.RawURLEncoding.EncodeToString(b)

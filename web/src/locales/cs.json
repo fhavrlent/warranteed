@@ -8,6 +8,7 @@
     "dialog": "Dialog",
     "copy": "Kopírovat: {{label}}",
     "copied": "Zkopírováno",
+    "retry": "Zkusit znovu",
     "copyFailed": "Kopírování se nepovedlo",
     "copyNeedsHttps": "Kopírování vyžaduje HTTPS",
     "remove": "Odebrat {{name}}",
@@ -434,7 +435,8 @@
       "removed": "Odkaz na kalendář vypnut",
       "renewTitle": "Vytvořit nový odkaz na kalendář?",
       "renewText": "Současný odkaz přestane fungovat a kalendáře, které ho odebírají, se přestanou aktualizovat. Hodí se, když se odkaz dostal ven.",
-      "renewConfirm": "Vytvořit nový odkaz"
+      "renewConfirm": "Vytvořit nový odkaz",
+      "loadFailed": "Odkaz na kalendář se nepodařilo načíst."
     },
     "paperless": {
       "description": "Ukládejte účtenky a návody do archivu Paperless-ngx místo sem, nebo připojte dokumenty, které už tam máte.",

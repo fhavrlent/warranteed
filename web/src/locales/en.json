@@ -8,6 +8,7 @@
     "dialog": "Dialog",
     "copy": "Copy {{label}}",
     "copied": "Copied",
+    "retry": "Try again",
     "copyFailed": "Couldn't copy",
     "copyNeedsHttps": "Copying needs HTTPS",
     "remove": "Remove {{name}}",
@@ -404,7 +405,8 @@
       "removed": "Calendar link turned off",
       "renewTitle": "Get a new calendar link?",
       "renewText": "The current link stops working, so calendars subscribed to it stop updating. Use this if the link got out.",
-      "renewConfirm": "Get a new link"
+      "renewConfirm": "Get a new link",
+      "loadFailed": "Couldn’t load your calendar link."
     },
     "paperless": {
       "description": "Store receipts and manuals in your Paperless-ngx archive instead of here, or link documents that are already there.",

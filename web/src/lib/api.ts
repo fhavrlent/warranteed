@@ -299,7 +299,10 @@ export const api = {
     request<{ name: string; email: string }>("POST", "/api/settings/test-homebox", { token }),
 
   calendar: () => request<{ url: string | null }>("GET", "/api/calendar"),
+  /** Makes a link, or returns the one there is. */
   newCalendar: () => request<{ url: string | null }>("POST", "/api/calendar"),
+  /** Replaces the link; the old one stops working. */
+  renewCalendar: () => request<{ url: string | null }>("POST", "/api/calendar?replace=1"),
   deleteCalendar: () => request<{ url: string | null }>("DELETE", "/api/calendar"),
 
   warranties: () => request<Warranty[]>("GET", "/api/warranties"),

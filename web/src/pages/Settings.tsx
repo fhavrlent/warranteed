@@ -810,7 +810,7 @@ const Household = () => {
 const Calendar = () => {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: keys.calendar, queryFn: api.calendar });
+  const { data, isPending, isError, refetch } = useQuery({ queryKey: keys.calendar, queryFn: api.calendar });
   const [busy, setBusy] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const url = data?.url ?? null;
@@ -846,7 +846,17 @@ const Calendar = () => {
       title={t("settings.calendar.title")}
       description={t("settings.calendar.description")}
     >
-      {!url ? (
+      {/* Only offer a new link once we know there isn't one. */}
+      {isPending ? (
+        <div className="h-9 w-48 animate-pulse rounded-lg bg-surface-3/60" />
+      ) : isError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-bad">{t("settings.calendar.loadFailed")}</p>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      ) : !url ? (
         <div>
           <Button
             variant="outline"
@@ -902,7 +912,7 @@ const Calendar = () => {
         description={t("settings.calendar.renewText")}
         confirmLabel={t("settings.calendar.renewConfirm")}
         loading={busy}
-        onConfirm={() => void change(api.newCalendar, t("settings.calendar.renewed"))}
+        onConfirm={() => void change(api.renewCalendar, t("settings.calendar.renewed"))}
       />
     </Section>
   );

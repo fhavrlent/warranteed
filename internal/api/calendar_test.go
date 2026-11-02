@@ -15,10 +15,10 @@ func TestCalendarFeed(t *testing.T) {
 	f := newHomeBoxFixture(t)
 	ctx := context.Background()
 
-	link := func(h http.HandlerFunc) string {
+	link := func(h http.HandlerFunc, target ...string) string {
 		t.Helper()
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/api/calendar", nil)
+		r := httptest.NewRequest(http.MethodPost, append(target, "/api/calendar")[0], nil)
 		h(w, r.WithContext(auth.WithUser(r.Context(), f.bob)))
 		var out calendarLink
 		if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
@@ -67,8 +67,12 @@ func TestCalendarFeed(t *testing.T) {
 		t.Error("void warranty is in the feed")
 	}
 
+	// Making a link again keeps the one there is; only replacing changes it.
+	if again := link(f.srv.newCalendar); again != url {
+		t.Errorf("making a link again replaced it: %q, want %q", again, url)
+	}
 	// A new link replaces the old one, and turning it off ends it.
-	renewed := link(f.srv.newCalendar)
+	renewed := link(f.srv.newCalendar, "/api/calendar?replace=1")
 	if renewed == url || feed(url).Code != http.StatusNotFound || feed(renewed).Code != 200 {
 		t.Error("the old link still works after getting a new one")
 	}
