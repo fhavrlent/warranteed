@@ -36,7 +36,7 @@ var schema = map[string]any{
 	"required": []string{"productName", "brand", "model", "vendor", "purchaseDate", "price", "currency",
 		"warrantyMonths", "serialNumbers", "orderNumber"},
 	"properties": map[string]any{
-		"productName":    map[string]any{"type": "string", "description": "The product, without brand or model, e.g. \"Dishwasher\""},
+		"productName":    map[string]any{"type": "string", "description": "What the product is called, without the brand, in the document's language, e.g. \"Myčka nádobí\" or \"iPhone 18 Pro\""},
 		"brand":          map[string]any{"type": "string"},
 		"model":          map[string]any{"type": "string", "description": "Model name or number"},
 		"vendor":         map[string]any{"type": "string", "description": "The shop that sold it"},
@@ -51,7 +51,11 @@ var schema = map[string]any{
 
 const instructions = `You read receipts, invoices and warranty cards to fill in a warranty tracker.
 
-Find the product the document is about. When it lists several items, pick the one that would most likely carry a warranty, usually the most expensive device, and ignore delivery, services and accessories. Copy names, model numbers and serial numbers exactly as printed. Give the price paid for that product including tax. Give the warranty length only when the document states it; don't assume a legal default. Leave anything the document doesn't show empty, or null for numbers.`
+Find the product the document is about. When it lists several items, pick the one that would most likely carry a warranty, usually the most expensive device, and ignore delivery, services and accessories.
+
+Keep the document's language; never translate. For the product name, use what people call the product: its model name when it's known by one (a phone, a laptop), otherwise a short description from the document such as "Chytrá zásuvka", without the brand and without long lists of features. Copy model numbers and serial numbers exactly as printed.
+
+Give the price paid for that product including tax. Give the warranty length only when the document states it; don't assume a legal default. Leave anything the document doesn't show empty, or null for numbers.`
 
 // Reader reads receipts with Claude.
 type Reader struct {
