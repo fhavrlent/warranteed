@@ -10,6 +10,7 @@ How to use Warranteed day to day. Setting up the server and its connections to P
 - [Sharing with the household](#sharing-with-the-household)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
+- [Calendar](#calendar)
 - [Void, archiving and deleting](#void-archiving-and-deleting)
 - [Tags](#tags)
 - [Import and export](#import-and-export)
@@ -115,6 +116,12 @@ HomeBox keys expire after 30 days unless you give them a later date. When yours 
 Under **Settings → Reminders**, add one or more notification URLs and when to be reminded, for example `30, 7` for 30 and 7 days before a warranty expires. **Send test** checks that the URLs work. Each reminder is sent once, in your language.
 
 Discord, Telegram, Slack, Pushover, Pushbullet, IFTTT and Join work for everyone. Self-hosted services such as ntfy, Gotify, webhooks and email need an admin to allow their server first. The [integration guide](integrations.md#reminders) has URL examples.
+
+## Calendar
+
+Under **Settings → Calendar**, **Create calendar link** gives you a private link to subscribe to in Apple, Google or Outlook Calendar; **Open in calendar app** does that on the device you're on. Each warranty you can see appears on the day it ends, with when and where it was bought and a link back to it. Lifetime, void and archived warranties and drafts are left out. Calendar apps check the link a few times a day, so changes show up there with a delay.
+
+Anyone with the link can see your warranty end dates. **Get a new link** replaces it, and the old one stops working; **Turn off** removes it.
 
 ## Void, archiving and deleting
 

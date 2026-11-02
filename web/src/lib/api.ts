@@ -298,6 +298,10 @@ export const api = {
   testHomebox: (token?: string) =>
     request<{ name: string; email: string }>("POST", "/api/settings/test-homebox", { token }),
 
+  calendar: () => request<{ url: string | null }>("GET", "/api/calendar"),
+  newCalendar: () => request<{ url: string | null }>("POST", "/api/calendar"),
+  deleteCalendar: () => request<{ url: string | null }>("DELETE", "/api/calendar"),
+
   warranties: () => request<Warranty[]>("GET", "/api/warranties"),
   warranty: (id: number) => request<Warranty>("GET", `/api/warranties/${id}`),
   createWarranty: (w: WarrantyInput) => request<Warranty>("POST", "/api/warranties", w),

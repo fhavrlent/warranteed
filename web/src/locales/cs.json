@@ -419,6 +419,23 @@
       "testSent": "Testovací oznámení odesláno",
       "schedule": "Kontroluje se denně v časovém pásmu serveru ({{timezone}})."
     },
+    "calendar": {
+      "title": "Kalendář",
+      "description": "Přihlaste si soukromý odkaz v kalendáři Apple, Google nebo Outlook a uvidíte v něm, kdy končí záruky. Obsahuje záruky, které vidíte tady, kromě doživotních, neplatných a archivovaných.",
+      "create": "Vytvořit odkaz na kalendář",
+      "created": "Odkaz na kalendář vytvořen",
+      "link": "Odkaz na kalendář",
+      "linkHint": "Kdo má tento odkaz, vidí, kdy vám končí záruky, takže ho nikomu nedávejte. Kalendáře ho kontrolují několikrát denně.",
+      "copy": "Zkopírovat odkaz",
+      "subscribe": "Otevřít v kalendáři",
+      "renew": "Vytvořit nový odkaz",
+      "renewed": "Nový odkaz vytvořen, starý už nefunguje",
+      "remove": "Vypnout",
+      "removed": "Odkaz na kalendář vypnut",
+      "renewTitle": "Vytvořit nový odkaz na kalendář?",
+      "renewText": "Současný odkaz přestane fungovat a kalendáře, které ho odebírají, se přestanou aktualizovat. Hodí se, když se odkaz dostal ven.",
+      "renewConfirm": "Vytvořit nový odkaz"
+    },
     "paperless": {
       "description": "Ukládejte účtenky a návody do archivu Paperless-ngx místo sem, nebo připojte dokumenty, které už tam máte.",
       "notSetUp": "Paperless na tomto serveru není nastavený. Správce ho může zapnout pomocí <code>PAPERLESS_URL</code>.",
@@ -677,5 +694,11 @@
     "inDays_other": "za {{count}} dní",
     "monthsLong": "ledna,února,března,dubna,května,června,července,srpna,září,října,listopadu,prosince",
     "monthsShort": "led,úno,bře,dub,kvě,čvn,čvc,srp,zář,říj,lis,pro"
+  },
+  "calendar": {
+    "name": "Konce záruk",
+    "event": "Konec záruky: {{name}}",
+    "bought": "Koupeno {{date}}",
+    "boughtFrom": "Koupeno {{date}}, {{vendor}}"
   }
 }

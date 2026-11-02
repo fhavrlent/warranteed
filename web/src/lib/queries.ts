@@ -20,6 +20,7 @@ export const keys = {
   warranty: (id: number) => ["warranties", id] as const,
   tags: ["tags"] as const,
   spaces: ["spaces"] as const,
+  calendar: ["calendar"] as const,
 };
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me, staleTime: Infinity });
