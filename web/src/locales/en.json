@@ -128,8 +128,8 @@
     "reviewBanner_other": "{{count}} drafts from Paperless to review",
     "reviewOpen": "Review",
     "onlyDrafts": "Nothing confirmed yet. Check your drafts and confirm them to start tracking.",
-    "fromDocument_one": "{{count}} warranty from Paperless document {{id}}",
-    "fromDocument_other": "{{count}} warranties from Paperless document {{id}}",
+    "fromDocument_one": "{{count}} warranty from one Paperless document",
+    "fromDocument_other": "{{count}} warranties from one Paperless document",
     "showAll": "Show all"
   },
   "detail": {

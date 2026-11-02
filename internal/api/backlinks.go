@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -112,21 +114,25 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 
 	app := strings.TrimSuffix(s.cfg.AppURL.String(), "/")
 	wantWarranty, wantHomeBox := "", ""
-	ids := map[int64]bool{}
+	// The warranties by ID, which also tells documents with the same ID in
+	// other people's Paperless apart.
+	var ids []string
 	for _, w := range warranties {
-		ids[w.WarrantyID] = true
+		if id := strconv.FormatInt(w.WarrantyID, 10); !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
 	}
 	switch {
 	case len(ids) > 1:
-		wantWarranty = fmt.Sprintf("%s/?document=%d&filter=all", app, doc.DocID)
+		wantWarranty = fmt.Sprintf("%s/?warranties=%s&filter=all", app, strings.Join(ids, ","))
 	case len(ids) == 1:
-		wantWarranty = fmt.Sprintf("%s/w/%d", app, warranties[0].WarrantyID)
+		wantWarranty = fmt.Sprintf("%s/w/%s", app, ids[0])
 	}
 	type linkField struct {
 		name, want string
 		ours       []string // how values Warranteed wrote start
 	}
-	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?document="}}}
+	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
 	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
 		for _, w := range warranties {
 			if w.HomeBoxID != "" {

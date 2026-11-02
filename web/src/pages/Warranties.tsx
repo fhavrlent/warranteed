@@ -67,9 +67,12 @@ export const Warranties = () => {
   const rawFilter = params.get("filter");
   const filter: Filter = FILTERS.find((f) => f === rawFilter) ?? "current";
   const tag = params.get("tag");
-  // A link from a Paperless document with several warranties lists them all,
-  // drafts too.
-  const documentId = Number(params.get("document")) || null;
+  // A link from a Paperless document with several warranties lists just
+  // those, drafts too.
+  const only = useMemo(() => {
+    const raw = params.get("warranties");
+    return raw ? new Set(raw.split(",").map(Number)) : null;
+  }, [params]);
   const { sharing } = useSharing();
   const rawWho = params.get("who");
   const who: Who = sharing ? (WHO.find((x) => x === rawWho) ?? "all") : "all";
@@ -93,7 +96,7 @@ export const Warranties = () => {
   const restoredRef = useRef(false);
   useEffect(() => {
     const saved = savedListState();
-    if (saved && ![...LIST_PARAMS, "q", "document"].some((k) => params.has(k))) {
+    if (saved && ![...LIST_PARAMS, "q", "warranties"].some((k) => params.has(k))) {
       restoredRef.current = true;
       setParams(saved, { replace: true });
     }
@@ -161,9 +164,10 @@ export const Warranties = () => {
     const match = matcher(q);
     const scores = new Map<number, number>();
     const res = withStatus.filter(({ w, s }) => {
-      if (documentId !== null && !w.attachments.some((a) => a.paperlessDocId === documentId)) return false;
-      // Drafts only show under "To review" until they are confirmed.
-      if (documentId === null && (s === "draft") !== (filter === "review")) return false;
+      if (only && !only.has(w.id)) return false;
+      // Drafts only show under "To review" until they are confirmed, except
+      // among a document's warranties.
+      if (filter === "review" ? s !== "draft" : s === "draft" && !only) return false;
       switch (filter) {
         case "current":
           if (s === "archived" || s === "expired") return false;
@@ -216,7 +220,7 @@ export const Warranties = () => {
       }
     });
     return res;
-  }, [withStatus, filter, tag, q, sort, who, documentId]);
+  }, [withStatus, filter, tag, q, sort, who, only]);
 
   // A restored "To review" with nothing left to review goes back to Current.
   useEffect(() => {
@@ -247,10 +251,10 @@ export const Warranties = () => {
         </Button>
       </div>
 
-      {documentId !== null && (
+      {only && (
         <div className="mb-4 flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-sm">
-          <span>{t("list.fromDocument", { id: documentId, count: shown.length })}</span>
-          <Button variant="ghost" size="sm" onClick={() => setParam("document", null)}>
+          <span>{t("list.fromDocument", { count: shown.length })}</span>
+          <Button variant="ghost" size="sm" onClick={() => setParam("warranties", null)}>
             <X /> {t("list.showAll")}
           </Button>
         </div>
@@ -429,7 +433,7 @@ export const Warranties = () => {
         <Card className="p-8 text-center text-sm text-bad">{errorMessage(error)}</Card>
       ) : !anything ? (
         <EmptyState onAdd={() => setAdding(true)} />
-      ) : total === 0 && filter !== "review" ? (
+      ) : total === 0 && filter !== "review" && !only ? (
         // Only drafts so far: the banner above leads to them.
         <Card className="p-12 text-center text-sm text-fg-muted">{t("list.onlyDrafts")}</Card>
       ) : shown.length === 0 ? (

@@ -148,10 +148,10 @@
     "reviewBanner_other": "{{count}} konceptů z Paperless čeká na kontrolu",
     "reviewOpen": "Zkontrolovat",
     "onlyDrafts": "Zatím nic potvrzeného. Zkontrolujte koncepty a potvrďte je, ať je začnete sledovat.",
-    "fromDocument_one": "{{count}} záruka z dokumentu {{id}} v Paperless",
-    "fromDocument_few": "{{count}} záruky z dokumentu {{id}} v Paperless",
-    "fromDocument_many": "{{count}} záruky z dokumentu {{id}} v Paperless",
-    "fromDocument_other": "{{count}} záruk z dokumentu {{id}} v Paperless",
+    "fromDocument_one": "{{count}} záruka z jednoho dokumentu v Paperless",
+    "fromDocument_few": "{{count}} záruky z jednoho dokumentu v Paperless",
+    "fromDocument_many": "{{count}} záruky z jednoho dokumentu v Paperless",
+    "fromDocument_other": "{{count}} záruk z jednoho dokumentu v Paperless",
     "showAll": "Zobrazit vše"
   },
   "detail": {
