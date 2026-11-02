@@ -168,7 +168,7 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 // warranties: the item itself when there is one, or else HomeBox's list of
 // the items whose link field holds the document's value, which keeps the
 // link short however many there are. Items that no longer belong lose the
-// value. When an item can't be marked, the link falls back to the first one.
+// value, found with every HomeBox key. When an item can't be marked, the link falls back to the first one.
 func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, docID int64, warranties []store.DocumentRef) string {
 	var items []string
 	for _, w := range warranties {
@@ -188,13 +188,11 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 	marked := []string{}
 	if len(items) > 1 {
 		for _, id := range items {
+			// An item ID left by the previous version stays: another receipt's
+			// link may still list the item by it until that one is updated.
 			if err := s.updateHomeBoxItem(ctx, clients, id, func(it *homebox.Item) {
-				// Before receipts had their own value, items had their ID.
-				it.RemoveFields(homebox.LinkField, func(v string) bool { return v == it.ID })
 				it.AddField(homebox.LinkField, value)
-			}, func(it *homebox.Item) bool {
-				return it.HasField(homebox.LinkField, value) && !it.HasField(homebox.LinkField, it.ID)
-			}); err != nil {
+			}, func(it *homebox.Item) bool { return it.HasField(homebox.LinkField, value) }); err != nil {
 				slog.Warn("mark homebox item", "item", id, "err", err)
 				break
 			}
@@ -204,7 +202,17 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 			want = homebox.ListURL(hb, value)
 		}
 	}
-	for _, c := range clients {
+	// Items taken off the receipt may be reachable only with the key of
+	// someone it no longer concerns, so every key looks for them.
+	keyHolders, err := s.store.HomeBoxKeyHolders(ctx)
+	if err != nil {
+		slog.Warn("read homebox keys", "doc", docID, "err", err)
+	}
+	everyone, err := s.homeboxClientsOf(ctx, keyHolders)
+	if err != nil {
+		slog.Warn("read homebox keys", "doc", docID, "err", err)
+	}
+	for _, c := range everyone {
 		ids, err := c.WithField(ctx, homebox.LinkField, value)
 		if err != nil {
 			slog.Warn("find homebox items", "doc", docID, "err", err)
@@ -253,6 +261,11 @@ func (s *Server) homeboxClients(ctx context.Context, warranties []store.Document
 			}
 		}
 	}
+	return s.homeboxClientsOf(ctx, users)
+}
+
+// homeboxClientsOf returns HomeBox clients for those of users with a key.
+func (s *Server) homeboxClientsOf(ctx context.Context, users []int64) ([]*homebox.Client, error) {
 	var out []*homebox.Client
 	for _, uid := range users {
 		st, err := s.store.Settings(ctx, uid)

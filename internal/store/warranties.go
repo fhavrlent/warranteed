@@ -523,6 +523,24 @@ func (s *Store) SetHomeBox(ctx context.Context, userID, id int64, link *HomeBoxL
 	return nil
 }
 
+// HomeBoxKeyHolders lists everyone who saved a HomeBox key.
+func (s *Store) HomeBoxKeyHolders(ctx context.Context) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM user_settings WHERE homebox_token != '' ORDER BY user_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // HomeBoxUsers lists the people sharing a warranty who saved a HomeBox key.
 func (s *Store) HomeBoxUsers(ctx context.Context, warrantyID int64) ([]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT sm.user_id FROM warranties w

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -130,5 +132,29 @@ func TestPlaces(t *testing.T) {
 	want := "Office, Office › Drawer, Office › Cable organizer, Garage"
 	if strings.Join(names, ", ") != want {
 		t.Errorf("places = %s, want %s", strings.Join(names, ", "), want)
+	}
+}
+
+func TestWithFieldReadsEveryPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("fields") != LinkField+"=5-abc" {
+			http.Error(w, "bad filter", http.StatusBadRequest)
+			return
+		}
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		size, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+		var items []map[string]string
+		for i := (page - 1) * size; i < min(page*size, 230); i++ {
+			items = append(items, map[string]string{"id": fmt.Sprint("item-", i)})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"items": items})
+	}))
+	defer srv.Close()
+	ids, err := New(srv.URL, "key").WithField(context.Background(), LinkField, "5-abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 230 || ids[229] != "item-229" {
+		t.Errorf("got %d items", len(ids))
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -261,17 +262,24 @@ func ListPrefix(base string) string {
 	return base + "/items?" + url.Values{"fields": {LinkField + "="}}.Encode()
 }
 
-// WithField lists the IDs of the items whose text field name holds value.
+// WithField lists the IDs of the items whose text field name holds value,
+// going through every page of them.
 func (c *Client) WithField(ctx context.Context, name, value string) ([]string, error) {
-	items, err := c.list(ctx, url.Values{"fields": {name + "=" + value}, "page": {"1"}, "pageSize": {"100"}})
-	if err != nil {
-		return nil, err
+	const pageSize = 100
+	var ids []string
+	for page := 1; ; page++ {
+		items, err := c.list(ctx, url.Values{"fields": {name + "=" + value},
+			"page": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(pageSize)}})
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			ids = append(ids, it.ID)
+		}
+		if len(items) < pageSize {
+			return ids, nil
+		}
 	}
-	ids := make([]string, len(items))
-	for i, it := range items {
-		ids[i] = it.ID
-	}
-	return ids, nil
 }
 
 // Attachment is a file or photo on an item.

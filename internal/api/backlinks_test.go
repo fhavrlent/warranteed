@@ -483,7 +483,8 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	t.Cleanup(plServer.Close)
 	receipt, other := receiptValue(plServer.URL, 5), receiptValue(plServer.URL, 6)
 	hb := &fieldHomeBox{items: map[string][]homebox.Field{
-		// Marked with its own ID by an earlier version; other fields stay.
+		// Marked with its own ID by an earlier version, which stays, as do
+		// other fields.
 		"item-1": {{Type: "text", Name: homebox.LinkField, TextValue: "item-1"}, {Type: "text", Name: "Colour", TextValue: "red"}},
 		"item-2": nil,
 		"item-3": nil,
@@ -548,13 +549,13 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 		}
 	}
 	for item, want := range map[string][]string{
-		"item-1": {receipt}, "item-2": {receipt, other}, "item-3": {receipt}, "item-4": {other}, "item-9": nil,
+		"item-1": {receipt, "item-1"}, "item-2": {receipt, other}, "item-3": {receipt}, "item-4": {other}, "item-9": nil,
 	} {
 		if got := hb.values(item); !slices.Equal(got, want) {
 			t.Errorf("%s holds %v, want %v", item, got, want)
 		}
 	}
-	if got := hb.items["item-1"]; len(got) != 2 || got[0].TextValue != "red" {
+	if got := hb.items["item-1"]; len(got) != 3 || got[1].TextValue != "red" {
 		t.Errorf("item-1's other field: %+v", got)
 	}
 
