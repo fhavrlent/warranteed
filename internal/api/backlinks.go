@@ -221,22 +221,29 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 	}
 	// Items taken off the receipt may be reachable only with the key of
 	// someone it no longer concerns, so every key looks for them.
+	// Until that has worked, a document that lists items keeps doing so,
+	// so the next update tries again.
+	cleaned := true
 	keyHolders, err := s.store.HomeBoxKeyHolders(ctx)
 	if err != nil {
 		slog.Warn("read homebox keys", "doc", docID, "err", err)
+		cleaned = false
 	}
 	everyone, err := s.homeboxClientsOf(ctx, keyHolders)
 	if err != nil {
 		slog.Warn("read homebox keys", "doc", docID, "err", err)
+		cleaned = false
 	}
 	for _, c := range everyone {
 		ids, err := c.WithField(ctx, homebox.LinkField, value)
 		if ctx.Err() != nil {
 			slog.Warn("find homebox items", "doc", docID, "err", ctx.Err())
+			cleaned = false
 			break
 		}
 		if err != nil {
 			slog.Warn("find homebox items", "doc", docID, "err", err)
+			cleaned = false
 			continue
 		}
 		for _, id := range ids {
@@ -247,8 +254,12 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 				it.RemoveFields(homebox.LinkField, func(v string) bool { return v == value })
 			}, func(it *homebox.Item) bool { return !it.HasField(homebox.LinkField, value) }); err != nil {
 				slog.Warn("unmark homebox item", "item", id, "err", err)
+				cleaned = false
 			}
 		}
+	}
+	if listed && !cleaned {
+		return homebox.ListURL(hb, value)
 	}
 	return want
 }

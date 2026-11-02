@@ -610,8 +610,28 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 		t.Errorf("document 6: HomeBox link = %q", got)
 	}
 
-	// HomeBox can't be reached: the first item is linked instead.
+	// HomeBox can't be reached: a receipt that lists items keeps its list,
+	// to take items off it later; otherwise the first item is linked.
+	list := homebox.ListURL("https://homebox.example.test", receipt)
+	pl.mu.Lock()
+	for i, f := range pl.values[5] {
+		if f.Field == pl.fields["HomeBox"] {
+			pl.values[5][i].Value = list
+		}
+	}
+	pl.mu.Unlock()
 	hbServer.Close()
+	sync(5)
+	if got := pl.value(5, "HomeBox"); got != list {
+		t.Errorf("HomeBox link = %q, want the list kept", got)
+	}
+	pl.mu.Lock()
+	for i, f := range pl.values[5] {
+		if f.Field == pl.fields["HomeBox"] {
+			pl.values[5][i].Value = "https://homebox.example.test/item/item-1"
+		}
+	}
+	pl.mu.Unlock()
 	sync(5)
 	if got := pl.value(5, "HomeBox"); got != "https://homebox.example.test/item/item-1" {
 		t.Errorf("HomeBox link = %q", got)
