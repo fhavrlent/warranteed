@@ -276,16 +276,19 @@ type Settings struct {
 	// documents ("off" by default), and where their details come from:
 	// "paperless", "fields" or "claude".
 	DraftSource string `json:"draftSource"`
+	// WarrantyStart is which date drafts count warranties from when the
+	// document gives both: "received" (EU and UK law) or "sold".
+	WarrantyStart string `json:"warrantyStart"`
 }
 
 func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	var st Settings
 	err := s.db.QueryRowContext(ctx, `
 		SELECT date_format, currency, theme, language, browser_language, expiring_soon_days, notify_urls, notify_days,
-		       paperless_url, paperless_public_url, paperless_token, paperless_default, paperless_backlinks, homebox_token, homebox_photos_default, draft_source
+		       paperless_url, paperless_public_url, paperless_token, paperless_default, paperless_backlinks, homebox_token, homebox_photos_default, draft_source, warranty_start
 		FROM user_settings WHERE user_id = ?`, userID,
 	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.Language, &st.BrowserLanguage, &st.ExpiringSoonDays, &st.NotifyURLs,
-		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.PaperlessBacklinks, &st.HomeBoxToken, &st.HomeBoxPhotosDefault, &st.DraftSource)
+		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.PaperlessBacklinks, &st.HomeBoxToken, &st.HomeBoxPhotosDefault, &st.DraftSource, &st.WarrantyStart)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -314,10 +317,10 @@ func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) er
 		UPDATE user_settings SET
 			date_format = ?, currency = ?, theme = ?, language = ?, expiring_soon_days = ?, notify_urls = ?,
 			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?,
-			paperless_backlinks = ?, homebox_token = ?, homebox_photos_default = ?, draft_source = ?
+			paperless_backlinks = ?, homebox_token = ?, homebox_photos_default = ?, draft_source = ?, warranty_start = ?
 		WHERE user_id = ?`,
 		st.DateFormat, st.Currency, st.Theme, st.Language, st.ExpiringSoonDays, st.NotifyURLs,
-		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, st.HomeBoxPhotosDefault, st.DraftSource, userID)
+		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, st.HomeBoxPhotosDefault, st.DraftSource, st.WarrantyStart, userID)
 	return err
 }
 

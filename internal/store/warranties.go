@@ -42,6 +42,15 @@ type Warranty struct {
 	// Draft is set on warranties created from a document in Paperless until
 	// someone confirms them.
 	Draft bool `json:"draft"`
+	// DocumentDates are a draft's two candidate start dates, when its
+	// document gives different ones.
+	DocumentDates *DocumentDates `json:"documentDates"`
+}
+
+// DocumentDates are when a document says the goods were sold and received.
+type DocumentDates struct {
+	Sold     string `json:"sold"`
+	Received string `json:"received"`
 }
 
 // HomeBoxLink is the HomeBox item a warranty belongs to.
@@ -78,6 +87,8 @@ type WarrantyInput struct {
 	SpaceID *int64 `json:"spaceId"`
 	// Draft creates it as a draft; set by the server, never by clients.
 	Draft bool `json:"-"`
+	// Dates a draft's document gives; set by the server.
+	DateSold, DateReceived string `json:"-"`
 }
 
 // ValidationError is input the user can fix; its message is translatable.
@@ -169,19 +180,23 @@ const visibleTo = `w.space_id IN (SELECT sm.space_id FROM space_members sm
 const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_number, w.purchase_date,
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
 	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
-	w.homebox_id, w.homebox_asset_id, w.draft`
+	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
 func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	var w Warranty
 	var homeboxID, homeboxAssetID string
+	var dates DocumentDates
 	err := row.Scan(&w.ID, &w.ProductName, &w.Brand, &w.Model, &w.Vendor, &w.OrderNumber, &w.PurchaseDate,
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
-		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft)
+		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received)
 	if err != nil {
 		return nil, err
+	}
+	if w.Draft && dates.Sold != "" && dates.Received != "" && dates.Sold != dates.Received {
+		w.DocumentDates = &dates
 	}
 	if homeboxID != "" {
 		w.HomeBox = &HomeBoxLink{ID: homeboxID, AssetID: homeboxAssetID}
@@ -310,11 +325,12 @@ func (s *Store) CreateWarranty(ctx context.Context, userID int64, in *WarrantyIn
 		}
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO warranties (user_id, space_id, product_name, brand, model, vendor, order_number, purchase_date,
-				warranty_months, warranty_end_date, is_lifetime, expires_on, price, currency, product_url, notes, draft)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+				warranty_months, warranty_end_date, is_lifetime, expires_on, price, currency, product_url, notes, draft,
+				date_sold, date_received)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			userID, spaceID, in.ProductName, in.Brand, in.Model, in.Vendor, in.OrderNumber, in.PurchaseDate,
 			in.WarrantyMonths, in.WarrantyEndDate, in.IsLifetime, expires, in.Price, in.Currency,
-			in.ProductURL, in.Notes, in.Draft,
+			in.ProductURL, in.Notes, in.Draft, in.DateSold, in.DateReceived,
 		).Scan(&id)
 		if err != nil {
 			return err

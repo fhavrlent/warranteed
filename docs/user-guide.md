@@ -69,6 +69,11 @@ Until it's confirmed, a draft is visible only to you, sends no reminders and isn
 
 With Claude, a receipt for several devices gives a draft for each, with the shop, date, order number and receipt filled in on all of them. Delivery, discounts, food and other things nobody claims a warranty on are left out. Delete any draft you don't need.
 
+Claude also:
+
+- reads both the date of sale and the date you received the goods, when the document gives both. **Count warranties from** in the drafts settings picks which one a draft starts with: **Date received** (the default, as EU and UK law counts) or **Date of purchase** (as most US and manufacturer warranties count). A draft with two different dates lets you switch between them before you confirm it;
+- adds an extended warranty or warranty insurance bought with a product to that product's warranty length, and notes it, instead of making a draft of its own.
+
 With custom fields, the draft may be made before paperless-gpt has filled them in. Warranteed then looks again over the next ten minutes and fills the draft in, unless you've already edited it.
 
 ## Finding warranties

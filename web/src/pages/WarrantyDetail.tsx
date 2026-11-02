@@ -22,7 +22,7 @@ import { TagChip } from "@/components/Tags";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
-import { Card } from "@/components/ui/misc";
+import { Card, Segmented } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
 import { api, errorMessage, thumbUrl } from "@/lib/api";
 import { durationLabel } from "@/lib/dates";
@@ -105,6 +105,17 @@ export const WarrantyDetail = () => {
     }
   };
 
+  // A draft whose document gives both a date of sale and of receipt can
+  // count the warranty from either.
+  const startFrom = async (purchaseDate: string) => {
+    try {
+      await api.updateWarranty(w.id, { ...toInput(w), purchaseDate });
+      invalidate();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+
   const coverage = w.isLifetime
     ? t("detail.lifetime")
     : w.warrantyMonths
@@ -133,6 +144,26 @@ export const WarrantyDetail = () => {
                   <Check /> {t("detail.confirm")}
                 </Button>
               </div>
+              {w.documentDates && (
+                <div className="flex w-full flex-wrap items-center justify-between gap-3 border-t border-primary/20 pt-3">
+                  <p className="text-[13px] text-fg-muted">{t("detail.twoDates")}</p>
+                  <Segmented
+                    size="sm"
+                    value={w.purchaseDate}
+                    onChange={(d) => void startFrom(d)}
+                    options={[
+                      {
+                        value: w.documentDates.sold,
+                        label: t("detail.dateSold", { date: fmtDate(w.documentDates.sold) }),
+                      },
+                      {
+                        value: w.documentDates.received,
+                        label: t("detail.dateReceived", { date: fmtDate(w.documentDates.received) }),
+                      },
+                    ]}
+                  />
+                </div>
+              )}
             </div>
           )}
           <Card className="p-5 sm:p-6">

@@ -17,6 +17,7 @@ import (
 	"github.com/fhavrlent/warranteed/internal/config"
 	"github.com/fhavrlent/warranteed/internal/db"
 	"github.com/fhavrlent/warranteed/internal/paperless"
+	"github.com/fhavrlent/warranteed/internal/receipts"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -361,5 +362,53 @@ func TestRefillKeepsEdits(t *testing.T) {
 	}
 	if w, _ := f.st.GetWarranty(ctx, f.alice, other.ID); w.PurchaseDate != "2024-12-24" {
 		t.Errorf("date field not applied: %s", w.PurchaseDate)
+	}
+}
+
+func TestExtensionAddsToTheWarranty(t *testing.T) {
+	stated, ext := 12, 36
+	for _, c := range []struct {
+		name   string
+		stated *int
+		want   int
+	}{
+		{"default length", nil, 60},
+		{"stated length", &stated, 48},
+	} {
+		months := 24
+		in := &store.WarrantyInput{WarrantyMonths: &months, Notes: "Kept"}
+		d := &receipts.Details{WarrantyMonths: c.stated, Extension: "Prodloužená záruka", ExtendedMonths: &ext}
+		applyDetails(in, d)
+		addExtension(in, d, "en")
+		if *in.WarrantyMonths != c.want {
+			t.Errorf("%s: %d months, want %d", c.name, *in.WarrantyMonths, c.want)
+		}
+		if want := "Kept\nIncludes 36 months of extended warranty bought with it: Prodloužená záruka"; in.Notes != want {
+			t.Errorf("%s: notes %q, want %q", c.name, in.Notes, want)
+		}
+	}
+}
+
+func TestPickStart(t *testing.T) {
+	for _, c := range []struct {
+		start, received string
+		want            string
+		offered         bool
+	}{
+		{startReceived, "2026-11-02", "2026-11-02", true},
+		{startSold, "2026-11-02", "2026-10-31", true},
+		{"", "2026-11-02", "2026-11-02", true}, // received by default
+		{startReceived, "", "2026-10-31", false},
+		{startReceived, "2026-10-31", "2026-10-31", false},
+		{startReceived, "soon", "2026-10-31", false},
+	} {
+		in := &store.WarrantyInput{PurchaseDate: "2026-10-31"}
+		pickStart(in, &receipts.Details{ReceivedDate: c.received}, c.start)
+		if in.PurchaseDate != c.want {
+			t.Errorf("%q, received %q: starts %s, want %s", c.start, c.received, in.PurchaseDate, c.want)
+		}
+		if offered := in.DateSold != ""; offered != c.offered || (offered && (in.DateSold != "2026-10-31" || in.DateReceived != c.received)) {
+			t.Errorf("%q, received %q: offers %q and %q", c.start, c.received, in.DateSold, in.DateReceived)
+		}
 	}
 }

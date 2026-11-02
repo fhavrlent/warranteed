@@ -520,6 +520,23 @@ const Paperless = ({ s }: { s: SettingsT }) => {
               ))}
             </Select>
           </Field>
+          {s.draftSource === "claude" && (
+            <Field
+              className="mt-3"
+              label={t("settings.paperless.warrantyStart")}
+              hint={t("settings.paperless.warrantyStartHint")}
+            >
+              <Select
+                value={s.warrantyStart}
+                onChange={(e) => update({ warrantyStart: e.target.value as SettingsT["warrantyStart"] })}
+                disabled={!s.paperlessEnabled || !s.webhookEnabled}
+                className="sm:w-80"
+              >
+                <option value="received">{t("settings.paperless.warrantyStartReceived")}</option>
+                <option value="sold">{t("settings.paperless.warrantyStartSold")}</option>
+              </Select>
+            </Field>
+          )}
           {s.isAdmin && s.webhookEnabled && (
             <p className="mt-3 text-xs leading-relaxed text-fg-subtle">
               <Trans

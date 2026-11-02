@@ -168,7 +168,10 @@
     "draftTitle": "Draft from Paperless",
     "draftText": "Made from a new document in Paperless. Check the details, then confirm it.",
     "confirm": "Confirm",
-    "confirmed": "Warranty confirmed"
+    "confirmed": "Warranty confirmed",
+    "twoDates": "The document gives two dates. Count the warranty from:",
+    "dateSold": "Sold {{date}}",
+    "dateReceived": "Received {{date}}"
   },
   "form": {
     "addTitle": "Add a warranty",
@@ -391,7 +394,11 @@
         "paperless": "On, with the document's own details",
         "fields": "On, with Paperless custom fields (e.g. paperless-gpt)",
         "claude": "On, read by Claude"
-      }
+      },
+      "warrantyStart": "Count warranties from",
+      "warrantyStartHint": "For documents that give both dates. EU and UK law counts from when you received the goods; most US and manufacturer warranties count from the date of purchase. Each draft lets you switch.",
+      "warrantyStartReceived": "Date received",
+      "warrantyStartSold": "Date of purchase"
     },
     "homebox": {
       "description": "Keep your inventory in HomeBox in step: add a warranty's product as an item, or link it to one that's already there.",
@@ -540,7 +547,12 @@
     "homeboxOrder": "Order number: {{number}}",
     "homeboxSerials": "Serial numbers: {{list}}",
     "testTitle": "Warranteed test",
-    "testBody": "Notifications are working. You'll be reminded before warranties expire."
+    "testBody": "Notifications are working. You'll be reminded before warranties expire.",
+    "draftExtension_one": "Includes {{count}} month of extended warranty bought with it: {{name}}",
+    "draftExtension_other": "Includes {{count}} months of extended warranty bought with it: {{name}}",
+    "draftExtensionUnnamed_one": "Includes {{count}} month of extended warranty bought with it",
+    "draftExtensionUnnamed_other": "Includes {{count}} months of extended warranty bought with it",
+    "warrantyStart": "Choose which date warranties count from"
   },
   "signIn": {
     "unreachable": "Could not reach the identity provider. Try again in a moment.",

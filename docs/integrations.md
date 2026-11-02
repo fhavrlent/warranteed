@@ -125,7 +125,7 @@ Claude can read the receipt itself, including photos of till slips and documents
 2. Optionally choose a different model with `WARRANTEED_CLAUDE_MODEL`. The default, `claude-haiku-5-5`, is the cheapest and read receipts well in testing.
 3. Users pick **On, read by Claude**.
 
-Claude finds the product name, brand, model, shop, purchase date, price including tax, currency, order number, serial numbers, and the warranty length when the receipt states one. A receipt for several devices makes a draft for each, up to 10, while delivery, discounts, food and similar items are left out. Names stay in the receipt's language.
+Claude finds the product name, brand, model, shop, purchase date, price including tax, currency, order number, serial numbers, and the warranty length when the receipt states one. A receipt for several devices makes a draft for each, up to 10, while delivery, discounts, food and similar items are left out. Names stay in the receipt's language. When the document also gives the date the goods were received, the draft starts on the date the user picked under **Count warranties from**, and offers the other one. An extended warranty bought with a product lengthens that product's warranty by its months and is mentioned in the notes.
 
 What to know:
 
