@@ -198,3 +198,25 @@ func TestRemindersArePerPerson(t *testing.T) {
 		t.Error("my reminder wasn't recorded")
 	}
 }
+
+func TestDocumentDatesOnlyOnDrafts(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	uid := user(t, st, "alice")
+	months := 24
+	id, err := st.CreateWarranty(ctx, uid, &store.WarrantyInput{ProductName: "Konvice", PurchaseDate: "2026-11-02",
+		WarrantyMonths: &months, Draft: true, DateSold: "2026-10-31", DateReceived: "2026-11-02"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, _ := st.GetWarranty(ctx, uid, id)
+	if w.DocumentDates == nil || w.DocumentDates.Sold != "2026-10-31" || w.DocumentDates.Received != "2026-11-02" {
+		t.Errorf("draft offers %+v", w.DocumentDates)
+	}
+	if err := st.ConfirmWarranty(ctx, uid, id); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ := st.GetWarranty(ctx, uid, id); w.DocumentDates != nil {
+		t.Errorf("confirmed warranty still offers %+v", w.DocumentDates)
+	}
+}

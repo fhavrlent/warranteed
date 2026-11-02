@@ -188,7 +188,10 @@
     "draftTitle": "Koncept z Paperless",
     "draftText": "Vznikl z nového dokumentu v Paperless. Zkontrolujte údaje a potvrďte ho.",
     "confirm": "Potvrdit",
-    "confirmed": "Záruka potvrzena"
+    "confirmed": "Záruka potvrzena",
+    "twoDates": "Doklad uvádí dvě data. Záruku počítat od:",
+    "dateSold": "Prodáno {{date}}",
+    "dateReceived": "Převzato {{date}}"
   },
   "form": {
     "addTitle": "Přidat záruku",
@@ -425,7 +428,11 @@
         "paperless": "Zapnuto, s údaji z dokumentu",
         "fields": "Zapnuto, s vlastními poli v Paperless (např. paperless-gpt)",
         "claude": "Zapnuto, čte Claude"
-      }
+      },
+      "warrantyStart": "Záruku počítat od",
+      "warrantyStartHint": "U dokladů, které uvádějí obě data. Podle práva EU a Spojeného království běží záruka od převzetí zboží; většina záruk v USA a záruk výrobců od data nákupu. U každého konceptu to můžete přepnout.",
+      "warrantyStartReceived": "Data převzetí",
+      "warrantyStartSold": "Data nákupu"
     },
     "homebox": {
       "description": "Udržujte inventář v HomeBoxu v souladu: přidejte produkt ze záruky jako položku, nebo ho propojte s položkou, která už tam je.",
@@ -596,7 +603,8 @@
     "draftExtensionUnnamed_one": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem",
     "draftExtensionUnnamed_few": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem",
     "draftExtensionUnnamed_many": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem",
-    "draftExtensionUnnamed_other": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem"
+    "draftExtensionUnnamed_other": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem",
+    "warrantyStart": "Vyberte, od kterého data se záruka počítá"
   },
   "signIn": {
     "unreachable": "Poskytovatel identity není dostupný. Zkuste to za chvíli znovu.",

@@ -388,3 +388,27 @@ func TestExtensionAddsToTheWarranty(t *testing.T) {
 		}
 	}
 }
+
+func TestPickStart(t *testing.T) {
+	for _, c := range []struct {
+		start, received string
+		want            string
+		offered         bool
+	}{
+		{startReceived, "2026-11-02", "2026-11-02", true},
+		{startSold, "2026-11-02", "2026-10-31", true},
+		{"", "2026-11-02", "2026-11-02", true}, // received by default
+		{startReceived, "", "2026-10-31", false},
+		{startReceived, "2026-10-31", "2026-10-31", false},
+		{startReceived, "soon", "2026-10-31", false},
+	} {
+		in := &store.WarrantyInput{PurchaseDate: "2026-10-31"}
+		pickStart(in, &receipts.Details{ReceivedDate: c.received}, c.start)
+		if in.PurchaseDate != c.want {
+			t.Errorf("%q, received %q: starts %s, want %s", c.start, c.received, in.PurchaseDate, c.want)
+		}
+		if offered := in.DateSold != ""; offered != c.offered || (offered && (in.DateSold != "2026-10-31" || in.DateReceived != c.received)) {
+			t.Errorf("%q, received %q: offers %q and %q", c.start, c.received, in.DateSold, in.DateReceived)
+		}
+	}
+}

@@ -56,6 +56,8 @@ export interface Warranty {
   homebox: HomeBoxLink | null;
   /** Made from a new document in Paperless and not confirmed yet. */
   draft: boolean;
+  /** A draft's document dates of sale and receipt, when they differ. */
+  documentDates: { sold: string; received: string } | null;
 }
 
 export type DraftSource = "off" | "paperless" | "fields" | "claude";
@@ -125,6 +127,8 @@ export interface Settings {
   paperlessHomeboxField: string;
   /** Whether the user gets drafts from new Paperless documents ("off"), and from what. */
   draftSource: DraftSource;
+  /** Which date drafts count warranties from when a document gives both. */
+  warrantyStart: "received" | "sold";
   /** The choices this server offers. */
   draftSources: DraftSource[];
   /** The server accepts Paperless's webhook for new documents. */

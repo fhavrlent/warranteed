@@ -17,11 +17,14 @@ import (
 // Details are what a receipt says about one product bought. Empty strings
 // and nil mean the receipt doesn't say.
 type Details struct {
-	ProductName    string   `json:"productName"`
-	Brand          string   `json:"brand"`
-	Model          string   `json:"model"`
-	Vendor         string   `json:"vendor"`
-	PurchaseDate   string   `json:"purchaseDate"`
+	ProductName  string `json:"productName"`
+	Brand        string `json:"brand"`
+	Model        string `json:"model"`
+	Vendor       string `json:"vendor"`
+	PurchaseDate string `json:"purchaseDate"`
+	// ReceivedDate is when the buyer received the goods, if the document
+	// says and it isn't the purchase date.
+	ReceivedDate   string   `json:"receivedDate"`
 	Price          *float64 `json:"price"`
 	Currency       string   `json:"currency"`
 	WarrantyMonths *int     `json:"warrantyMonths"`
@@ -40,6 +43,7 @@ const MaxItems = 10
 type answer struct {
 	Vendor       string `json:"vendor"`
 	PurchaseDate string `json:"purchaseDate"`
+	ReceivedDate string `json:"receivedDate"`
 	Currency     string `json:"currency"`
 	OrderNumber  string `json:"orderNumber"`
 	Items        []struct {
@@ -58,10 +62,11 @@ type answer struct {
 var schema = map[string]any{
 	"type":                 "object",
 	"additionalProperties": false,
-	"required":             []string{"vendor", "purchaseDate", "currency", "orderNumber", "items"},
+	"required":             []string{"vendor", "purchaseDate", "receivedDate", "currency", "orderNumber", "items"},
 	"properties": map[string]any{
 		"vendor":       map[string]any{"type": "string", "description": "The shop that sold it"},
-		"purchaseDate": map[string]any{"type": "string", "description": "When the buyer received the goods if the document says, otherwise when they were sold; YYYY-MM-DD, or empty"},
+		"purchaseDate": map[string]any{"type": "string", "description": "When it was sold or the document issued; YYYY-MM-DD, or empty"},
+		"receivedDate": map[string]any{"type": "string", "description": "When the buyer received the goods, if the document gives that date; YYYY-MM-DD, or empty"},
 		"currency":     map[string]any{"type": "string", "description": "ISO 4217 code such as CZK or EUR, or empty"},
 		"orderNumber":  map[string]any{"type": "string", "description": "Order or invoice number"},
 		"items": map[string]any{
@@ -95,7 +100,7 @@ Give what one piece cost including tax; per-piece columns often leave the tax ou
 
 An extended warranty or warranty insurance bought for a product (often a service line that names the product or its code) isn't a product of its own: put it on that product's entry, with the months it adds on top of the product's warranty. Its price isn't part of the product's price.
 
-For the purchase date, use the day the buyer received the goods when the document gives it (e.g. "Datum převzetí" or a delivery date), since warranties run from then; otherwise the date of sale or issue.`
+The purchase date is the date of sale, or the issue date if that's the only one. Give the date the buyer received the goods separately when the document states it, e.g. "Datum převzetí" or a delivery date; due dates and the like are neither.`
 
 // Reader reads receipts with Claude.
 type Reader struct {
@@ -165,6 +170,9 @@ func (r *Reader) Read(ctx context.Context, data []byte, mimeType string) ([]Deta
 // MaxItems.
 func (a *answer) details() []Details {
 	purchase := Details{Vendor: a.Vendor, PurchaseDate: a.PurchaseDate, Currency: a.Currency, OrderNumber: a.OrderNumber}
+	if a.ReceivedDate != a.PurchaseDate {
+		purchase.ReceivedDate = a.ReceivedDate
+	}
 	if len(a.Items) == 0 {
 		return []Details{purchase}
 	}

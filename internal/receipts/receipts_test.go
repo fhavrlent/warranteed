@@ -53,3 +53,12 @@ func TestDetailsAtMost(t *testing.T) {
 		t.Errorf("got %d products, want %d", len(got), MaxItems)
 	}
 }
+
+func TestReceivedDate(t *testing.T) {
+	for received, want := range map[string]string{"2026-11-02": "2026-11-02", "2026-10-31": "", "": ""} {
+		a := answer{PurchaseDate: "2026-10-31", ReceivedDate: received}
+		if got := a.details()[0].ReceivedDate; got != want {
+			t.Errorf("received %q: got %q, want %q", received, got, want)
+		}
+	}
+}

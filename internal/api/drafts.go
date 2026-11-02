@@ -32,6 +32,12 @@ import (
 // webhookHeader carries the shared secret (WARRANTEED_WEBHOOK_SECRET).
 const webhookHeader = "X-Warranteed-Secret"
 
+// Which date drafts count warranties from, when a document gives both.
+const (
+	startReceived = "received"
+	startSold     = "sold"
+)
+
 // Draft sources a user can choose from.
 const (
 	sourceOff       = "off"
@@ -304,6 +310,7 @@ func (s *Server) draftInputs(ctx context.Context, pc *paperless.Client, doc *pap
 	for i := range found {
 		item := *in
 		applyDetails(&item, &found[i])
+		pickStart(&item, &found[i], st.WarrantyStart)
 		addExtension(&item, &found[i], st.EffectiveLanguage())
 		out[i] = &item
 	}
@@ -341,6 +348,19 @@ func applyDetails(in *store.WarrantyInput, d *receipts.Details) {
 		if sn = strings.TrimSpace(sn); sn != "" && !slices.Contains(in.SerialNumbers, sn) {
 			in.SerialNumbers = append(in.SerialNumbers, sn)
 		}
+	}
+}
+
+// pickStart starts the warranty on the date the user counts from, when the
+// document also says when the goods were received, and keeps both dates so
+// the draft can offer the other one.
+func pickStart(in *store.WarrantyInput, d *receipts.Details, start string) {
+	if _, err := time.Parse(store.DateLayout, d.ReceivedDate); err != nil || in.PurchaseDate == d.ReceivedDate {
+		return
+	}
+	in.DateSold, in.DateReceived = in.PurchaseDate, d.ReceivedDate
+	if start != startSold {
+		in.PurchaseDate = d.ReceivedDate
 	}
 }
 
