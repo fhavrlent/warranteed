@@ -165,6 +165,7 @@ type Item struct {
 type Attachment struct {
 	ID        string `json:"id"`
 	CreatedAt string `json:"createdAt"`
+	Title     string `json:"title"`
 	Path      string `json:"path"`
 	Type      string `json:"type"`
 	Primary   bool   `json:"primary"`
@@ -273,9 +274,9 @@ func (c *Client) AddLink(ctx context.Context, id, link, title, kind string) erro
 	return c.do(ctx, http.MethodPost, "/entities/"+url.PathEscape(id)+"/attachments/external", nil, body, nil)
 }
 
-// UploadPhoto adds a photo to an item and returns its attachment ID; primary
-// makes it the item's main photo.
-func (c *Client) UploadPhoto(ctx context.Context, id, name, mimeType string, photo io.Reader, primary bool) (string, error) {
+// UploadPhoto adds a photo to item, as it was just read, and returns the
+// photo's attachment ID; primary makes it the item's main photo.
+func (c *Client) UploadPhoto(ctx context.Context, item *Item, name, mimeType string, photo io.Reader, primary bool) (string, error) {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	h := textproto.MIMEHeader{}
@@ -297,26 +298,35 @@ func (c *Client) UploadPhoto(ctx context.Context, id, name, mimeType string, pho
 		return "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.BaseURL+"/api/v1/entities/"+url.PathEscape(id)+"/attachments", &body)
+		c.BaseURL+"/api/v1/entities/"+url.PathEscape(item.ID)+"/attachments", &body)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	// HomeBox answers with the item; the photo is its newest attachment.
-	var item Item
-	if err := c.send(req, &item); err != nil {
+	// HomeBox answers with the item. The photo is the attachment that
+	// wasn't there before and has its name; if something else added one
+	// with the same name meanwhile, the newest of them.
+	var after Item
+	if err := c.send(req, &after); err != nil {
 		return "", err
 	}
-	newest, at := "", time.Time{}
+	known := map[string]bool{}
 	for _, a := range item.Attachments {
-		if t, err := time.Parse(time.RFC3339Nano, a.CreatedAt); newest == "" || (err == nil && t.After(at)) {
-			newest, at = a.ID, t
+		known[a.ID] = true
+	}
+	found, at := "", time.Time{}
+	for _, a := range after.Attachments {
+		if known[a.ID] || a.Title != name {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339Nano, a.CreatedAt); found == "" || (err == nil && t.After(at)) {
+			found, at = a.ID, t
 		}
 	}
-	if newest == "" {
+	if found == "" {
 		return "", fmt.Errorf("HomeBox did not list the uploaded photo")
 	}
-	return newest, nil
+	return found, nil
 }
 
 // OpenAttachment fetches an item's file or photo; the caller closes the body.

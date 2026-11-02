@@ -74,8 +74,8 @@ func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.files = map[string]string{}
 		}
 		f.files[id] = string(data)
-		f.attachments = append(f.attachments, fmt.Sprintf(`{"id":%q,"createdAt":"2026-01-01T10:00:%02d.5Z","type":"photo","primary":%s}`,
-			id, len(f.photos), r.FormValue("primary")))
+		f.attachments = append(f.attachments, fmt.Sprintf(`{"id":%q,"createdAt":"2026-01-01T10:00:%02d.5Z","title":%q,"type":"photo","primary":%s}`,
+			id, len(f.photos), hdr.Filename, r.FormValue("primary")))
 		item = `{"id":"item-1","attachments":[` + strings.Join(f.attachments, ",") + `]}`
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
@@ -327,5 +327,28 @@ func TestPhotoStoredInHomeBox(t *testing.T) {
 	}
 	if len(f.hb.photos) != 2 {
 		t.Errorf("photos sent again: %v", f.hb.photos)
+	}
+}
+
+// The stored photo is the one just uploaded, even when the item has another
+// attachment that looks newer.
+func TestHomeBoxPhotoIsTheOneUploaded(t *testing.T) {
+	f := newHomeBoxFixture(t)
+	if w := f.link(t); w.Code != http.StatusOK {
+		t.Fatalf("link: %d %s", w.Code, w.Body)
+	}
+	f.hb.attachments = append(f.hb.attachments, `{"id":"later","createdAt":"2030-01-01T00:00:00Z","title":"front.jpg","type":"photo"}`)
+	w := f.upload(t, "front.jpg", store.StorageHomeBox)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", w.Code, w.Body)
+	}
+	var a store.Attachment
+	json.Unmarshal(w.Body.Bytes(), &a)
+	got, err := f.srv.store.GetAttachment(context.Background(), f.bob.ID, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.HomeBoxAttachment != "photo-1" {
+		t.Errorf("attachment = %q, want photo-1", got.HomeBoxAttachment)
 	}
 }

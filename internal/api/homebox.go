@@ -305,6 +305,7 @@ func (s *Server) sendHomeBoxPhotos(ctx context.Context, hb *homebox.Client, uid,
 	if len(photos) == 0 {
 		return nil
 	}
+	defer s.lockPhotos("item:" + wr.HomeBox.ID)()
 	item, err := hb.Get(ctx, wr.HomeBox.ID)
 	if err != nil {
 		return err
@@ -315,7 +316,7 @@ func (s *Server) sendHomeBoxPhotos(ctx context.Context, hb *homebox.Client, uid,
 		if err != nil {
 			return err
 		}
-		_, err = hb.UploadPhoto(ctx, item.ID, a.Filename, a.MimeType, f, primary)
+		_, err = hb.UploadPhoto(ctx, item, a.Filename, a.MimeType, f, primary)
 		f.Close()
 		if err != nil {
 			return err
@@ -328,10 +329,11 @@ func (s *Server) sendHomeBoxPhotos(ctx context.Context, hb *homebox.Client, uid,
 	return nil
 }
 
-// lockPhotos holds back other photo uploads to a warranty's HomeBox item
-// until the returned function is called, so they agree on the main photo.
-func (s *Server) lockPhotos(wid int64) (unlock func()) {
-	lock, _ := s.photoLocks.LoadOrStore(wid, new(sync.Mutex))
+// lockPhotos holds back other photo uploads for a warranty ID or an
+// "item:<id>" key until the returned function is called, so they agree on
+// the main photo.
+func (s *Server) lockPhotos(key any) (unlock func()) {
+	lock, _ := s.photoLocks.LoadOrStore(key, new(sync.Mutex))
 	lock.(*sync.Mutex).Lock()
 	return lock.(*sync.Mutex).Unlock
 }
@@ -341,11 +343,14 @@ func (s *Server) lockPhotos(wid int64) (unlock func()) {
 // main photo if it has none.
 func (s *Server) storeHomeBoxPhoto(ctx context.Context, hb *homebox.Client, itemID string, a *store.Attachment, photo io.Reader) error {
 	defer s.lockPhotos(a.WarrantyID)()
+	// Warranties linked to the same item take turns too, so each upload
+	// finds its own photo among the item's attachments.
+	defer s.lockPhotos("item:" + itemID)()
 	item, err := hb.Get(ctx, itemID)
 	if err != nil {
 		return err
 	}
-	id, err := hb.UploadPhoto(ctx, item.ID, a.Filename, a.MimeType, photo, !item.HasPrimaryPhoto())
+	id, err := hb.UploadPhoto(ctx, item, a.Filename, a.MimeType, photo, !item.HasPrimaryPhoto())
 	if err != nil {
 		return err
 	}
