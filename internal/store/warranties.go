@@ -569,11 +569,11 @@ func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool
 	return nil
 }
 
-// DeleteWarranty deletes a warranty and returns the local files that belonged
-// to it so the caller can remove them from disk. In a shared space only the
+// DeleteWarranty deletes a warranty and returns its attachments, so the
+// caller can remove what it kept of them on disk. In a shared space only the
 // person who added it may delete it.
-func (s *Store) DeleteWarranty(ctx context.Context, userID, id int64) ([]string, error) {
-	var paths []string
+func (s *Store) DeleteWarranty(ctx context.Context, userID, id int64) ([]Attachment, error) {
+	var files []Attachment
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
 		cur, err := warrantyAccess(ctx, tx, userID, id)
 		if err != nil {
@@ -583,17 +583,17 @@ func (s *Store) DeleteWarranty(ctx context.Context, userID, id int64) ([]string,
 			return invalid("onlyOwnerDelete", i18n.Args{"name": cur.addedByName})
 		}
 		rows, err := tx.QueryContext(ctx,
-			`SELECT local_path FROM attachments WHERE warranty_id = ? AND storage = 'local'`, id)
+			`SELECT storage, local_path, homebox_attachment FROM attachments WHERE warranty_id = ?`, id)
 		if err != nil {
 			return err
 		}
 		for rows.Next() {
-			var p string
-			if err := rows.Scan(&p); err != nil {
+			var a Attachment
+			if err := rows.Scan(&a.Storage, &a.LocalPath, &a.HomeBoxAttachment); err != nil {
 				rows.Close()
 				return err
 			}
-			paths = append(paths, p)
+			files = append(files, a)
 		}
 		rows.Close()
 		if _, err := tx.ExecContext(ctx, `DELETE FROM warranties WHERE id = ?`, id); err != nil {
@@ -601,7 +601,7 @@ func (s *Store) DeleteWarranty(ctx context.Context, userID, id int64) ([]string,
 		}
 		return nil
 	})
-	return paths, err
+	return files, err
 }
 
 // MoveAllToSpace moves every warranty in the user's personal space to another

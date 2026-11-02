@@ -179,7 +179,7 @@ services:
       - /mnt/nas/warranteed:/files
 ```
 
-Back up both directories. The data directory also holds `secret.key` (unless `WARRANTEED_SECRET` is set); losing it only means everyone signs in again. To copy the database while the app is running, use `sqlite3 warranteed.db ".backup backup.db"`.
+Small previews of product photos are kept there too, as `*.thumb.jpg`; they can be left out of backups, as they're made again when needed. Back up both directories. The data directory also holds `secret.key` (unless `WARRANTEED_SECRET` is set); losing it only means everyone signs in again. To copy the database while the app is running, use `sqlite3 warranteed.db ".backup backup.db"`.
 
 The container runs as uid 65532. Bind mounts and network shares must be writable by that user, or set `user:` in the compose file.
 

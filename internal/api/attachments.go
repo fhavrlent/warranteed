@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -14,11 +15,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/store"
+	thumbnail "github.com/fhavrlent/warranteed/internal/thumb"
 )
 
 // Files stores uploaded files on local disk.
@@ -61,19 +64,73 @@ func (f *Files) Save(r io.Reader, ext string) (string, int64, error) {
 }
 
 func (f *Files) Open(name string) (*os.File, error) {
-	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+	if !validName(name) {
 		return nil, os.ErrNotExist
 	}
 	return os.Open(filepath.Join(f.dir, name))
 }
 
+// Remove deletes a file and its preview.
 func (f *Files) Remove(name string) {
-	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+	if !validName(name) {
 		return
 	}
-	if err := os.Remove(filepath.Join(f.dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		slog.Warn("could not remove file", "name", name, "err", err)
+	for _, n := range []string{name, name + thumbExt} {
+		if err := os.Remove(filepath.Join(f.dir, n)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("could not remove file", "name", n, "err", err)
+		}
 	}
+}
+
+// thumbExt names a file's preview: the file's name plus this.
+const thumbExt = ".thumb.jpg"
+
+// writeThumb stores the preview of file name, whole or not at all.
+func (f *Files) writeThumb(name string, data []byte) error {
+	if !validName(name) {
+		return os.ErrInvalid
+	}
+	tmp, err := os.CreateTemp(f.dir, ".thumb-*")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), filepath.Join(f.dir, name+thumbExt))
+	}
+	if err != nil {
+		os.Remove(tmp.Name())
+	}
+	return err
+}
+
+func validName(name string) bool {
+	return name != "" && !strings.ContainsAny(name, `/\`) && !strings.Contains(name, "..")
+}
+
+// removeFiles deletes what is kept on disk for a deleted attachment: its
+// file, or the preview of a photo stored in HomeBox.
+func (s *Server) removeFiles(a *store.Attachment) {
+	switch a.Storage {
+	case store.StorageLocal:
+		s.files.Remove(a.LocalPath)
+	case store.StorageHomeBox:
+		if name := homeboxThumbName(a.HomeBoxAttachment); name != "" {
+			s.files.Remove(name)
+		}
+	}
+}
+
+// homeboxThumbName is what the preview of a photo stored in HomeBox is
+// named after, as a local photo's is after its file.
+func homeboxThumbName(attachmentID string) string {
+	if attachmentID == "" {
+		return ""
+	}
+	return "homebox-" + attachmentID
 }
 
 // inlineTypes are safe to render in the browser; everything else downloads.
@@ -436,9 +493,7 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 	if doc != nil {
 		s.syncBacklinksLater(*doc)
 	}
-	if a.Storage == store.StorageLocal {
-		s.files.Remove(a.LocalPath)
-	}
+	s.removeFiles(a)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -509,6 +564,28 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
 	} else {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors 'self'")
+	}
+
+	if thumb && a.Storage != store.StoragePaperless && thumbnail.Supported(a.MimeType) {
+		name := a.LocalPath
+		open := func(ctx context.Context) (io.ReadCloser, error) { return s.files.Open(a.LocalPath) }
+		if a.Storage == store.StorageHomeBox {
+			name = homeboxThumbName(a.HomeBoxAttachment)
+			open = func(ctx context.Context) (io.ReadCloser, error) {
+				hb, err := s.attachmentHomeBox(ctx, a, userID(r))
+				if err != nil || hb == nil {
+					return nil, fmt.Errorf("no homebox key: %w", err)
+				}
+				resp, err := hb.OpenAttachment(ctx, a.HomeBoxItem, a.HomeBoxAttachment)
+				if err != nil {
+					return nil, err
+				}
+				return resp.Body, nil
+			}
+		}
+		if s.serveThumb(w, r, name, open) {
+			return
+		}
 	}
 
 	if a.Storage == store.StorageLocal {
@@ -585,6 +662,71 @@ func (s *Server) proxyPaperless(w http.ResponseWriter, r *http.Request, pc *pape
 
 // proxyHomeBox serves a photo stored in HomeBox. Thumbnails are the photo
 // itself, as for photos stored here.
+// serveThumb serves the preview of a photo, making it from open the first
+// time. It reports false when there is none to serve, e.g. for an image Go
+// can't read, so the original is served instead.
+func (s *Server) serveThumb(w http.ResponseWriter, r *http.Request, name string,
+	open func(context.Context) (io.ReadCloser, error),
+) bool {
+	if !validName(name) {
+		return false
+	}
+	serve := func() bool {
+		f, err := s.files.Open(name + thumbExt)
+		if err != nil {
+			return false
+		}
+		defer f.Close()
+		st, err := f.Stat()
+		if err != nil {
+			return false
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Disposition", "inline")
+		http.ServeContent(w, r, "", st.ModTime(), f)
+		return true
+	}
+	if serve() {
+		return true
+	}
+	lock, _ := s.thumbLocks.LoadOrStore(name, new(sync.Mutex))
+	lock.(*sync.Mutex).Lock()
+	defer func() {
+		lock.(*sync.Mutex).Unlock()
+		s.thumbLocks.Delete(name)
+	}()
+	if serve() { // made while this waited
+		return true
+	}
+	select {
+	case s.thumbSlots <- struct{}{}:
+		defer func() { <-s.thumbSlots }()
+	case <-r.Context().Done():
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+	defer cancel()
+	src, err := open(ctx)
+	if err != nil {
+		slog.Warn("open photo for preview", "name", name, "err", err)
+		return false
+	}
+	var buf bytes.Buffer
+	err = thumbnail.Make(&buf, src)
+	src.Close()
+	if err != nil {
+		if !errors.Is(err, thumbnail.ErrUnsupported) {
+			slog.Warn("make preview", "name", name, "err", err)
+		}
+		return false
+	}
+	if err := s.files.writeThumb(name, buf.Bytes()); err != nil {
+		slog.Warn("store preview", "name", name, "err", err)
+		return false
+	}
+	return serve()
+}
+
 func (s *Server) proxyHomeBox(w http.ResponseWriter, r *http.Request, a *store.Attachment, download bool) {
 	hb, err := s.attachmentHomeBox(r.Context(), a, userID(r))
 	if err != nil {
