@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -133,16 +134,26 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 		name, want string
 		ours       []string // how values Warranteed wrote start
 	}
-	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
-	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
-		wantHomeBox = s.homeboxBacklink(ctx, hb, warranties)
-		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", homebox.ListPrefix(hb)}})
-	}
-
 	current, err := pc.DocumentCustomFields(ctx, doc.DocID)
 	if err != nil {
 		return err
 	}
+	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
+	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
+		// The list of items the document links to now, if it does: they may
+		// need taking off it.
+		list := ""
+		if id, err := pc.CustomFieldID(ctx, s.cfg.Paperless.HomeBoxField, "url", false); err == nil && id != 0 {
+			for _, f := range current {
+				if v, _ := f.Value.(string); f.Field == id && strings.HasPrefix(v, homebox.ListPrefix(hb)) {
+					list = v
+				}
+			}
+		}
+		wantHomeBox = s.homeboxBacklink(ctx, hb, pc.BaseURL, doc.DocID, warranties, list)
+		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", homebox.ListPrefix(hb)}})
+	}
+
 	changed := false
 	for _, f := range fields {
 		// A field is only created when there is something to put in it.
@@ -163,67 +174,164 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 	return pc.SetDocumentCustomFields(ctx, doc.DocID, current)
 }
 
-// homeboxBacklink is the link to the HomeBox items of warranties: the item
-// itself when there is one, or else HomeBox's list of the items by their link
-// field, which holds each item's ID and which items linked before it existed
-// get here. When an item can't
-// be read for that, the link falls back to the first item.
-func (s *Server) homeboxBacklink(ctx context.Context, hb string, warranties []store.DocumentRef) string {
-	var items []store.DocumentRef
+// homeboxBacklink is the link to the HomeBox items of a document's
+// warranties: the item itself when there is one, or else HomeBox's list of
+// the items whose link field holds the document's value, which keeps the
+// link short however many there are. Items that no longer belong lose the
+// value, found with every HomeBox key, when the document lists items now
+// (list) or is about to. Until marking and that have worked, a list the
+// document has stays, so the next update tries again; without one, the link
+// falls back to the first item. HomeBox gets a time limit of its own, so that it being down
+// leaves time to update Paperless.
+func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, docID int64, warranties []store.DocumentRef, list string) string {
+	var items []string
 	for _, w := range warranties {
-		if w.HomeBoxID != "" && !slices.ContainsFunc(items, func(i store.DocumentRef) bool { return i.HomeBoxID == w.HomeBoxID }) {
-			items = append(items, w)
+		if w.HomeBoxID != "" && !slices.Contains(items, w.HomeBoxID) {
+			items = append(items, w.HomeBoxID)
 		}
 	}
-	switch len(items) {
-	case 0:
-		return ""
-	case 1:
-		return hb + "/item/" + url.PathEscape(items[0].HomeBoxID)
+	want := ""
+	if len(items) > 0 {
+		want = hb + "/item/" + url.PathEscape(items[0])
 	}
-	first := hb + "/item/" + url.PathEscape(items[0].HomeBoxID)
-	var ids []string
-	for _, w := range items {
-		if err := s.markHomeBoxItem(ctx, w); err != nil {
-			slog.Warn("mark homebox item", "item", w.HomeBoxID, "err", err)
-			return first
-		}
-		ids = append(ids, w.HomeBoxID)
+	if len(items) < 2 && list == "" {
+		return want
 	}
-	return homebox.ListURL(hb, ids)
-}
-
-// markHomeBoxItem makes sure the warranty's item has its ID in the link
-// field. Whoever linked the item may not be whoever added the receipt, so
-// the HomeBox key of everyone sharing the warranty is tried, the receipt's
-// owner first.
-func (s *Server) markHomeBoxItem(ctx context.Context, w store.DocumentRef) error {
-	users, err := s.store.HomeBoxUsers(ctx, w.WarrantyID)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	clients, err := s.homeboxClients(ctx, warranties)
 	if err != nil {
-		return err
+		slog.Warn("read homebox keys", "doc", docID, "err", err)
 	}
-	if i := slices.Index(users, w.Owner); i > 0 {
-		users[0], users[i] = users[i], users[0]
+	value := receiptValue(paperlessURL, docID)
+	marked := []string{}
+	if len(items) > 1 {
+		for _, id := range items {
+			// An item ID left by the previous version stays: another receipt's
+			// link may still list the item by it until that one is updated.
+			if err := s.updateHomeBoxItem(ctx, clients, id, func(it *homebox.Item) {
+				it.AddField(homebox.LinkField, value)
+			}, func(it *homebox.Item) bool { return it.HasField(homebox.LinkField, value) }); err != nil {
+				slog.Warn("mark homebox item", "item", id, "err", err)
+				break
+			}
+			marked = append(marked, id)
+		}
 	}
-	var hb *homebox.Client
-	var it *homebox.Item
-	err = errors.New("no homebox key")
-	for _, uid := range users {
-		st, serr := s.store.Settings(ctx, uid)
-		if serr != nil {
-			return serr
-		}
-		if hb = s.homeboxFor(st); hb == nil {
-			continue
-		}
-		if it, err = hb.Get(ctx, w.HomeBoxID); err == nil {
+	// The receipt's items keep its value, even those marking didn't reach.
+	keep := []string{}
+	if len(items) > 1 {
+		keep = items
+	}
+	// Items taken off the receipt may be reachable only with the key of
+	// someone it no longer concerns, so every key looks for them.
+	cleaned := true
+	keyHolders, err := s.store.HomeBoxKeyHolders(ctx)
+	if err != nil {
+		slog.Warn("read homebox keys", "doc", docID, "err", err)
+		cleaned = false
+	}
+	everyone, err := s.homeboxClientsOf(ctx, keyHolders)
+	if err != nil {
+		slog.Warn("read homebox keys", "doc", docID, "err", err)
+		cleaned = false
+	}
+	for _, c := range everyone {
+		ids, err := c.WithField(ctx, homebox.LinkField, value)
+		if ctx.Err() != nil {
+			slog.Warn("find homebox items", "doc", docID, "err", ctx.Err())
+			cleaned = false
 			break
 		}
+		if err != nil {
+			slog.Warn("find homebox items", "doc", docID, "err", err)
+			cleaned = false
+			continue
+		}
+		for _, id := range ids {
+			if slices.Contains(keep, id) {
+				continue
+			}
+			if err := s.updateHomeBoxItem(ctx, []*homebox.Client{c}, id, func(it *homebox.Item) {
+				it.RemoveFields(homebox.LinkField, func(v string) bool { return v == value })
+			}, func(it *homebox.Item) bool { return !it.HasField(homebox.LinkField, value) }); err != nil {
+				slog.Warn("unmark homebox item", "item", id, "err", err)
+				cleaned = false
+			}
+		}
 	}
-	if err != nil || it.Field(homebox.LinkField) == w.HomeBoxID {
+	switch {
+	case len(items) > 1 && len(marked) == len(items):
+		return homebox.ListURL(hb, value)
+	case list != "" && (len(items) > 1 || !cleaned):
+		return list
+	}
+	return want
+}
+
+// receiptValue is what the items of Paperless document docID hold in their
+// link field: its number, and a little of its Paperless's address to tell
+// documents with the same number in another Paperless apart.
+func receiptValue(paperlessURL string, docID int64) string {
+	sum := sha256.Sum256([]byte(paperlessURL))
+	return fmt.Sprintf("%d-%x", docID, sum[:3])
+}
+
+// homeboxClients are the HomeBox keys of everyone sharing the warranties,
+// whose owners come first: whoever linked an item may not be whoever added
+// the receipt.
+func (s *Server) homeboxClients(ctx context.Context, warranties []store.DocumentRef) ([]*homebox.Client, error) {
+	var users []int64
+	for _, w := range warranties {
+		if !slices.Contains(users, w.Owner) {
+			users = append(users, w.Owner)
+		}
+	}
+	for _, w := range warranties {
+		ids, err := s.store.HomeBoxUsers(ctx, w.WarrantyID)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range ids {
+			if !slices.Contains(users, id) {
+				users = append(users, id)
+			}
+		}
+	}
+	return s.homeboxClientsOf(ctx, users)
+}
+
+// homeboxClientsOf returns HomeBox clients for those of users with a key.
+func (s *Server) homeboxClientsOf(ctx context.Context, users []int64) ([]*homebox.Client, error) {
+	var out []*homebox.Client
+	for _, uid := range users {
+		st, err := s.store.Settings(ctx, uid)
+		if err != nil {
+			return out, err
+		}
+		if c := s.homeboxFor(st); c != nil {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// updateHomeBoxItem changes an item with the first of clients that can read
+// it, unless done says it needs nothing.
+func (s *Server) updateHomeBoxItem(ctx context.Context, clients []*homebox.Client, id string, change func(*homebox.Item), done func(*homebox.Item) bool) error {
+	defer s.lockPhotos("item:" + id)()
+	err := errors.New("no homebox key")
+	for _, c := range clients {
+		var it *homebox.Item
+		if it, err = c.Get(ctx, id); err != nil {
+			continue
+		}
+		if done(it) {
+			return nil
+		}
+		_, err = c.Update(ctx, id, change)
 		return err
 	}
-	_, err = hb.Update(ctx, w.HomeBoxID, func(it *homebox.Item) { it.SetField(homebox.LinkField, w.HomeBoxID) })
 	return err
 }
 
