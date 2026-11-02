@@ -44,6 +44,19 @@ const usePersisted = <T extends string>(key: string, def: T): [T, (v: T) => void
   ];
 };
 
+// The filter, tag and who's-shown choice are kept for the browser tab, so
+// coming back to the list (e.g. after checking a draft) keeps them.
+const LIST_STATE = "warranteed-list";
+const LIST_PARAMS = ["filter", "tag", "who"];
+
+const savedListState = (): string => {
+  try {
+    return sessionStorage.getItem(LIST_STATE) ?? "";
+  } catch {
+    return "";
+  }
+};
+
 export const Warranties = () => {
   const { t } = useTranslation();
   const { data: list, isLoading, error } = useWarranties();
@@ -54,6 +67,9 @@ export const Warranties = () => {
   const rawFilter = params.get("filter");
   const filter: Filter = FILTERS.find((f) => f === rawFilter) ?? "current";
   const tag = params.get("tag");
+  // A link from a Paperless document with several warranties lists them all,
+  // drafts too.
+  const documentId = Number(params.get("document")) || null;
   const { sharing } = useSharing();
   const rawWho = params.get("who");
   const who: Who = sharing ? (WHO.find((x) => x === rawWho) ?? "all") : "all";
@@ -71,6 +87,31 @@ export const Warranties = () => {
   const [view, setView] = usePersisted<"grid" | "list">("warranteed-view", "grid");
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Coming back with a plain address restores the last choices; the
+  // address wins when it has its own.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    const saved = savedListState();
+    if (saved && ![...LIST_PARAMS, "q", "document"].some((k) => params.has(k))) {
+      restoredRef.current = true;
+      setParams(saved, { replace: true });
+    }
+    // Only when the list is opened.
+    // eslint-disable-next-line @eslint-react/exhaustive-deps, react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const keep = new URLSearchParams();
+    for (const k of LIST_PARAMS) {
+      const v = params.get(k);
+      if (v) keep.set(k, v);
+    }
+    try {
+      sessionStorage.setItem(LIST_STATE, keep.toString());
+    } catch {
+      /* ignore */
+    }
+  }, [params]);
 
   const setParam = (k: string, v: string | null) => {
     const next = new URLSearchParams(params);
@@ -120,8 +161,9 @@ export const Warranties = () => {
     const match = matcher(q);
     const scores = new Map<number, number>();
     const res = withStatus.filter(({ w, s }) => {
+      if (documentId !== null && !w.attachments.some((a) => a.paperlessDocId === documentId)) return false;
       // Drafts only show under "To review" until they are confirmed.
-      if ((s === "draft") !== (filter === "review")) return false;
+      if (documentId === null && (s === "draft") !== (filter === "review")) return false;
       switch (filter) {
         case "current":
           if (s === "archived" || s === "expired") return false;
@@ -174,7 +216,15 @@ export const Warranties = () => {
       }
     });
     return res;
-  }, [withStatus, filter, tag, q, sort, who]);
+  }, [withStatus, filter, tag, q, sort, who, documentId]);
+
+  // A restored "To review" with nothing left to review goes back to Current.
+  useEffect(() => {
+    if (restoredRef.current && list && filter === "review" && counts.draft === 0) {
+      restoredRef.current = false;
+      setParam("filter", null);
+    }
+  });
 
   const total = (list?.length ?? 0) - counts.draft;
   // Drafts alone still bring up the list, under "To review".
@@ -196,6 +246,15 @@ export const Warranties = () => {
           <Kbd>N</Kbd>
         </Button>
       </div>
+
+      {documentId !== null && (
+        <div className="mb-4 flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-sm">
+          <span>{t("list.fromDocument", { id: documentId, count: shown.length })}</span>
+          <Button variant="ghost" size="sm" onClick={() => setParam("document", null)}>
+            <X /> {t("list.showAll")}
+          </Button>
+        </div>
+      )}
 
       {counts.draft > 0 && filter !== "review" && (
         <button

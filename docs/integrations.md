@@ -57,7 +57,7 @@ Turn on **Link documents back to their warranty** under **Settings → Paperless
 
 The fields are created the first time they're needed. For other names, e.g. in your language, set `PAPERLESS_WARRANTY_FIELD` and `PAPERLESS_HOMEBOX_FIELD` before turning links on. If a field of that name already exists, it must be a URL field.
 
-The links follow changes: attaching, unlinking, deleting a warranty and linking HomeBox all update them. When a document is attached to several warranties, as with drafts from a receipt for several devices, the link points to the oldest one. A value someone typed into these fields by hand is never overwritten. Turning links on also fills them in on documents that were attached before.
+The links follow changes: attaching, unlinking, deleting a warranty and linking HomeBox all update them. When a document is attached to several warranties, as with drafts from a receipt for several devices, the Warranty link opens the list of all of them, and the HomeBox link points to the first one's item. A value someone typed into these fields by hand is never overwritten. Turning links on also fills them in on documents that were attached before.
 
 ### Drafts from new documents
 

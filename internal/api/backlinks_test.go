@@ -219,8 +219,8 @@ func TestBacklinksOff(t *testing.T) {
 }
 
 // Alice and Bob use the same Paperless (the server's) with their own tokens
-// and both attached receipt 5: it links to the older warranty, and keeps
-// linking to what's still attached when one of them detaches it.
+// and both attached receipt 5: it links to the list of both warranties, and
+// to what's still attached when one of them detaches it.
 func TestBacklinksSharedDocument(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -268,8 +268,8 @@ func TestBacklinksSharedDocument(t *testing.T) {
 	linkTo := func(wid int64) string { return fmt.Sprintf("https://warranty.example.test/w/%d", wid) }
 
 	sync(bob.id) // Bob's attachment triggers it; Alice's credentials write it
-	if got := pl.value(doc, "Warranty"); got != linkTo(alice.warranty) {
-		t.Fatalf("link = %q, want Alice's older warranty", got)
+	if got, want := pl.value(doc, "Warranty"), "https://warranty.example.test/?document=5&filter=all"; got != want {
+		t.Fatalf("link = %q, want the list of both, %q", got, want)
 	}
 	st.DeleteAttachment(ctx, alice.att.ID)
 	sync(alice.id)

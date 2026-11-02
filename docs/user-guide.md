@@ -79,7 +79,8 @@ With custom fields, the draft may be made before paperless-gpt has filled them i
 ## Finding warranties
 
 - **Search** looks through products, brands, models, stores, order numbers, serial numbers, tags, notes and HomeBox asset IDs. It ignores accents and allows small typos.
-- **Filters**: Current, Expired, Archived, All, and To review when you have drafts. With a household, you can also show only the shared warranties or only your private ones.
+- **Filters**: Current, Expired, Archived, All, and To review when you have drafts. With a household, you can also show only the shared warranties or only your private ones. The list remembers your filter while the browser tab is open, so it's still there when you come back from a warranty.
+- From a Paperless document attached to several warranties, the **Warranty** link opens the list of just those, drafts included. **Show all** goes back to everything.
 - **Sort** by expiry date, name, purchase date, price or when it was added.
 - Switch between the grid and the list view.
 
