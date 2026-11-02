@@ -543,7 +543,8 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	sync(5)
 	sync(6)
 	for doc, value := range map[int64]string{5: receipt, 6: other} {
-		want := "https://homebox.example.test/items?fields=Warranteed%3D" + value
+		// Twice, as HomeBox's page needs more than one to filter.
+		want := "https://homebox.example.test/items?fields=Warranteed%3D" + value + "&fields=Warranteed%3D" + value
 		if got := pl.value(doc, "HomeBox"); got != want {
 			t.Errorf("document %d: HomeBox link = %q, want %q", doc, got, want)
 		}

@@ -251,9 +251,12 @@ func (it *Item) RemoveFields(name string, drop func(value string) bool) {
 }
 
 // ListURL is the address of HomeBox's item list showing the items whose
-// LinkField holds value. base is HomeBox's public address.
+// LinkField holds value. base is HomeBox's public address. The filter is
+// given twice: HomeBox's page (0.27.1) reads fields as a list and drops the
+// filter when there is only one.
 func ListURL(base, value string) string {
-	return base + "/items?" + url.Values{"fields": {LinkField + "=" + value}}.Encode()
+	f := LinkField + "=" + value
+	return base + "/items?" + url.Values{"fields": {f, f}}.Encode()
 }
 
 // ListPrefix is how every ListURL starts, telling them apart from other
