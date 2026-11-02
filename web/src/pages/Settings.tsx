@@ -21,7 +21,15 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Card, Segmented, Switch } from "@/components/ui/misc";
 import { browserLanguage, LANGUAGES } from "@/i18n";
-import { api, errorMessage, translateServer, type ImportResult, type Settings as SettingsT, type Tag } from "@/lib/api";
+import {
+  api,
+  errorMessage,
+  translateServer,
+  type DraftSource,
+  type ImportResult,
+  type Settings as SettingsT,
+  type Tag,
+} from "@/lib/api";
 import { formatDate, todayISO } from "@/lib/dates";
 import {
   keys,
@@ -485,6 +493,45 @@ const Paperless = ({ s }: { s: SettingsT }) => {
           onCheckedChange={(v) => void setBacklinks(v)}
         />
       </label>
+      {(s.webhookEnabled || s.isAdmin) && (
+        <div className={cn("rounded-xl border border-border px-4 py-3", !s.paperlessEnabled && "opacity-50")}>
+          <Field
+            label={t("settings.paperless.drafts")}
+            hint={
+              !s.webhookEnabled ? (
+                <Trans i18nKey="settings.paperless.draftsNeedWebhook" components={{ code: <code /> }} />
+              ) : s.draftSource === "claude" ? (
+                t("settings.paperless.draftsClaudeHint")
+              ) : (
+                t("settings.paperless.draftsHint")
+              )
+            }
+          >
+            <Select
+              value={s.draftSource}
+              onChange={(e) => update({ draftSource: e.target.value as DraftSource })}
+              disabled={!s.paperlessEnabled || !s.webhookEnabled}
+              className="sm:w-80"
+            >
+              {s.draftSources.map((src) => (
+                <option key={src} value={src}>
+                  {t(`settings.paperless.draftSources.${src}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {s.isAdmin && s.webhookEnabled && (
+            <p className="mt-3 text-xs leading-relaxed text-fg-subtle">
+              <Trans
+                i18nKey="settings.paperless.webhookSetup"
+                // {{doc_id}} is Paperless's placeholder, shown as is.
+                values={{ url: `${location.origin}/hooks/paperless`, doc_id: "{{doc_id}}" }}
+                components={{ code: <code className="break-all" /> }}
+              />
+            </p>
+          )}
+        </div>
+      )}
     </Section>
   );
 };

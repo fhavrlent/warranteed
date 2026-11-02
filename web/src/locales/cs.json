@@ -39,6 +39,7 @@
     "footer": "Přihlášení bez hesla přes vašeho poskytovatele identity."
   },
   "status": {
+    "draft": "Koncept",
     "active": "Platná",
     "expiring": "Brzy vyprší",
     "expired": "Prošlá",
@@ -139,7 +140,14 @@
     "private": "Vidíte jen vy",
     "emptyTitle": "Přidejte první záruku",
     "emptyText": "Zapište, co jste koupili, kdy a jak dlouho to má záruku. Přiložte účtenku a už nikdy nebudete prohledávat e-maily.",
-    "importCsv": "Importovat CSV"
+    "importCsv": "Importovat CSV",
+    "filterReview": "Ke kontrole",
+    "reviewBanner_one": "{{count}} koncept z Paperless čeká na kontrolu",
+    "reviewBanner_few": "{{count}} koncepty z Paperless čekají na kontrolu",
+    "reviewBanner_many": "{{count}} konceptu z Paperless čeká na kontrolu",
+    "reviewBanner_other": "{{count}} konceptů z Paperless čeká na kontrolu",
+    "reviewOpen": "Zkontrolovat",
+    "onlyDrafts": "Zatím nic potvrzeného. Zkontrolujte koncepty a potvrďte je, ať je začnete sledovat."
   },
   "detail": {
     "notFound": "Tahle záruka neexistuje",
@@ -176,7 +184,11 @@
     "link": "Odkaz",
     "notes": "Poznámky",
     "added": "Přidáno {{date}}",
-    "updated": "upraveno {{date}}"
+    "updated": "upraveno {{date}}",
+    "draftTitle": "Koncept z Paperless",
+    "draftText": "Vznikl z nového dokumentu v Paperless. Zkontrolujte údaje a potvrďte ho.",
+    "confirm": "Potvrdit",
+    "confirmed": "Záruka potvrzena"
   },
   "form": {
     "addTitle": "Přidat záruku",
@@ -394,7 +406,18 @@
       "backlinksFailed_one": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentu",
       "backlinksFailed_few": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentů",
       "backlinksFailed_many": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentu",
-      "backlinksFailed_other": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentů"
+      "backlinksFailed_other": "Odkazy se nepodařilo aktualizovat u {{failed}} z {{count}} dokumentů",
+      "drafts": "Koncepty z nových dokumentů",
+      "draftsHint": "Z dokumentů přidaných do Paperless, které vlastníte, tu vzniknou koncepty ke kontrole a potvrzení. Které dokumenty to jsou, určuje workflow v Paperless.",
+      "draftsClaudeHint": "Z dokumentů přidaných do Paperless, které vlastníte, tu vzniknou koncepty. Posílají se ke čtení Claudovi do Anthropicu.",
+      "draftsNeedWebhook": "Koncepty z Paperless zapnete nastavením <code>WARRANTEED_WEBHOOK_SECRET</code> na serveru.",
+      "webhookSetup": "V Paperless přidejte workflow se spouštěčem „Dokument přidán“ (např. filtrovaný štítkem) a akcí webhook: <code>POST {{url}}</code> s hlavičkou <code>X-Warranteed-Secret</code> nastavenou na tajný klíč a tělem <code>{\"doc_id\": \"{{doc_id}}\"}</code>. Pokud se Paperless na tuto adresu nedostane, použijte interní adresu Warranteed.",
+      "draftSources": {
+        "off": "Vypnuto",
+        "paperless": "Zapnuto, s údaji z dokumentu",
+        "fields": "Zapnuto, s vlastními poli v Paperless (např. paperless-gpt)",
+        "claude": "Zapnuto, čte Claude"
+      }
     },
     "homebox": {
       "description": "Udržujte inventář v HomeBoxu v souladu: přidejte produkt ze záruky jako položku, nebo ho propojte s položkou, která už tam je.",
@@ -484,6 +507,7 @@
     "currency": "Měna musí být třípísmenný kód ISO, např. CZK",
     "theme": "Neznámý vzhled",
     "language": "Neznámý jazyk",
+    "draftSource": "Neznámý zdroj údajů pro koncepty",
     "soonDays": "„Brzy vyprší“ musí být 1 až 365 dní",
     "paperlessUrl": "Adresa Paperless musí začínat http:// nebo https://",
     "paperlessLinkAddress": "Adresa pro odkazy na Paperless musí začínat http:// nebo https://",

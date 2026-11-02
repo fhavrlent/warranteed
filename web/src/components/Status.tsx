@@ -1,9 +1,10 @@
-import { Archive, CircleAlert, CircleCheck, CircleX, Infinity as InfinityIcon } from "lucide-react";
+import { Archive, CircleAlert, CircleCheck, CircleDashed, CircleX, Infinity as InfinityIcon } from "lucide-react";
 import type { Warranty } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { coverageUsed, statusLabel, type Status } from "@/lib/warranty";
 
 const styles: Record<Status, string> = {
+  draft: "bg-primary-soft text-primary",
   active: "bg-ok-soft text-ok",
   expiring: "bg-warn-soft text-warn",
   expired: "bg-bad-soft text-bad",
@@ -12,6 +13,7 @@ const styles: Record<Status, string> = {
 };
 
 const icons = {
+  draft: CircleDashed,
   active: CircleCheck,
   expiring: CircleAlert,
   expired: CircleX,
@@ -36,6 +38,7 @@ export const StatusBadge = ({ status, className }: { status: Status; className?:
 };
 
 const barColor: Record<Status, string> = {
+  draft: "bg-primary",
   active: "bg-ok",
   expiring: "bg-warn",
   expired: "bg-bad",

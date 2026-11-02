@@ -39,6 +39,9 @@ type Warranty struct {
 	SpaceKind       string       `json:"spaceKind"`
 	AddedBy         UserRef      `json:"addedBy"`
 	HomeBox         *HomeBoxLink `json:"homebox"`
+	// Draft is set on warranties created from a document in Paperless until
+	// someone confirms them.
+	Draft bool `json:"draft"`
 }
 
 // HomeBoxLink is the HomeBox item a warranty belongs to.
@@ -73,6 +76,8 @@ type WarrantyInput struct {
 	// SpaceID chooses who can see it; nil means the household when creating
 	// and "unchanged" when updating.
 	SpaceID *int64 `json:"spaceId"`
+	// Draft creates it as a draft; set by the server, never by clients.
+	Draft bool `json:"-"`
 }
 
 // ValidationError is input the user can fix; its message is translatable.
@@ -162,7 +167,7 @@ const visibleTo = `w.space_id IN (SELECT space_id FROM space_members WHERE user_
 const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_number, w.purchase_date,
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
 	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
-	w.homebox_id, w.homebox_asset_id`
+	w.homebox_id, w.homebox_asset_id, w.draft`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
@@ -172,7 +177,7 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	err := row.Scan(&w.ID, &w.ProductName, &w.Brand, &w.Model, &w.Vendor, &w.OrderNumber, &w.PurchaseDate,
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
-		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID)
+		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft)
 	if err != nil {
 		return nil, err
 	}
@@ -185,10 +190,12 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 
 // ListWarranties returns every warranty the user can see, with serials, tags
 // and attachments. Household collections are small, so we return everything
-// and let the client filter and sort instantly.
+// and let the client filter and sort instantly. Drafts are listed only for
+// the person they were made for, until confirmed.
 func (s *Store) ListWarranties(ctx context.Context, userID int64) ([]*Warranty, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+warrantyCols+` FROM `+warrantyFrom+`
-		WHERE `+visibleTo+` ORDER BY w.expires_on IS NULL, w.expires_on, w.id`, userID)
+		WHERE `+visibleTo+` AND (NOT w.draft OR w.user_id = ?)
+		ORDER BY w.expires_on IS NULL, w.expires_on, w.id`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -303,11 +310,11 @@ func (s *Store) CreateWarranty(ctx context.Context, userID int64, in *WarrantyIn
 		}
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO warranties (user_id, space_id, product_name, brand, model, vendor, order_number, purchase_date,
-				warranty_months, warranty_end_date, is_lifetime, expires_on, price, currency, product_url, notes)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+				warranty_months, warranty_end_date, is_lifetime, expires_on, price, currency, product_url, notes, draft)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			userID, spaceID, in.ProductName, in.Brand, in.Model, in.Vendor, in.OrderNumber, in.PurchaseDate,
 			in.WarrantyMonths, in.WarrantyEndDate, in.IsLifetime, expires, in.Price, in.Currency,
-			in.ProductURL, in.Notes,
+			in.ProductURL, in.Notes, in.Draft,
 		).Scan(&id)
 		if err != nil {
 			return err
@@ -419,6 +426,38 @@ func setTags(ctx context.Context, tx *sql.Tx, spaceID, warrantyID int64, names [
 func pruneTags(ctx context.Context, tx *sql.Tx, spaceID int64) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM tags WHERE space_id = ?
 		AND id NOT IN (SELECT tag_id FROM warranty_tags)`, spaceID)
+	return err
+}
+
+// ConfirmWarranty turns a draft into a regular warranty.
+func (s *Store) ConfirmWarranty(ctx context.Context, userID, id int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE warranties AS w SET draft = 0, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`, now(), userID, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UneditedDraft reports whether a warranty is a draft nobody has changed
+// since it was created, so its details may still be filled in automatically.
+func (s *Store) UneditedDraft(ctx context.Context, id int64) (bool, error) {
+	var unedited bool
+	err := s.db.QueryRowContext(ctx,
+		`SELECT draft AND updated_at = created_at FROM warranties WHERE id = ?`, id).Scan(&unedited)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return unedited, err
+}
+
+// MarkUnedited sets a draft back to unedited after it was filled in
+// automatically.
+func (s *Store) MarkUnedited(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE warranties SET updated_at = created_at WHERE id = ? AND draft`, id)
 	return err
 }
 
@@ -660,7 +699,8 @@ func (s *Store) DeleteTag(ctx context.Context, userID, id int64) error {
 // ActiveWithExpiry returns the non-archived, non-lifetime warranties the user can see.
 func (s *Store) ActiveWithExpiry(ctx context.Context, userID int64) ([]*Warranty, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+warrantyCols+` FROM `+warrantyFrom+`
-		WHERE `+visibleTo+` AND w.archived_at IS NULL AND w.expires_on IS NOT NULL ORDER BY w.expires_on`, userID)
+		WHERE `+visibleTo+` AND w.archived_at IS NULL AND NOT w.draft AND w.expires_on IS NOT NULL
+		ORDER BY w.expires_on`, userID)
 	if err != nil {
 		return nil, err
 	}

@@ -51,7 +51,11 @@ export interface Warranty {
   addedBy: { id: number; name: string };
   /** The linked HomeBox item, if any. */
   homebox: HomeBoxLink | null;
+  /** Made from a new document in Paperless and not confirmed yet. */
+  draft: boolean;
 }
+
+export type DraftSource = "off" | "paperless" | "fields" | "claude";
 
 export interface HomeBoxLink {
   id: string;
@@ -114,6 +118,12 @@ export interface Settings {
   /** Names of the custom fields those links go in. */
   paperlessWarrantyField: string;
   paperlessHomeboxField: string;
+  /** Whether the user gets drafts from new Paperless documents ("off"), and from what. */
+  draftSource: DraftSource;
+  /** The choices this server offers. */
+  draftSources: DraftSource[];
+  /** The server accepts Paperless's webhook for new documents. */
+  webhookEnabled: boolean;
   hasPaperlessToken: boolean;
   /** The server's Paperless instance (PAPERLESS_URL), empty if none. */
   paperlessServerUrl: string;
@@ -155,6 +165,8 @@ export type SettingsInput = Omit<
   | "homeboxEnabled"
   | "paperlessWarrantyField"
   | "paperlessHomeboxField"
+  | "draftSources"
+  | "webhookEnabled"
 > & { paperlessToken?: string; homeboxToken?: string };
 
 export interface User {
@@ -270,6 +282,7 @@ export const api = {
   createWarranty: (w: WarrantyInput) => request<Warranty>("POST", "/api/warranties", w),
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
   deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
+  confirmWarranty: (id: number) => request<Warranty>("POST", `/api/warranties/${id}/confirm`),
   archive: (id: number, archived: boolean) =>
     request<Warranty>("POST", `/api/warranties/${id}/${archived ? "archive" : "unarchive"}`),
 
