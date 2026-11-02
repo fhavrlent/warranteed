@@ -269,6 +269,12 @@ func ListURL(base string, values []string) string {
 	return base + "/items?" + q.Encode()
 }
 
+// ListPrefix is how every ListURL starts, telling them apart from other
+// item lists.
+func ListPrefix(base string) string {
+	return base + "/items?" + url.Values{"fields": {LinkField + "="}}.Encode()
+}
+
 // Attachment is a file or photo on an item.
 type Attachment struct {
 	ID        string `json:"id"`

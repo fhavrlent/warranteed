@@ -136,7 +136,7 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
 	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
 		wantHomeBox = s.homeboxBacklink(ctx, hb, warranties)
-		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", hb + "/items?"}})
+		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", homebox.ListPrefix(hb)}})
 	}
 
 	current, err := pc.DocumentCustomFields(ctx, doc.DocID)
@@ -195,18 +195,33 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb string, warranties []st
 	return homebox.ListURL(hb, values)
 }
 
-// homeboxLinkValue reads the link field of the warranty's item, using its
-// owner's HomeBox key, and fills it in when it's empty.
+// homeboxLinkValue reads the link field of the warranty's item and fills it
+// in when it's empty. Whoever linked the item may not be whoever added the
+// receipt, so the HomeBox key of everyone sharing the warranty is tried,
+// the receipt's owner first.
 func (s *Server) homeboxLinkValue(ctx context.Context, w store.DocumentRef) (string, error) {
-	st, err := s.store.Settings(ctx, w.Owner)
+	users, err := s.store.HomeBoxUsers(ctx, w.WarrantyID)
 	if err != nil {
 		return "", err
 	}
-	hb := s.homeboxFor(st)
-	if hb == nil {
-		return "", errors.New("no homebox key")
+	if i := slices.Index(users, w.Owner); i > 0 {
+		users[0], users[i] = users[i], users[0]
 	}
-	it, err := hb.Get(ctx, w.HomeBoxID)
+	var hb *homebox.Client
+	var it *homebox.Item
+	err = errors.New("no homebox key")
+	for _, uid := range users {
+		st, serr := s.store.Settings(ctx, uid)
+		if serr != nil {
+			return "", serr
+		}
+		if hb = s.homeboxFor(st); hb == nil {
+			continue
+		}
+		if it, err = hb.Get(ctx, w.HomeBoxID); err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return "", err
 	}

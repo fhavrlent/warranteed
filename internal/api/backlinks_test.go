@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/config"
 	"github.com/fhavrlent/warranteed/internal/db"
 	"github.com/fhavrlent/warranteed/internal/homebox"
@@ -191,6 +192,18 @@ func TestSetLinkField(t *testing.T) {
 	ours := []paperless.CustomField{{Field: 3, Value: "kept"}, {Field: 7, Value: prefix + "1"}}
 	if out, changed := setLinkField(ours, 7, prefix+"2", prefix); !changed || out[1].Value != prefix+"2" || ours[1].Value != prefix+"1" {
 		t.Errorf("updating a link: %v (input changed: %v)", out, ours)
+	}
+
+	// HomeBox lists: only the ones filtered by Warranteed's field are ours.
+	hb := "https://homebox.example.test"
+	list := homebox.ListURL(hb, []string{"1", "2"})
+	shelf := []paperless.CustomField{{Field: 7, Value: hb + "/items?tags=kitchen"}}
+	if _, changed := setLinkField(shelf, 7, list, hb+"/item/", homebox.ListPrefix(hb)); changed {
+		t.Error("a HomeBox list typed in by hand was overwritten")
+	}
+	mine := []paperless.CustomField{{Field: 7, Value: list}}
+	if out, changed := setLinkField(mine, 7, hb+"/item/x", hb+"/item/", homebox.ListPrefix(hb)); !changed || out[0].Value != hb+"/item/x" {
+		t.Errorf("Warranteed's HomeBox list wasn't replaced: %v", out)
 	}
 }
 
@@ -413,7 +426,7 @@ func (f *fieldHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/entities/")
 	fields, ok := f.items[id]
-	if !ok {
+	if !ok || r.Header.Get("Authorization") != "Bearer bob-key" {
 		http.NotFound(w, r)
 		return
 	}
@@ -446,11 +459,16 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	hbServer := httptest.NewServer(hb)
 	t.Cleanup(hbServer.Close)
 
+	// Alice added the receipt from her Paperless; Bob, who shares the
+	// warranties, linked them with his HomeBox key.
 	alice, _ := st.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "alice", Name: "Alice"})
 	settings, _ := st.Settings(ctx, alice.ID)
 	settings.PaperlessURL, settings.PaperlessToken, settings.PaperlessBacklinks = plServer.URL, "token", true
-	settings.HomeBoxToken = "key"
 	st.SaveSettings(ctx, alice.ID, settings)
+	bob, _ := st.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "bob", Name: "Bob"})
+	bobSettings, _ := st.Settings(ctx, bob.ID)
+	bobSettings.HomeBoxToken = "bob-key"
+	st.SaveSettings(ctx, bob.ID, bobSettings)
 	doc := int64(5)
 	var wids []int64
 	months := 24
@@ -496,6 +514,34 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	if hb.puts != puts {
 		t.Error("HomeBox items were written again")
 	}
+
+	// A second warranty on item-2: unlinking the first keeps its value, which
+	// the other may be listed by.
+	wid, err := st.CreateWarranty(ctx, alice.ID, &store.WarrantyInput{ProductName: "Other", PurchaseDate: "2025-03-01", WarrantyMonths: &months})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.SetHomeBox(ctx, alice.ID, wid, &store.HomeBoxLink{ID: "item-2"})
+	unlink := func(id int64) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodDelete, "/", nil)
+		r.SetPathValue("id", fmt.Sprint(id))
+		w := httptest.NewRecorder()
+		srv.unlinkHomeBox(w, r.WithContext(auth.WithUser(ctx, bob)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("unlink: %d %s", w.Code, w.Body)
+		}
+	}
+	unlink(wids[1])
+	if got := hb.items["item-2"]; len(got) != 1 {
+		t.Errorf("item-2 lost its value while still linked: %+v", got)
+	}
+	// The last one: the value goes.
+	unlink(wid)
+	if got := hb.items["item-2"]; len(got) != 0 {
+		t.Errorf("item-2 kept its value: %+v", got)
+	}
+	srv.backlinks.Wait()
 
 	// HomeBox can't be reached: the first item is linked instead.
 	hbServer.Close()

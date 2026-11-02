@@ -523,6 +523,35 @@ func (s *Store) SetHomeBox(ctx context.Context, userID, id int64, link *HomeBoxL
 	return nil
 }
 
+// HomeBoxItemLinked reports whether any warranty is linked to HomeBox item
+// itemID.
+func (s *Store) HomeBoxItemLinked(ctx context.Context, itemID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM warranties WHERE homebox_id = ?`, itemID).Scan(&n)
+	return n > 0, err
+}
+
+// HomeBoxUsers lists the people sharing a warranty who saved a HomeBox key.
+func (s *Store) HomeBoxUsers(ctx context.Context, warrantyID int64) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT sm.user_id FROM warranties w
+		JOIN space_members sm ON sm.space_id = w.space_id
+		JOIN user_settings us ON us.user_id = sm.user_id
+		WHERE w.id = ? AND us.homebox_token != '' ORDER BY sm.user_id`, warrantyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool) error {
 	var at any
 	if archived {
