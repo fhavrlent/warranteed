@@ -14,8 +14,8 @@ import { matcher } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { displayName, photoOf, statusOf, tagDot, type Status, expiryText } from "@/lib/warranty";
 
-type Filter = "current" | "expiring" | "expired" | "lifetime" | "archived" | "all";
-const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime", "archived", "all"];
+type Filter = "current" | "expiring" | "expired" | "lifetime" | "archived" | "all" | "review";
+const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime", "archived", "all", "review"];
 type Who = "all" | "shared" | "mine";
 const WHO: readonly Who[] = ["all", "shared", "mine"];
 type Sort = "expiry" | "name" | "purchase" | "price" | "added";
@@ -98,7 +98,7 @@ export const Warranties = () => {
   const withStatus = useMemo(() => (list ?? []).map((w) => ({ w, s: statusOf(w, soonDays) })), [list, soonDays]);
 
   const counts = useMemo(() => {
-    const c: Record<Status, number> = { active: 0, expiring: 0, expired: 0, lifetime: 0, archived: 0 };
+    const c: Record<Status, number> = { draft: 0, active: 0, expiring: 0, expired: 0, lifetime: 0, archived: 0 };
     for (const { s } of withStatus) c[s]++;
     return c;
   }, [withStatus]);
@@ -120,11 +120,14 @@ export const Warranties = () => {
     const match = matcher(q);
     const scores = new Map<number, number>();
     const res = withStatus.filter(({ w, s }) => {
+      // Drafts only show under "To review" until they are confirmed.
+      if ((s === "draft") !== (filter === "review")) return false;
       switch (filter) {
         case "current":
           if (s === "archived" || s === "expired") return false;
           break;
         case "all":
+        case "review":
           break;
         default:
           if (s !== filter) return false;
@@ -173,7 +176,9 @@ export const Warranties = () => {
     return res;
   }, [withStatus, filter, tag, q, sort, who]);
 
-  const total = list?.length ?? 0;
+  const total = (list?.length ?? 0) - counts.draft;
+  // Drafts alone still bring up the list, under "To review".
+  const anything = (list?.length ?? 0) > 0;
 
   return (
     <>
@@ -191,6 +196,17 @@ export const Warranties = () => {
           <Kbd>N</Kbd>
         </Button>
       </div>
+
+      {counts.draft > 0 && filter !== "review" && (
+        <button
+          type="button"
+          onClick={() => setParam("filter", "review")}
+          className="mb-4 flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary-soft/50 px-4 py-2.5 text-left text-sm hover:bg-primary-soft"
+        >
+          <span>{t("list.reviewBanner", { count: counts.draft })}</span>
+          <span className="font-medium text-primary">{t("list.reviewOpen")}</span>
+        </button>
+      )}
 
       {total > 0 && (
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -219,7 +235,7 @@ export const Warranties = () => {
         </div>
       )}
 
-      {total > 0 && (
+      {anything && (
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" />
@@ -286,6 +302,9 @@ export const Warranties = () => {
               value={filter}
               onChange={(v) => setParam("filter", v === "current" ? null : v)}
               options={[
+                ...(counts.draft > 0 || filter === "review"
+                  ? [{ value: "review" as const, label: t("list.filterReview"), count: counts.draft || undefined }]
+                  : []),
                 { value: "current", label: t("list.filterCurrent") },
                 { value: "expired", label: t("list.filterExpired"), count: counts.expired || undefined },
                 { value: "archived", label: t("list.filterArchived"), count: counts.archived || undefined },
@@ -319,7 +338,7 @@ export const Warranties = () => {
         </div>
       )}
 
-      {tagChips.length > 0 && total > 0 && (
+      {tagChips.length > 0 && anything && (
         <div className="-mt-1 mb-5 flex flex-wrap gap-1.5">
           {tagChips.map((tg) => (
             <button
@@ -349,8 +368,11 @@ export const Warranties = () => {
         </div>
       ) : error ? (
         <Card className="p-8 text-center text-sm text-bad">{errorMessage(error)}</Card>
-      ) : total === 0 ? (
+      ) : !anything ? (
         <EmptyState onAdd={() => setAdding(true)} />
+      ) : total === 0 && filter !== "review" ? (
+        // Only drafts so far: the banner above leads to them.
+        <Card className="p-12 text-center text-sm text-fg-muted">{t("list.onlyDrafts")}</Card>
       ) : shown.length === 0 ? (
         <Card className="flex flex-col items-center gap-2 p-12 text-center">
           <p className="font-medium">{t("list.noMatches")}</p>

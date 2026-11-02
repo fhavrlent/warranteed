@@ -39,6 +39,7 @@
     "footer": "Password-less sign-in via your identity provider."
   },
   "status": {
+    "draft": "Draft",
     "active": "Active",
     "expiring": "Expiring soon",
     "expired": "Expired",
@@ -121,7 +122,12 @@
     "private": "Only you can see this",
     "emptyTitle": "Track your first warranty",
     "emptyText": "Add what you bought, when, and for how long it's covered. Attach the receipt and you'll never dig through email again.",
-    "importCsv": "Import CSV"
+    "importCsv": "Import CSV",
+    "filterReview": "To review",
+    "reviewBanner_one": "{{count}} draft from Paperless to review",
+    "reviewBanner_other": "{{count}} drafts from Paperless to review",
+    "reviewOpen": "Review",
+    "onlyDrafts": "Nothing confirmed yet. Check your drafts and confirm them to start tracking."
   },
   "detail": {
     "notFound": "This warranty doesn't exist",
@@ -158,7 +164,11 @@
     "link": "Link",
     "notes": "Notes",
     "added": "Added {{date}}",
-    "updated": "updated {{date}}"
+    "updated": "updated {{date}}",
+    "draftTitle": "Draft from Paperless",
+    "draftText": "Made from a new document in Paperless. Check the details, then confirm it.",
+    "confirm": "Confirm",
+    "confirmed": "Warranty confirmed"
   },
   "form": {
     "addTitle": "Add a warranty",
@@ -362,7 +372,18 @@
       "backlinksDone_one": "Links updated on {{count}} document",
       "backlinksDone_other": "Links updated on {{count}} documents",
       "backlinksFailed_one": "Couldn't update links on {{failed}} of {{count}} document",
-      "backlinksFailed_other": "Couldn't update links on {{failed}} of {{count}} documents"
+      "backlinksFailed_other": "Couldn't update links on {{failed}} of {{count}} documents",
+      "drafts": "Drafts from new documents",
+      "draftsHint": "Documents added to Paperless that you own become drafts here, to check and confirm. Which documents count is set in the Paperless workflow.",
+      "draftsClaudeHint": "Documents added to Paperless that you own become drafts here. They are sent to Anthropic for Claude to read.",
+      "draftsNeedWebhook": "Set <code>WARRANTEED_WEBHOOK_SECRET</code> on the server to turn on drafts from Paperless.",
+      "webhookSetup": "In Paperless, add a workflow with the trigger “Document added” (e.g. filtered by a tag) and a webhook action: <code>POST {{url}}</code> with the header <code>X-Warranteed-Secret</code> set to the secret and the body <code>{\"doc_id\": \"{{doc_id}}\"}</code>. Use Warranteed's internal address if Paperless can't reach this one.",
+      "draftSources": {
+        "off": "Off",
+        "paperless": "On, with the document's own details",
+        "fields": "On, with Paperless custom fields (e.g. paperless-gpt)",
+        "claude": "On, read by Claude"
+      }
     },
     "homebox": {
       "description": "Keep your inventory in HomeBox in step: add a warranty's product as an item, or link it to one that's already there.",
@@ -438,6 +459,7 @@
     "currency": "Currency must be a 3-letter ISO code, e.g. EUR",
     "theme": "Unknown theme",
     "language": "Unknown language",
+    "draftSource": "Unknown source for draft details",
     "soonDays": "“Expiring soon” must be between 1 and 365 days",
     "paperlessUrl": "Paperless URL must start with http:// or https://",
     "paperlessLinkAddress": "Paperless link address must start with http:// or https://",

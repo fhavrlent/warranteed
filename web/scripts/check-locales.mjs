@@ -82,7 +82,14 @@ const read = (dir, exts) =>
     .join("\n");
 const sources = read(join(web, "src"), [".ts", ".tsx"]) + read(join(web, "..", "internal"), [".go"]);
 // Keys built at runtime, e.g. t(`status.${s}`).
-const DYNAMIC = ["status.", "kinds.", "signIn.", "settings.tags.colors.", "reminder.months"];
+const DYNAMIC = [
+  "status.",
+  "kinds.",
+  "signIn.",
+  "settings.tags.colors.",
+  "settings.paperless.draftSources.",
+  "reminder.months",
+];
 for (const base of groups.keys()) {
   if (DYNAMIC.some((p) => base.startsWith(p))) continue;
   const short = base.split(".").pop();

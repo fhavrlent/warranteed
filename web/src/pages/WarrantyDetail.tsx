@@ -2,6 +2,7 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
+  Check,
   Copy,
   ExternalLink,
   Lock,
@@ -58,6 +59,16 @@ export const WarrantyDetail = () => {
   const s = statusOf(w, soonDays);
   const photo = photoOf(w);
 
+  const confirm = async () => {
+    try {
+      await api.confirmWarranty(w.id);
+      invalidate();
+      toast.success(t("detail.confirmed"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+
   const archive = async () => {
     try {
       await api.archive(w.id, !w.archivedAt);
@@ -108,6 +119,22 @@ export const WarrantyDetail = () => {
 
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-6">
+          {w.draft && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary-soft/50 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{t("detail.draftTitle")}</p>
+                <p className="text-[13px] text-fg-muted">{t("detail.draftText")}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                  <Pencil /> {t("detail.edit")}
+                </Button>
+                <Button size="sm" onClick={() => void confirm()}>
+                  <Check /> {t("detail.confirm")}
+                </Button>
+              </div>
+            </div>
+          )}
           <Card className="p-5 sm:p-6">
             <div className="flex items-start gap-4">
               {photo ? (

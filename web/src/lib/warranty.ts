@@ -2,9 +2,10 @@ import i18n from "@/i18n";
 import type { Attachment, Warranty, WarrantyInput } from "./api";
 import { daysUntil, fromISO, relativeDays } from "./dates";
 
-export type Status = "active" | "expiring" | "expired" | "lifetime" | "archived";
+export type Status = "draft" | "active" | "expiring" | "expired" | "lifetime" | "archived";
 
 export const statusOf = (w: Warranty, expiringSoonDays: number): Status => {
+  if (w.draft) return "draft";
   if (w.archivedAt) return "archived";
   if (w.isLifetime || !w.expiresOn) return "lifetime";
   const d = daysUntil(w.expiresOn);

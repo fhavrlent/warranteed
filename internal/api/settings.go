@@ -39,6 +39,10 @@ type settingsResponse struct {
 	// Names of the custom fields links are written to in Paperless.
 	PaperlessWarrantyField string `json:"paperlessWarrantyField"`
 	PaperlessHomeBoxField  string `json:"paperlessHomeboxField"`
+	// DraftSources are where drafts from Paperless can get their details here.
+	DraftSources []string `json:"draftSources"`
+	// WebhookEnabled: the server accepts Paperless's webhook for new documents.
+	WebhookEnabled bool `json:"webhookEnabled"`
 }
 
 // paperlessWebURL is where the user's browser opens their Paperless, or "".
@@ -75,6 +79,8 @@ func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsRespon
 		HomeBoxEnabled:         s.homeboxFor(st) != nil,
 		PaperlessWarrantyField: s.cfg.Paperless.WarrantyField,
 		PaperlessHomeBoxField:  s.cfg.Paperless.HomeBoxField,
+		DraftSources:           s.draftSources(),
+		WebhookEnabled:         s.cfg.Paperless.WebhookSecret != "" && s.cfg.Paperless.URL != "",
 	}
 }
 
@@ -152,6 +158,7 @@ type settingsInput struct {
 	PaperlessDefault   bool    `json:"paperlessDefault"`
 	HomeBoxToken       *string `json:"homeboxToken"` // nil keeps the stored token
 	PaperlessBacklinks bool    `json:"paperlessBacklinks"`
+	DraftSource        string  `json:"draftSource"`
 }
 
 var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -199,6 +206,13 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 	}
 	st.PaperlessDefault = in.PaperlessDefault
 	st.PaperlessBacklinks = in.PaperlessBacklinks
+	switch in.DraftSource {
+	case "": // older clients
+	case sourceOff, sourcePaperless, sourceFields, sourceClaude:
+		st.DraftSource = in.DraftSource
+	default:
+		return msg("draftSource")
+	}
 	if in.PaperlessToken != nil {
 		st.PaperlessToken = strings.TrimSpace(*in.PaperlessToken)
 	}

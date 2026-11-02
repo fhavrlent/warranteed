@@ -638,3 +638,79 @@ func (c *Client) SetDocumentCustomFields(ctx context.Context, id int64, fields [
 	resp.Body.Close()
 	return nil
 }
+
+// ---- documents for drafts ----
+
+// DocumentInfo is what a draft warranty is built from.
+type DocumentInfo struct {
+	ID               int64
+	Title            string
+	Created          string // YYYY-MM-DD
+	OriginalFileName string
+	MimeType         string
+	Owner            *int64 // the Paperless user who owns it, if any
+	Correspondent    *int64
+	CustomFields     []CustomField
+}
+
+// DocumentInfo reads a document's details.
+func (c *Client) DocumentInfo(ctx context.Context, id int64) (*DocumentInfo, error) {
+	c.ensureVersion(ctx)
+	var d struct {
+		apiDocument
+		Owner         *int64        `json:"owner"`
+		Correspondent *int64        `json:"correspondent"`
+		CustomFields  []CustomField `json:"custom_fields"`
+	}
+	if err := c.getJSON(ctx, fmt.Sprintf("/api/documents/%d/", id), &d); err != nil {
+		return nil, err
+	}
+	doc := d.toDocument()
+	return &DocumentInfo{
+		ID: doc.ID, Title: doc.Title, Created: doc.Created, OriginalFileName: doc.OriginalFileName,
+		MimeType: doc.MimeType, Owner: d.Owner, Correspondent: d.Correspondent, CustomFields: d.CustomFields,
+	}, nil
+}
+
+// CorrespondentName returns a correspondent's name.
+func (c *Client) CorrespondentName(ctx context.Context, id int64) (string, error) {
+	var out struct {
+		Name string `json:"name"`
+	}
+	err := c.getJSON(ctx, fmt.Sprintf("/api/correspondents/%d/", id), &out)
+	return out.Name, err
+}
+
+// UserID returns the ID of the Paperless user the token belongs to.
+func (c *Client) UserID(ctx context.Context) (int64, error) {
+	var out struct {
+		User struct {
+			ID int64 `json:"id"`
+		} `json:"user"`
+	}
+	if err := c.getJSON(ctx, "/api/ui_settings/", &out); err != nil {
+		return 0, err
+	}
+	if out.User.ID == 0 {
+		return 0, errors.New("Paperless didn't say which user the token belongs to")
+	}
+	return out.User.ID, nil
+}
+
+// CustomFieldNames maps every custom field's ID to its name.
+func (c *Client) CustomFieldNames(ctx context.Context) (map[int64]string, error) {
+	var page struct {
+		Results []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"results"`
+	}
+	if err := c.getJSON(ctx, "/api/custom_fields/?page_size=1000", &page); err != nil {
+		return nil, err
+	}
+	out := make(map[int64]string, len(page.Results))
+	for _, f := range page.Results {
+		out[f.ID] = f.Name
+	}
+	return out, nil
+}

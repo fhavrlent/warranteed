@@ -30,6 +30,7 @@ type Config struct {
 	OIDC      OIDC
 	Paperless Paperless
 	HomeBox   HomeBox
+	Claude    Claude
 
 	// Secret derives the key that encrypts stored refresh tokens. When empty,
 	// a key is generated in DataDir/secret.key.
@@ -66,6 +67,22 @@ type Paperless struct {
 	// HomeBox item.
 	WarrantyField string
 	HomeBoxField  string
+	// WebhookSecret must accompany Paperless's webhook for new documents;
+	// without it the webhook is off.
+	WebhookSecret string
+	// DraftFields maps draft details (DraftFieldKeys) to the Paperless custom
+	// fields they are read from, e.g. ones paperless-gpt fills in.
+	DraftFields map[string]string
+}
+
+// DraftFieldKeys are the details a draft can take from Paperless custom fields.
+var DraftFieldKeys = []string{"product", "brand", "model", "vendor", "purchase_date", "price", "currency",
+	"warranty_months", "serial", "order"}
+
+// Claude reads receipts for drafts when an Anthropic API key is set.
+type Claude struct {
+	APIKey string
+	Model  string
 }
 
 // HomeBox is set by the admin only, so users can't point the server at
@@ -131,6 +148,12 @@ func Load() (*Config, error) {
 
 			WarrantyField: env("PAPERLESS_WARRANTY_FIELD", "Warranty"),
 			HomeBoxField:  env("PAPERLESS_HOMEBOX_FIELD", "HomeBox"),
+			WebhookSecret: os.Getenv("WARRANTEED_WEBHOOK_SECRET"),
+			DraftFields:   draftFields(os.Getenv("PAPERLESS_DRAFT_FIELDS"), &errs),
+		},
+		Claude: Claude{
+			APIKey: os.Getenv("ANTHROPIC_API_KEY"),
+			Model:  env("WARRANTEED_CLAUDE_MODEL", "claude-haiku-5-5"),
 		},
 		HomeBox: HomeBox{
 			URL:       strings.TrimSuffix(os.Getenv("HOMEBOX_URL"), "/"),
@@ -208,6 +231,26 @@ func envBool(key string, def bool, errs *[]error) bool {
 }
 
 // list splits a comma or space separated value.
+// draftFields parses "product=Product, price=Price, ..." (field names may
+// contain spaces, so only commas separate entries).
+func draftFields(v string, errs *[]error) map[string]string {
+	out := map[string]string{}
+	for _, part := range strings.Split(v, ",") {
+		key, field, ok := strings.Cut(part, "=")
+		key, field = strings.ToLower(strings.TrimSpace(key)), strings.TrimSpace(field)
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		if !ok || field == "" || !contains(DraftFieldKeys, key) {
+			*errs = append(*errs, fmt.Errorf("PAPERLESS_DRAFT_FIELDS: %q should be one of %s followed by =<custom field name>",
+				strings.TrimSpace(part), strings.Join(DraftFieldKeys, ", ")))
+			continue
+		}
+		out[key] = field
+	}
+	return out
+}
+
 func list(v string) []string {
 	return strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })
 }

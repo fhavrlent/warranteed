@@ -18,6 +18,7 @@ import (
 	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/notify"
 	"github.com/fhavrlent/warranteed/internal/paperless"
+	"github.com/fhavrlent/warranteed/internal/receipts"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -35,10 +36,24 @@ type Server struct {
 	backlinks sync.WaitGroup
 	// docLocks has a mutex per Paperless document whose links are being updated.
 	docLocks sync.Map
+	// background tracks drafts being created from Paperless.
+	background sync.WaitGroup
+	// draftLocks has a mutex per Paperless document a draft is being made from.
+	draftLocks sync.Map
+	// receipts reads receipts with Claude; nil without an API key.
+	receipts *receipts.Reader
+	// refillDelays are when a draft's Paperless custom fields are looked at
+	// again if they were empty at first.
+	refillDelays []time.Duration
 }
 
 func New(cfg *config.Config, st *store.Store, a *auth.Auth, n *notify.Notifier, files *Files, assets fs.FS, version string) *Server {
-	return &Server{cfg: cfg, store: st, auth: a, notifier: n, files: files, assets: assets, version: version}
+	s := &Server{cfg: cfg, store: st, auth: a, notifier: n, files: files, assets: assets, version: version,
+		refillDelays: []time.Duration{time.Minute, 3 * time.Minute, 10 * time.Minute}}
+	if cfg.Claude.APIKey != "" {
+		s.receipts = receipts.New(cfg.Claude.APIKey, cfg.Claude.Model)
+	}
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -54,6 +69,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/info", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.auth.Info()) })
 
 	api := http.NewServeMux()
+	mux.HandleFunc("POST /hooks/paperless", s.paperlessWebhook)
+
 	api.HandleFunc("GET /api/me", s.me)
 	api.HandleFunc("GET /api/me/picture", s.mePicture)
 	api.HandleFunc("GET /api/settings", s.getSettings)
@@ -67,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/warranties/{id}", s.getWarranty)
 	api.HandleFunc("PUT /api/warranties/{id}", s.updateWarranty)
 	api.HandleFunc("DELETE /api/warranties/{id}", s.deleteWarranty)
+	api.HandleFunc("POST /api/warranties/{id}/confirm", s.confirmWarranty)
 	api.HandleFunc("POST /api/warranties/{id}/archive", s.archiveWarranty(true))
 	api.HandleFunc("POST /api/warranties/{id}/unarchive", s.archiveWarranty(false))
 	api.HandleFunc("POST /api/warranties/{id}/attachments", s.uploadAttachment)
