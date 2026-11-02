@@ -134,16 +134,25 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 		name, want string
 		ours       []string // how values Warranteed wrote start
 	}
-	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
-	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
-		wantHomeBox = s.homeboxBacklink(ctx, hb, pc.BaseURL, doc.DocID, warranties)
-		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", homebox.ListPrefix(hb)}})
-	}
-
 	current, err := pc.DocumentCustomFields(ctx, doc.DocID)
 	if err != nil {
 		return err
 	}
+	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
+	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
+		// Whether the document links to a list of items now, which items may
+		// need taking off.
+		listed := false
+		if id, err := pc.CustomFieldID(ctx, s.cfg.Paperless.HomeBoxField, "url", false); err == nil && id != 0 {
+			listed = slices.ContainsFunc(current, func(f paperless.CustomField) bool {
+				v, _ := f.Value.(string)
+				return f.Field == id && strings.HasPrefix(v, homebox.ListPrefix(hb))
+			})
+		}
+		wantHomeBox = s.homeboxBacklink(ctx, hb, pc.BaseURL, doc.DocID, warranties, listed)
+		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", homebox.ListPrefix(hb)}})
+	}
+
 	changed := false
 	for _, f := range fields {
 		// A field is only created when there is something to put in it.
@@ -168,23 +177,31 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 // warranties: the item itself when there is one, or else HomeBox's list of
 // the items whose link field holds the document's value, which keeps the
 // link short however many there are. Items that no longer belong lose the
-// value, found with every HomeBox key. When an item can't be marked, the link falls back to the first one.
-func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, docID int64, warranties []store.DocumentRef) string {
+// value, found with every HomeBox key, when the document lists items now or
+// is about to. When an item can't be marked, the link falls back to the
+// first one. HomeBox gets a time limit of its own, so that it being down
+// leaves time to update Paperless.
+func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, docID int64, warranties []store.DocumentRef, listed bool) string {
 	var items []string
 	for _, w := range warranties {
 		if w.HomeBoxID != "" && !slices.Contains(items, w.HomeBoxID) {
 			items = append(items, w.HomeBoxID)
 		}
 	}
-	if len(items) == 0 {
-		return ""
+	want := ""
+	if len(items) > 0 {
+		want = hb + "/item/" + url.PathEscape(items[0])
 	}
+	if len(items) < 2 && !listed {
+		return want
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	clients, err := s.homeboxClients(ctx, warranties)
 	if err != nil {
 		slog.Warn("read homebox keys", "doc", docID, "err", err)
 	}
 	value := receiptValue(paperlessURL, docID)
-	want := hb + "/item/" + url.PathEscape(items[0])
 	marked := []string{}
 	if len(items) > 1 {
 		for _, id := range items {
@@ -214,6 +231,10 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 	}
 	for _, c := range everyone {
 		ids, err := c.WithField(ctx, homebox.LinkField, value)
+		if ctx.Err() != nil {
+			slog.Warn("find homebox items", "doc", docID, "err", ctx.Err())
+			break
+		}
 		if err != nil {
 			slog.Warn("find homebox items", "doc", docID, "err", err)
 			continue

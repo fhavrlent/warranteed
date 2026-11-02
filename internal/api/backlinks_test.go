@@ -591,6 +591,25 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 		t.Errorf("item-2 holds %v", got)
 	}
 
+	// A receipt that listed items and has none left: they lose its value.
+	hb.mu.Lock()
+	hb.items["item-9"] = []homebox.Field{{Type: "text", Name: homebox.LinkField, TextValue: other}}
+	hb.mu.Unlock()
+	pl.mu.Lock()
+	for i, f := range pl.values[6] {
+		if f.Field == pl.fields["HomeBox"] {
+			pl.values[6][i].Value = homebox.ListURL("https://homebox.example.test", other)
+		}
+	}
+	pl.mu.Unlock()
+	unlink("item-2")
+	if got := hb.values("item-9"); got != nil {
+		t.Errorf("item-9 still holds %v", got)
+	}
+	if got := pl.value(6, "HomeBox"); got != "" {
+		t.Errorf("document 6: HomeBox link = %q", got)
+	}
+
 	// HomeBox can't be reached: the first item is linked instead.
 	hbServer.Close()
 	sync(5)

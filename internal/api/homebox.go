@@ -227,7 +227,10 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 	defer s.syncWarrantyBacklinksLater(r.Context(), id)
 
 	lang := st.EffectiveLanguage()
+	// Taking turns with other changes to the item, such as receipts' values.
+	unlock := s.lockPhotos("item:" + item.ID)
 	item, err = hb.Update(ctx, item.ID, func(it *homebox.Item) { fillHomeBoxItem(it, wr, st, existing) })
+	unlock()
 	if err != nil {
 		homeboxFail(w, err)
 		return
