@@ -8,6 +8,7 @@ How to use Warranteed day to day. Setting up the server and its connections to P
 - [Drafts from Paperless](#drafts-from-paperless)
 - [Finding warranties](#finding-warranties)
 - [Sharing with the household](#sharing-with-the-household)
+- [Repairs and claims](#repairs-and-claims)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
 - [Calendar](#calendar)
@@ -98,7 +99,12 @@ Everyone who signs in to the same Warranteed is in one household. New warranties
 
 With a single user, none of this appears.
 
-## HomeBox
+## Repairs and claims
+
+When something breaks, **Add claim** under **Claims** on the warranty records what went wrong and when you reported it. Keep it up to date as it goes: the status (open, repaired, replaced, refunded or rejected), when it was resolved, the shop's case or RMA number, anything you paid, and notes. A warranty with an open claim is marked in the list.
+
+A claim's menu adds documents to it, such as the shop's letter, photos of the defect or the repair report. They're stored like other documents, in Paperless if that's your default, and also appear among the warranty's documents. Deleting a claim keeps its documents on the warranty.
+
 
 With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's *Profile → API keys*), a warranty can be part of your inventory:
 
@@ -107,7 +113,8 @@ With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's
 - **Product photos** are copied to the item, both when adding and when linking, and so are photos you add to the warranty later. The first becomes the item's main photo unless it already has one. Each photo is copied once; deleting it in Warranteed leaves it in HomeBox. Receipts and other documents stay links to Paperless.
 - **Photos stored in HomeBox:** on a linked warranty, **Photo** asks where to store new photos. **HomeBox** puts them only on the item, and Warranteed shows them from there, so there's one copy. **Store product photos in HomeBox by default** in Settings makes HomeBox the default. Removing such a photo here leaves it on the item. The household sees it through the HomeBox key of whoever added it, so it stops showing if that key expires.
 - The warranty then shows the item's asset ID, the number printed on HomeBox labels, and a link to open it in HomeBox.
-- **Unlink** makes the warranty forget the item. The item stays in HomeBox.
+- **Claims** are added to the item's maintenance log, with when they were reported and resolved, the cost, and the status and notes in the description. Changing or deleting a claim changes or removes its entry; claims made before linking are added when you link.
+- **Unlink** makes the warranty forget the item. The item stays in HomeBox, with any claim entries.
 
 HomeBox keys expire after 30 days unless you give them a later date. When yours expires, create a new one and save it in Settings.
 

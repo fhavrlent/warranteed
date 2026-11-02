@@ -42,6 +42,7 @@ type Warranty struct {
 	SerialNumbers []string     `json:"serialNumbers"`
 	Tags          []Tag        `json:"tags"`
 	Attachments   []Attachment `json:"attachments"`
+	Claims        []Claim      `json:"claims"`
 	SpaceID       int64        `json:"spaceId"`
 	SpaceKind     string       `json:"spaceKind"`
 	AddedBy       UserRef      `json:"addedBy"`
@@ -221,7 +222,7 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	if homeboxID != "" {
 		w.HomeBox = &HomeBoxLink{ID: homeboxID, AssetID: homeboxAssetID}
 	}
-	w.SerialNumbers, w.Tags, w.Attachments = []string{}, []Tag{}, []Attachment{}
+	w.SerialNumbers, w.Tags, w.Attachments, w.Claims = []string{}, []Tag{}, []Attachment{}, []Claim{}
 	return &w, nil
 }
 
@@ -310,6 +311,23 @@ func (s *Store) loadChildren(ctx context.Context, userID int64, byID map[int64]*
 		}
 		if w := byID[wid]; w != nil {
 			w.Tags = append(w.Tags, t)
+		}
+	}
+	rows.Close()
+
+	rows, err = s.db.QueryContext(ctx, `SELECT `+claimCols+` FROM `+claimFrom+`
+		WHERE `+visibleTo+` ORDER BY c.reported_on DESC, c.id DESC`, userID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		c, err := scanClaim(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		if w := byID[c.WarrantyID]; w != nil {
+			w.Claims = append(w.Claims, *c)
 		}
 	}
 	rows.Close()
@@ -540,7 +558,9 @@ func (s *Store) SetHomeBox(ctx context.Context, userID, id int64, link *HomeBoxL
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	// Claims' entries were in the old item, if any; the new one gets its own.
+	_, err = s.db.ExecContext(ctx, `UPDATE claims SET homebox_entry = '' WHERE warranty_id = ?`, id)
+	return err
 }
 
 // HomeBoxKeyHolders lists everyone who saved a HomeBox key.

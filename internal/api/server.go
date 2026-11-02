@@ -123,6 +123,10 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PATCH /api/tags/{id}", s.updateTag)
 	api.HandleFunc("DELETE /api/tags/{id}", s.deleteTag)
 
+	api.HandleFunc("POST /api/warranties/{id}/claims", s.createClaim)
+	api.HandleFunc("PUT /api/claims/{id}", s.updateClaim)
+	api.HandleFunc("DELETE /api/claims/{id}", s.deleteClaim)
+
 	api.HandleFunc("GET /api/calendar", s.getCalendar)
 	api.HandleFunc("POST /api/calendar", s.newCalendar)
 	api.HandleFunc("DELETE /api/calendar", s.deleteCalendar)

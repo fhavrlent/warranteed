@@ -27,6 +27,7 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 - Add warranties to your HomeBox inventory, or link them to items already there.
 - Expiry reminders via ntfy, Gotify, Discord, Telegram, email and other services.
 - A private calendar feed of warranty end dates for Apple, Google or Outlook Calendar.
+- Repairs and claims with their documents, copied to the HomeBox item's maintenance log.
 - Tags, serial numbers, quantities, void warranties, archiving, search, CSV export and import.
 - Light and dark theme, usable on phones.
 - In English and Czech; more languages are easy to add.

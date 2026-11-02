@@ -288,6 +288,11 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		homeboxFail(w, err)
 		return
 	}
+	// The item is linked either way; a claim that didn't make it is copied
+	// again when it's next changed.
+	if err := s.syncClaims(photoCtx, uid, id); err != nil {
+		slog.Warn("copy claims to homebox", "warranty", id, "err", err)
+	}
 
 	wr, err = s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {

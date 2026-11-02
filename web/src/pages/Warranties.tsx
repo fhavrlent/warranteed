@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router";
+import { OpenClaimMark } from "@/components/Claims";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
 import { Button } from "@/components/ui/button";
@@ -553,7 +554,8 @@ export const Warranties = () => {
                 ))}
                 {w.tags.length > 2 && <span className="text-xs text-fg-subtle">+{w.tags.length - 2}</span>}
               </span>
-              <span className="flex w-28 justify-end">
+              <span className="flex w-28 items-center justify-end gap-1.5">
+                <OpenClaimMark w={w} compact />
                 <StatusBadge status={s} />
               </span>
             </Link>
@@ -670,6 +672,7 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
       </div>
       <div className="mt-3.5 flex min-h-5.5 flex-wrap items-center gap-1.5">
         <StatusBadge status={s} />
+        <OpenClaimMark w={w} />
         {w.tags.slice(0, 3).map((tg) => (
           <TagChip key={tg.id} tag={tg} />
         ))}

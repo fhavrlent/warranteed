@@ -25,8 +25,10 @@ type Attachment struct {
 	// when it is stored in HomeBox; HomeBoxAttachment is the photo there.
 	HomeBoxItem       string `json:"-"`
 	HomeBoxAttachment string `json:"-"`
-	Error             string `json:"error"`
-	CreatedAt         string `json:"createdAt"`
+	// ClaimID is the claim the document belongs to, if any.
+	ClaimID   *int64 `json:"claimId"`
+	Error     string `json:"error"`
+	CreatedAt string `json:"createdAt"`
 }
 
 const (
@@ -46,22 +48,22 @@ var AttachmentKinds = []string{"purchase", "terms", "card", "extended", "claim",
 func ValidKind(kind string) bool { return slices.Contains(AttachmentKinds, kind) }
 
 const attachmentCols = `a.id, a.warranty_id, a.kind, a.storage, a.filename, a.mime_type, a.size, a.local_path,
-	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at, a.added_by, a.homebox_item, a.homebox_attachment`
+	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at, a.added_by, a.homebox_item, a.homebox_attachment, a.claim_id`
 
 func scanAttachment(row interface{ Scan(...any) error }) (*Attachment, error) {
 	var a Attachment
 	err := row.Scan(&a.ID, &a.WarrantyID, &a.Kind, &a.Storage, &a.Filename, &a.MimeType, &a.Size, &a.LocalPath,
-		&a.PaperlessDocID, &a.PaperlessTaskID, &a.Status, &a.Error, &a.CreatedAt, &a.AddedBy, &a.HomeBoxItem, &a.HomeBoxAttachment)
+		&a.PaperlessDocID, &a.PaperlessTaskID, &a.Status, &a.Error, &a.CreatedAt, &a.AddedBy, &a.HomeBoxItem, &a.HomeBoxAttachment, &a.ClaimID)
 	return &a, err
 }
 
 func (s *Store) CreateAttachment(ctx context.Context, a *Attachment) error {
 	return s.db.QueryRowContext(ctx, `
 		INSERT INTO attachments (warranty_id, kind, storage, filename, mime_type, size, local_path,
-			paperless_doc_id, paperless_task_id, status, error, added_by, homebox_item, homebox_attachment)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
+			paperless_doc_id, paperless_task_id, status, error, added_by, homebox_item, homebox_attachment, claim_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
 		a.WarrantyID, a.Kind, a.Storage, a.Filename, a.MimeType, a.Size, a.LocalPath,
-		a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy, a.HomeBoxItem, a.HomeBoxAttachment,
+		a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy, a.HomeBoxItem, a.HomeBoxAttachment, a.ClaimID,
 	).Scan(&a.ID, &a.CreatedAt)
 }
 

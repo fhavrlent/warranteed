@@ -478,3 +478,33 @@ func (c *Client) OpenAttachment(ctx context.Context, itemID, attachmentID string
 	}
 	return res, nil
 }
+
+// MaintenanceEntry is an entry in an item's maintenance log. Dates are
+// YYYY-MM-DD or empty, and the cost is a decimal number as text.
+type MaintenanceEntry struct {
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	Cost          string `json:"cost"`
+	ScheduledDate string `json:"scheduledDate"`
+	CompletedDate string `json:"completedDate"`
+}
+
+// AddMaintenance adds an entry to the item's maintenance log and returns its ID.
+func (c *Client) AddMaintenance(ctx context.Context, itemID string, e MaintenanceEntry) (string, error) {
+	e.ID = ""
+	var out MaintenanceEntry
+	err := c.do(ctx, http.MethodPost, "/entities/"+url.PathEscape(itemID)+"/maintenance", nil, e, &out)
+	return out.ID, err
+}
+
+// UpdateMaintenance replaces a maintenance log entry.
+func (c *Client) UpdateMaintenance(ctx context.Context, id string, e MaintenanceEntry) error {
+	e.ID = ""
+	return c.do(ctx, http.MethodPut, "/maintenance/"+url.PathEscape(id), nil, e, nil)
+}
+
+// DeleteMaintenance removes a maintenance log entry.
+func (c *Client) DeleteMaintenance(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/maintenance/"+url.PathEscape(id), nil, nil, nil)
+}
