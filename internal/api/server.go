@@ -32,6 +32,8 @@ type Server struct {
 	version  string
 	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
 	homeboxBusy sync.Map
+	// photoLocks has a mutex per warranty whose photos are being sent to HomeBox.
+	photoLocks sync.Map
 	// backlinks tracks link updates running in the background.
 	backlinks sync.WaitGroup
 	// docLocks has a mutex per Paperless document whose links are being updated.

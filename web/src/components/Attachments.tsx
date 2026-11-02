@@ -35,17 +35,19 @@ import { Input, Select } from "./ui/input";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/menu";
 import { UploadDialog } from "./UploadDialog";
 
-const PaperlessMark = ({ className }: { className?: string }) => {
+/** Marks a file kept in Paperless or HomeBox rather than here. */
+const StorageMark = ({ storage, className }: { storage: "paperless" | "homebox"; className?: string }) => {
   const { t } = useTranslation();
   return (
     <span
-      title={t("attachments.inPaperless")}
+      title={storage === "paperless" ? t("attachments.inPaperless") : t("attachments.inHomebox")}
       className={cn(
-        "inline-flex h-4.5 items-center rounded bg-emerald-600 px-1 text-[10px] font-semibold tracking-wide text-white uppercase",
+        "inline-flex h-4.5 items-center rounded px-1 text-[10px] font-semibold tracking-wide text-white uppercase",
+        storage === "paperless" ? "bg-emerald-600" : "bg-sky-600",
         className,
       )}
     >
-      Paperless
+      {storage === "paperless" ? "Paperless" : "HomeBox"}
     </span>
   );
 };
@@ -87,7 +89,9 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
   const { settings } = usePrefs();
   const invalidate = useInvalidate();
   const paperless = settings?.paperlessEnabled ?? false;
-  const [toUpload, setToUpload] = useState<File[] | null>(null);
+  // Photos can go to the linked HomeBox item instead of being stored here.
+  const homebox = (settings?.homeboxEnabled ?? false) && warranty.homebox !== null;
+  const [toUpload, setToUpload] = useState<{ files: File[]; photos: boolean } | null>(null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [drag, setDrag] = useState(false);
   const [picker, setPicker] = useState(false);
@@ -98,11 +102,16 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
   const photoRef = useRef<HTMLInputElement>(null);
 
   const pick = (files: FileList | null) => {
-    if (files?.length) setToUpload(Array.from(files));
+    if (files?.length) setToUpload({ files: Array.from(files), photos: false });
   };
 
   const uploadPhotos = async (files: FileList | null) => {
-    if (!files) return;
+    if (!files?.length) return;
+    // With a choice of where to store them, ask first.
+    if (homebox) {
+      setToUpload({ files: Array.from(files), photos: true });
+      return;
+    }
     setUploadingPhotos(true);
     for (const file of Array.from(files)) {
       try {
@@ -166,7 +175,7 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
             ref={photoRef}
             type="file"
             accept="image/*"
-            capture="environment"
+            multiple
             hidden
             onChange={(e) => {
               void uploadPhotos(e.target.files);
@@ -240,7 +249,9 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
       {toUpload && (
         <UploadDialog
           warrantyId={warranty.id}
-          initialFiles={toUpload}
+          initialFiles={toUpload.files}
+          initialKind={toUpload.photos ? "photo" : undefined}
+          homebox={homebox}
           onClose={() => setToUpload(null)}
           onUploaded={invalidate}
         />
@@ -250,12 +261,26 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
       <ConfirmDialog
         open={!!toDelete}
         onOpenChange={(o) => !o && setToDelete(null)}
-        title={toDelete?.storage === "paperless" ? t("attachments.unlinkTitle") : t("attachments.deleteTitle")}
-        confirmLabel={toDelete?.storage === "paperless" ? t("attachments.unlink") : t("common.delete")}
+        title={
+          toDelete?.storage === "paperless"
+            ? t("attachments.unlinkTitle")
+            : toDelete?.storage === "homebox"
+              ? t("attachments.removeTitle")
+              : t("attachments.deleteTitle")
+        }
+        confirmLabel={
+          toDelete?.storage === "paperless"
+            ? t("attachments.unlink")
+            : toDelete?.storage === "homebox"
+              ? t("attachments.remove")
+              : t("common.delete")
+        }
         description={
           toDelete?.storage === "paperless"
             ? t("attachments.unlinkText")
-            : t("attachments.deleteText", { name: toDelete?.filename ?? "" })
+            : toDelete?.storage === "homebox"
+              ? t("attachments.removeText")
+              : t("attachments.deleteText", { name: toDelete?.filename ?? "" })
         }
         onConfirm={async () => {
           if (!toDelete) return;
@@ -299,8 +324,8 @@ const AttachmentCard = ({
       >
         <Thumb a={a} />
       </button>
-      {a.storage === "paperless" && (
-        <PaperlessMark className="pointer-events-none absolute top-2 right-2 shadow-card" />
+      {a.storage !== "local" && (
+        <StorageMark storage={a.storage} className="pointer-events-none absolute top-2 right-2 shadow-card" />
       )}
       <div className="flex items-start gap-2 border-t border-border px-3 py-2">
         <div className="min-w-0 flex-1">
@@ -375,7 +400,11 @@ const AttachmentCard = ({
             ))}
             <MenuSeparator />
             <MenuItem danger icon={<Trash2 />} onSelect={onDelete}>
-              {a.storage === "paperless" ? t("attachments.unlink") : t("common.delete")}
+              {a.storage === "paperless"
+                ? t("attachments.unlink")
+                : a.storage === "homebox"
+                  ? t("attachments.remove")
+                  : t("common.delete")}
             </MenuItem>
           </MenuContent>
         </Menu>
@@ -384,7 +413,7 @@ const AttachmentCard = ({
   );
 };
 
-/** Renames the file as shown here; the extension is kept and Paperless is untouched. */
+/** Renames the file as shown here; the extension is kept and Paperless and HomeBox are untouched. */
 const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () => void; onRenamed: () => void }) => {
   const { t } = useTranslation();
   const dot = a.filename.lastIndexOf(".");
@@ -412,7 +441,13 @@ const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () =>
       onOpenChange={(o) => !o && onClose()}
       size="sm"
       title={t("attachments.renameTitle")}
-      description={a.storage === "paperless" ? t("attachments.renamePaperless") : undefined}
+      description={
+        a.storage === "paperless"
+          ? t("attachments.renamePaperless")
+          : a.storage === "homebox"
+            ? t("attachments.renameHomebox")
+            : undefined
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -439,7 +474,7 @@ const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () =>
 
 const PreviewDialog = ({ a, onClose }: { a: Attachment | null; onClose: () => void }) => {
   const { t } = useTranslation();
-  const isImage = a?.mimeType.startsWith("image/") && a.storage === "local";
+  const isImage = a?.mimeType.startsWith("image/") && a.storage !== "paperless";
   return (
     <Dialog
       open={!!a}

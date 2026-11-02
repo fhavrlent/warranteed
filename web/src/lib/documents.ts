@@ -10,7 +10,7 @@ import {
   Wrench,
 } from "lucide-react";
 import i18n from "@/i18n";
-import type { AttachmentKind } from "./api";
+import type { AttachmentKind, Storage } from "./api";
 
 /** Document types in display order. */
 export const DOCUMENT_KINDS: readonly AttachmentKind[] = [
@@ -103,6 +103,11 @@ export const extensionOf = (name: string): string => {
 
 export const paperlessAccepts = (file: File): boolean => PAPERLESS_EXTENSIONS.has(extensionOf(file.name));
 
-/** Where a file ends up: photos and types Paperless can't take always stay here. */
-export const storageFor = (p: PendingFile, wantPaperless: boolean): "local" | "paperless" =>
-  wantPaperless && p.kind !== "photo" && paperlessAccepts(p.file) ? "paperless" : "local";
+/**
+ * Where a file ends up: photos here or in HomeBox, documents here or in
+ * Paperless, except types Paperless can't take.
+ */
+export const storageFor = (p: PendingFile, wantPaperless: boolean, wantHomeBox = false): Storage => {
+  if (p.kind === "photo") return wantHomeBox ? "homebox" : "local";
+  return wantPaperless && paperlessAccepts(p.file) ? "paperless" : "local";
+};
