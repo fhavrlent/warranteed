@@ -40,7 +40,7 @@ The [user guide](docs/user-guide.md) shows how to use it, and the [integration g
 | HomeBox | 0.27.1; earlier versions lack the API Warranteed uses |
 | Claude | `claude-haiku-5-5`, the default model for reading receipts |
 
-Drafts from Paperless custom fields were only tested against a simulated Paperless, not with paperless-gpt. Newer versions of each will probably work; please [open an issue](https://github.com/fhavrlent/warranteed/issues) if one doesn't.
+Drafts from Paperless custom fields were tested with values typed into Paperless by hand, not with paperless-gpt itself. Newer versions of each will probably work; please [open an issue](https://github.com/fhavrlent/warranteed/issues) if one doesn't.
 
 ## Installation
 
