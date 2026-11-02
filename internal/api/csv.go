@@ -19,7 +19,7 @@ import (
 var csvHeader = []string{
 	"product_name", "brand", "model", "vendor", "order_number", "purchase_date",
 	"warranty_months", "warranty_end_date", "lifetime", "price", "currency",
-	"serial_numbers", "tags", "product_url", "notes", "archived", "space",
+	"quantity", "serial_numbers", "tags", "product_url", "notes", "archived", "space",
 }
 
 const listSep = ";"
@@ -76,7 +76,7 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		e := escapeCell
 		cw.Write([]string{
 			e(wr.ProductName), e(wr.Brand), e(wr.Model), e(wr.Vendor), e(wr.OrderNumber), wr.PurchaseDate,
-			months, end, strconv.FormatBool(wr.IsLifetime), price, e(wr.Currency),
+			months, end, strconv.FormatBool(wr.IsLifetime), price, e(wr.Currency), strconv.Itoa(wr.Quantity),
 			e(strings.Join(wr.SerialNumbers, listSep)), e(strings.Join(tags, listSep)),
 			e(wr.ProductURL), e(wr.Notes), strconv.FormatBool(wr.ArchivedAt != nil), wr.SpaceKind,
 		})
@@ -236,6 +236,13 @@ func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInp
 			return nil, false, i18n.NewError("server.csvBadPrice", i18n.Args{"value": p})
 		}
 		in.Price = &v
+	}
+	if q := get("quantity"); q != "" {
+		n, err := strconv.Atoi(q)
+		if err != nil || n < 1 || n > store.MaxQuantity {
+			return nil, false, i18n.NewError("server.csvBadQuantity", i18n.Args{"value": q})
+		}
+		in.Quantity = n
 	}
 	in.SerialNumbers = splitList(get("serial_numbers"))
 	in.Tags = splitList(get("tags"))

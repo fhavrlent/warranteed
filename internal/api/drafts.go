@@ -344,6 +344,9 @@ func applyDetails(in *store.WarrantyInput, d *receipts.Details) {
 	if d.Price != nil && *d.Price >= 0 {
 		in.Price = d.Price
 	}
+	if d.Quantity != nil && *d.Quantity >= 1 && *d.Quantity <= store.MaxQuantity {
+		in.Quantity = *d.Quantity
+	}
 	if c := strings.ToUpper(strings.TrimSpace(d.Currency)); len(c) == 3 {
 		in.Currency = c
 	}
@@ -463,6 +466,12 @@ func fieldDetails(doc *paperless.DocumentInfo, ids map[string]int64) *receipts.D
 			d.Price = &v
 		}
 	}
+	if q := text("quantity"); q != "" {
+		if v, err := strconv.ParseFloat(q, 64); err == nil && v == float64(int(v)) {
+			n := int(v)
+			d.Quantity = &n
+		}
+	}
 	if m := text("warranty_months"); m != "" {
 		if v, err := strconv.ParseFloat(m, 64); err == nil && v == float64(int(v)) {
 			n := int(v)
@@ -544,7 +553,7 @@ func inputOf(w *store.Warranty) *store.WarrantyInput {
 	in := &store.WarrantyInput{
 		ProductName: w.ProductName, Brand: w.Brand, Model: w.Model, Vendor: w.Vendor, OrderNumber: w.OrderNumber,
 		PurchaseDate: w.PurchaseDate, WarrantyMonths: w.WarrantyMonths, WarrantyEndDate: w.WarrantyEndDate,
-		IsLifetime: w.IsLifetime, Price: w.Price, Currency: w.Currency, ProductURL: w.ProductURL, Notes: w.Notes,
+		IsLifetime: w.IsLifetime, Price: w.Price, Currency: w.Currency, Quantity: w.Quantity, ProductURL: w.ProductURL, Notes: w.Notes,
 		SerialNumbers: w.SerialNumbers,
 	}
 	for _, t := range w.Tags {

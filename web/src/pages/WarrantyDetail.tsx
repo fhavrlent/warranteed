@@ -266,7 +266,19 @@ export const WarrantyDetail = () => {
             <Detail label={t("detail.purchased")}>{fmtDate(w.purchaseDate)}</Detail>
             <Detail label={t("detail.coverage")}>{coverage}</Detail>
             <Detail label={t("detail.expires")}>{w.isLifetime ? t("detail.never") : fmtDate(w.expiresOn)}</Detail>
-            {w.price != null && <Detail label={t("detail.price")}>{fmtMoney(w.price, w.currency)}</Detail>}
+            {w.quantity > 1 && (
+              <Detail label={t("detail.quantity")}>{t("detail.pieces", { count: w.quantity })}</Detail>
+            )}
+            {w.price != null && (
+              <Detail label={t("detail.price")}>
+                {w.quantity > 1
+                  ? t("detail.priceEach", {
+                      price: fmtMoney(w.price, w.currency),
+                      total: fmtMoney(w.price * w.quantity, w.currency),
+                    })
+                  : fmtMoney(w.price, w.currency)}
+              </Detail>
+            )}
             {w.vendor && <Detail label={t("detail.boughtFrom")}>{w.vendor}</Detail>}
             {w.orderNumber && (
               <Detail label={t("detail.orderNo")} copy={w.orderNumber}>

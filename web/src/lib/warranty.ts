@@ -38,6 +38,9 @@ export const coverageUsed = (w: Warranty): number | null => {
 export const photoOf = (w: Warranty): Attachment | undefined =>
   w.attachments.find((a) => a.kind === "photo" && a.status === "ready");
 
+/** What the pieces cost together, or null without a price. */
+export const totalPrice = (w: Warranty): number | null => (w.price == null ? null : w.price * w.quantity);
+
 export const displayName = (w: Warranty): string => {
   if (w.brand && !w.productName.toLowerCase().includes(w.brand.toLowerCase())) return `${w.brand} ${w.productName}`;
   return w.productName;
@@ -87,6 +90,7 @@ export const toInput = (w: Warranty): WarrantyInput => ({
   isLifetime: w.isLifetime,
   price: w.price,
   currency: w.currency,
+  quantity: w.quantity,
   productUrl: w.productUrl,
   notes: w.notes,
   serialNumbers: w.serialNumbers,

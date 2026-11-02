@@ -52,6 +52,13 @@ func TestNormalize(t *testing.T) {
 	if _, err := none.Normalize(); err == nil {
 		t.Fatal("missing duration should fail")
 	}
+
+	for _, q := range []int{-1, MaxQuantity + 1} {
+		bad := WarrantyInput{ProductName: "X", PurchaseDate: "2024-01-01", IsLifetime: true, Quantity: q}
+		if _, err := bad.Normalize(); err == nil {
+			t.Fatalf("quantity %d should fail", q)
+		}
+	}
 }
 
 func TestDateFormats(t *testing.T) {

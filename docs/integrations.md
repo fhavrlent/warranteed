@@ -96,7 +96,8 @@ How a draft is made:
    | `product` | Product | Text |
    | `brand`, `model`, `vendor`, `order` | Brand, Model, Vendor, Order number | Text |
    | `purchase_date` | Purchase date | Date |
-   | `price` | Price | Monetary, or a number |
+   | `price` | Price | Monetary, or a number; the price of one piece |
+   | `quantity` | Quantity | Integer; how many pieces were bought |
    | `currency` | Currency | Text, e.g. `EUR`. A monetary field's own currency is used otherwise |
    | `warranty_months` | Warranty months | Integer |
    | `serial` | Serial numbers | Text; separate several with `,` or `;` |
@@ -125,7 +126,7 @@ Claude can read the receipt itself, including photos of till slips and documents
 2. Optionally choose a different model with `WARRANTEED_CLAUDE_MODEL`. The default, `claude-haiku-5-5`, is the cheapest and read receipts well in testing.
 3. Users pick **On, read by Claude**.
 
-Claude finds the product name, brand, model, shop, purchase date, price including tax, currency, order number, serial numbers, and the warranty length when the receipt states one. A receipt for several devices makes a draft for each, while delivery, discounts, food, books, music and similar items are left out; users who pick **Make drafts of: Every product** get a draft for every product instead. Either way, up to 30 per document. Names stay in the receipt's language. When the document also gives the date the goods were received, the draft starts on the date the user picked under **Count warranties from**, and offers the other one. An extended warranty bought with a product lengthens that product's warranty by its months and is mentioned in the notes.
+Claude finds the product name, brand, model, shop, purchase date, price of one piece including tax, how many pieces were bought, currency, order number, serial numbers, and the warranty length when the receipt states one. A receipt for several devices makes a draft for each, while delivery, discounts, food, books, music and similar items are left out; users who pick **Make drafts of: Every product** get a draft for every product instead. Either way, up to 30 per document. Names stay in the receipt's language. When the document also gives the date the goods were received, the draft starts on the date the user picked under **Count warranties from**, and offers the other one. An extended warranty bought with a product lengthens that product's warranty by its months and is mentioned in the notes.
 
 What to know:
 
@@ -141,7 +142,7 @@ You need [HomeBox](https://homebox.software) v0.27 or later.
 1. Set `HOMEBOX_URL` to where Warranteed reaches HomeBox, and `HOMEBOX_PUBLIC_URL` if browsers use another address. Restart.
 2. Each user creates an API key in HomeBox (*Profile → API keys*) and saves it under **Settings → HomeBox**. Keys expire after 30 days unless given a later date, so a longer expiry saves renewing them.
 
-On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address). It can go into a location or into an item that already holds other items. **Link existing item** finds items and locations, and fills in only the empty fields instead.
+On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, quantity, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address). It can go into a location or into an item that already holds other items. **Link existing item** finds items and locations, and fills in only the empty fields instead.
 
 Product photos are uploaded to the item too, then and whenever one is added to the warranty later, using the HomeBox key of whoever adds it. The first becomes the item's main photo unless it has one. Warranteed remembers which photos it sent, so none is sent twice.
 

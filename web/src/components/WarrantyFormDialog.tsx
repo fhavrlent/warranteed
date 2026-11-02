@@ -9,7 +9,7 @@ import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
 import { useInvalidate, useMe, usePrefs, useSharing } from "@/lib/queries";
 import { storageFor, toPending, type PendingFile } from "@/lib/documents";
 import { formatPriceInput, parsePrice } from "@/lib/price";
-import { CURRENCIES, cn } from "@/lib/utils";
+import { CURRENCIES, cn, formatMoney } from "@/lib/utils";
 import { DateInput } from "./DateInput";
 import { PendingFileList } from "./PendingFiles";
 import { TagInput } from "./Tags";
@@ -32,6 +32,7 @@ const newId = () => String(++lastId);
 const serial = (value = ""): Serial => ({ id: newId(), value });
 
 const PRESETS = [12, 24, 36, 60];
+const MAX_QUANTITY = 9999;
 
 const initial = (w: Warranty | undefined, currency: string) => {
   const months = w?.warrantyMonths ?? 24;
@@ -49,6 +50,7 @@ const initial = (w: Warranty | undefined, currency: string) => {
     unit,
     endDate: w?.warrantyEndDate ?? null,
     price: w?.price != null ? formatPriceInput(w.price) : "",
+    quantity: String(w?.quantity ?? 1),
     currency: w?.currency || currency,
     productUrl: w?.productUrl ?? "",
     notes: w?.notes ?? "",
@@ -92,6 +94,14 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
     if (!Number.isFinite(n) || n <= 0) return null;
     return f.unit === "years" ? n * 12 : n;
   })();
+  const quantity = (() => {
+    const n = Number(f.quantity);
+    return Number.isInteger(n) && n >= 1 && n <= MAX_QUANTITY ? n : null;
+  })();
+  const total = (() => {
+    const p = parsePrice(f.price);
+    return quantity && quantity > 1 && p !== null && !Number.isNaN(p) ? p * quantity : null;
+  })();
 
   const computedExpiry =
     f.mode === "lifetime"
@@ -113,6 +123,7 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
         e.endDate = t("form.errEndBeforePurchase");
     }
     if (Number.isNaN(parsePrice(f.price))) e.price = t("form.errPrice", { example: formatPriceInput(1379.5) });
+    if (!quantity) e.quantity = t("form.errQuantity", { max: MAX_QUANTITY });
     if (files.some((p) => p.kind === null)) e.files = t("form.errFileTypes");
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -133,6 +144,7 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
       isLifetime: f.mode === "lifetime",
       price: parsePrice(f.price),
       currency: f.currency,
+      quantity: quantity ?? 1,
       productUrl: f.productUrl,
       notes: f.notes,
       serialNumbers: f.serials.map((x) => x.value),
@@ -224,7 +236,13 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               onChange={(e) => set("vendor", e.target.value)}
             />
           </Field>
-          <Field label={t("form.price")} htmlFor="price" error={errors.price} optional>
+          <Field
+            label={quantity && quantity > 1 ? t("form.pricePerPiece") : t("form.price")}
+            htmlFor="price"
+            error={errors.price}
+            hint={total != null && t("form.priceTotal", { total: formatMoney(total, f.currency) })}
+            optional
+          >
             <div className="flex gap-2">
               <Input
                 id="price"
@@ -252,9 +270,25 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
               </Select>
             </div>
           </Field>
-          <Field label={t("form.orderNumber")} htmlFor="orderNumber" optional>
-            <Input id="orderNumber" value={f.orderNumber} onChange={(e) => set("orderNumber", e.target.value)} />
-          </Field>
+          <div className="grid grid-cols-[5.5rem_1fr] gap-4">
+            <Field label={t("form.quantity")} htmlFor="quantity" error={errors.quantity}>
+              <Input
+                id="quantity"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={MAX_QUANTITY}
+                step={1}
+                value={f.quantity}
+                className="tabular-nums"
+                aria-invalid={errors.quantity ? true : undefined}
+                onChange={(e) => set("quantity", e.target.value)}
+              />
+            </Field>
+            <Field label={t("form.orderNumber")} htmlFor="orderNumber" optional>
+              <Input id="orderNumber" value={f.orderNumber} onChange={(e) => set("orderNumber", e.target.value)} />
+            </Field>
+          </div>
         </section>
 
         <section className="rounded-xl border border-border bg-surface-2 p-4">

@@ -24,7 +24,7 @@ import { errorMessage, thumbUrl, type Tag, type Warranty } from "@/lib/api";
 import { usePrefs, useSharing, useTags, useWarranties } from "@/lib/queries";
 import { matcher } from "@/lib/search";
 import { cn } from "@/lib/utils";
-import { displayName, photoOf, statusOf, tagDot, type Status, expiryText } from "@/lib/warranty";
+import { displayName, photoOf, statusOf, tagDot, totalPrice, type Status, expiryText } from "@/lib/warranty";
 
 type Filter = "current" | "expiring" | "expired" | "lifetime" | "archived" | "all" | "review";
 const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime", "archived", "all", "review"];
@@ -186,7 +186,7 @@ export const Warranties = () => {
             w.price &&
             (!w.currency || w.currency === currency),
         )
-        .reduce((sum, { w }) => sum + (w.price ?? 0), 0),
+        .reduce((sum, { w }) => sum + (totalPrice(w) ?? 0), 0),
     [withStatus, currency],
   );
 
@@ -236,7 +236,7 @@ export const Warranties = () => {
         case "purchase":
           return b.purchaseDate.localeCompare(a.purchaseDate) || byName(a, b);
         case "price":
-          return (b.price ?? -1) - (a.price ?? -1) || byName(a, b);
+          return (totalPrice(b) ?? -1) - (totalPrice(a) ?? -1) || byName(a, b);
         case "added":
           return b.createdAt.localeCompare(a.createdAt);
         default:
@@ -523,6 +523,11 @@ export const Warranties = () => {
                     title={displayName(w)}
                   >
                     {displayName(w)}
+                    {w.quantity > 1 && (
+                      <span className="ml-1.5 font-normal whitespace-nowrap text-fg-subtle tabular-nums">
+                        {t("detail.pieces", { count: w.quantity })}
+                      </span>
+                    )}
                   </p>
                   <p className="truncate text-xs text-fg-subtle">
                     {[w.model, w.vendor].filter(Boolean).join(" · ") || " "}
@@ -628,6 +633,11 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
         <div className="min-w-0 flex-1">
           <p className="line-clamp-3 leading-snug font-medium [overflow-wrap:anywhere]" title={displayName(w)}>
             {displayName(w)}
+            {w.quantity > 1 && (
+              <span className="ml-1.5 font-normal whitespace-nowrap text-fg-subtle tabular-nums">
+                {t("detail.pieces", { count: w.quantity })}
+              </span>
+            )}
             {sharing && w.spaceKind === "personal" && (
               <Lock className="ml-1.5 inline size-3.5 align-[-0.1em] text-fg-subtle" aria-label={t("list.private")} />
             )}

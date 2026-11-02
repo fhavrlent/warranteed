@@ -458,6 +458,10 @@ func fillHomeBoxItem(it *homebox.Item, wr *store.Warranty, st *store.Settings, o
 	if wr.Price != nil && (!onlyEmpty || it.PurchasePrice == 0) {
 		it.PurchasePrice = *wr.Price
 	}
+	// HomeBox gives every item a quantity of 1, so that counts as empty.
+	if wr.Quantity > 1 && (!onlyEmpty || it.Quantity <= 1) {
+		it.Quantity = wr.Quantity
+	}
 	// Coverage is one thing: an item that already has an end date or a
 	// lifetime warranty keeps it, along with its warranty details.
 	if onlyEmpty && (it.LifetimeWarranty || it.WarrantyExpires != "" || it.WarrantyDetails != "") {

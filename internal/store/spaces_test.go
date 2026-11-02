@@ -220,3 +220,22 @@ func TestDocumentDatesOnlyOnDrafts(t *testing.T) {
 		t.Errorf("confirmed warranty still offers %+v", w.DocumentDates)
 	}
 }
+
+func TestQuantity(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	uid := user(t, st, "ann")
+	id := add(t, st, uid, "Bulb", nil)
+	w, err := st.GetWarranty(ctx, uid, id)
+	if err != nil || w.Quantity != 1 {
+		t.Fatalf("new warranty quantity %v, err %v", w, err)
+	}
+	m := 24
+	in := &store.WarrantyInput{ProductName: "Bulb", PurchaseDate: "2025-01-01", WarrantyMonths: &m, Quantity: 2}
+	if err := st.UpdateWarranty(ctx, uid, id, in); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ = st.GetWarranty(ctx, uid, id); w.Quantity != 2 {
+		t.Fatalf("quantity %d after update, want 2", w.Quantity)
+	}
+}

@@ -26,6 +26,7 @@ type Details struct {
 	// says and it isn't the purchase date.
 	ReceivedDate   string   `json:"receivedDate"`
 	Price          *float64 `json:"price"`
+	Quantity       *int     `json:"quantity"`
 	Currency       string   `json:"currency"`
 	WarrantyMonths *int     `json:"warrantyMonths"`
 	SerialNumbers  []string `json:"serialNumbers"`
@@ -51,6 +52,7 @@ type answer struct {
 		Brand          string   `json:"brand"`
 		Model          string   `json:"model"`
 		Price          *float64 `json:"price"`
+		Quantity       *int     `json:"quantity"`
 		WarrantyMonths *int     `json:"warrantyMonths"`
 		SerialNumbers  []string `json:"serialNumbers"`
 		Extension      string   `json:"extension"`
@@ -74,12 +76,13 @@ var schema = map[string]any{
 			"items": map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
-				"required":             []string{"productName", "brand", "model", "price", "warrantyMonths", "serialNumbers", "extension", "extendedMonths"},
+				"required":             []string{"productName", "brand", "model", "price", "quantity", "warrantyMonths", "serialNumbers", "extension", "extendedMonths"},
 				"properties": map[string]any{
 					"productName":    map[string]any{"type": "string", "description": "What the product is called, without the brand, in the document's language, e.g. \"Myčka nádobí\" or \"Galaxy S24\""},
 					"brand":          map[string]any{"type": "string"},
 					"model":          map[string]any{"type": "string", "description": "Model name or number"},
 					"price":          map[string]any{"anyOf": []any{map[string]any{"type": "number"}, map[string]any{"type": "null"}}, "description": "Price of one piece including tax"},
+					"quantity":       map[string]any{"anyOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "null"}}, "description": "How many pieces were bought"},
 					"warrantyMonths": map[string]any{"anyOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "null"}}, "description": "Only if the document states the warranty length"},
 					"serialNumbers":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 					"extension":      map[string]any{"type": "string", "description": "An extended warranty or warranty insurance bought for this product, as the document names it, or empty"},
@@ -92,8 +95,8 @@ var schema = map[string]any{
 
 // Which products to list: the ones worth a warranty, or every one.
 const (
-	worthyItems = `List each product on the document that's worth tracking a warranty for: devices, electronics, appliances, light bulbs, tools and the like. Leave out delivery, discounts, services, and things nobody claims a warranty on, such as food, books, music and films, decorations, textiles and household consumables. Go through every line: till slips shorten names, so watch for hints such as Matter, LED, USB or Wi-Fi. A product bought several times is one entry. When nothing qualifies, list just the main product.`
-	everyItem   = `List every product bought on the document, whatever it is. Leave out only lines that aren't goods, such as delivery, discounts, fees and deposits. Go through every line: till slips shorten names. A product bought several times is one entry.`
+	worthyItems = `List each product on the document that's worth tracking a warranty for: devices, electronics, appliances, light bulbs, tools and the like. Leave out delivery, discounts, services, and things nobody claims a warranty on, such as food, books, music and films, decorations, textiles and household consumables. Go through every line: till slips shorten names, so watch for hints such as Matter, LED, USB or Wi-Fi. A product bought several times is one entry, with how many were bought. When nothing qualifies, list just the main product.`
+	everyItem   = `List every product bought on the document, whatever it is. Leave out only lines that aren't goods, such as delivery, discounts, fees and deposits. Go through every line: till slips shorten names. A product bought several times is one entry, with how many were bought.`
 )
 
 const instructions = `You read receipts, invoices and warranty cards to fill in a warranty tracker.
@@ -195,7 +198,7 @@ func (a *answer) details() []Details {
 	var out []Details
 	for _, it := range a.Items[:min(len(a.Items), MaxItems)] {
 		d := purchase
-		d.ProductName, d.Brand, d.Model, d.Price = it.ProductName, it.Brand, it.Model, it.Price
+		d.ProductName, d.Brand, d.Model, d.Price, d.Quantity = it.ProductName, it.Brand, it.Model, it.Price, it.Quantity
 		d.WarrantyMonths, d.SerialNumbers = it.WarrantyMonths, it.SerialNumbers
 		d.Extension, d.ExtendedMonths = it.Extension, it.ExtendedMonths
 		out = append(out, d)
