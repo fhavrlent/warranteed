@@ -158,6 +158,7 @@ type settingsInput struct {
 	PaperlessDefault   bool    `json:"paperlessDefault"`
 	HomeBoxToken       *string `json:"homeboxToken"` // nil keeps the stored token
 	PaperlessBacklinks bool    `json:"paperlessBacklinks"`
+	HomeBoxPhotos      *bool   `json:"homeboxPhotosDefault"` // nil keeps the setting
 	DraftSource        string  `json:"draftSource"`
 }
 
@@ -206,6 +207,9 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 	}
 	st.PaperlessDefault = in.PaperlessDefault
 	st.PaperlessBacklinks = in.PaperlessBacklinks
+	if in.HomeBoxPhotos != nil {
+		st.HomeBoxPhotosDefault = *in.HomeBoxPhotos
+	}
 	switch in.DraftSource {
 	case "": // older clients
 	case sourceOff, sourcePaperless, sourceFields, sourceClaude:

@@ -143,6 +143,10 @@ You need [HomeBox](https://homebox.software) v0.27 or later.
 
 On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address). **Link existing item** fills in only the item's empty fields instead.
 
+Product photos are uploaded to the item too, then and whenever one is added to the warranty later, using the HomeBox key of whoever adds it. The first becomes the item's main photo unless it has one. Warranteed remembers which photos it sent, so none is sent twice.
+
+On a linked warranty, users can also store new photos only in HomeBox: the upload goes to the item and Warranteed shows it from there, through the key of whoever added it. **Store product photos in HomeBox by default** under **Settings → HomeBox** makes this each user's default.
+
 With links back from Paperless on, the receipts in Paperless then also link to the HomeBox item.
 
 ## Reminders

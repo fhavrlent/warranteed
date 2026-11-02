@@ -8,11 +8,14 @@ export interface Tag {
   count?: number;
 }
 
+/** Where a file is kept: here, in Paperless-ngx, or (photos only) on the linked HomeBox item. */
+export type Storage = "local" | "paperless" | "homebox";
+
 export interface Attachment {
   id: number;
   warrantyId: number;
   kind: AttachmentKind;
-  storage: "local" | "paperless";
+  storage: Storage;
   filename: string;
   mimeType: string;
   size: number;
@@ -113,6 +116,8 @@ export interface Settings {
   /** Address the browser uses for Paperless links (admins), empty = the Paperless URL. */
   paperlessPublicUrl: string;
   paperlessDefault: boolean;
+  /** Store product photos in HomeBox by default, on warranties linked to an item. */
+  homeboxPhotosDefault: boolean;
   /** Write links to the warranty and HomeBox item into the user's Paperless documents. */
   paperlessBacklinks: boolean;
   /** Names of the custom fields those links go in. */
@@ -286,7 +291,7 @@ export const api = {
   archive: (id: number, archived: boolean) =>
     request<Warranty>("POST", `/api/warranties/${id}/${archived ? "archive" : "unarchive"}`),
 
-  upload: (warrantyId: number, file: File, kind: AttachmentKind, storage: "local" | "paperless") => {
+  upload: (warrantyId: number, file: File, kind: AttachmentKind, storage: Storage) => {
     const fd = new FormData();
     fd.append("kind", kind);
     fd.append("storage", storage);

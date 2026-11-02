@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/dates"
@@ -267,6 +270,12 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
+	photoCtx, cancelPhotos := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancelPhotos()
+	if err := s.sendHomeBoxPhotos(photoCtx, hb, uid, id); err != nil {
+		homeboxFail(w, err)
+		return
+	}
 
 	wr, err = s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {
@@ -274,6 +283,111 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, 200, wr)
+}
+
+// sendHomeBoxPhotos uploads the warranty's product photos that its HomeBox
+// item doesn't have from Warranteed yet. The first becomes the item's main
+// photo if it has none.
+func (s *Server) sendHomeBoxPhotos(ctx context.Context, hb *homebox.Client, uid, wid int64) error {
+	// One at a time per warranty, so a photo uploaded while linking isn't sent twice.
+	defer s.lockPhotos(wid)()
+
+	wr, err := s.store.GetWarranty(ctx, uid, wid)
+	if err != nil || wr.HomeBox == nil {
+		return err
+	}
+	var photos []store.Attachment
+	for _, a := range wr.Attachments {
+		if a.Kind == "photo" && a.Storage == store.StorageLocal && a.HomeBoxItem != wr.HomeBox.ID {
+			photos = append(photos, a)
+		}
+	}
+	if len(photos) == 0 {
+		return nil
+	}
+	item, err := hb.Get(ctx, wr.HomeBox.ID)
+	if err != nil {
+		return err
+	}
+	primary := !item.HasPrimaryPhoto()
+	for _, a := range photos {
+		f, err := s.files.Open(a.LocalPath)
+		if err != nil {
+			return err
+		}
+		_, err = hb.UploadPhoto(ctx, item.ID, a.Filename, a.MimeType, f, primary)
+		f.Close()
+		if err != nil {
+			return err
+		}
+		primary = false
+		if err := s.store.SentToHomeBox(ctx, a.ID, item.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// lockPhotos holds back other photo uploads to a warranty's HomeBox item
+// until the returned function is called, so they agree on the main photo.
+func (s *Server) lockPhotos(wid int64) (unlock func()) {
+	lock, _ := s.photoLocks.LoadOrStore(wid, new(sync.Mutex))
+	lock.(*sync.Mutex).Lock()
+	return lock.(*sync.Mutex).Unlock
+}
+
+// storeHomeBoxPhoto uploads a product photo to the warranty's HomeBox item
+// instead of keeping it here, and records where it is. It becomes the item's
+// main photo if it has none.
+func (s *Server) storeHomeBoxPhoto(ctx context.Context, hb *homebox.Client, itemID string, a *store.Attachment, photo io.Reader) error {
+	defer s.lockPhotos(a.WarrantyID)()
+	item, err := hb.Get(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	id, err := hb.UploadPhoto(ctx, item.ID, a.Filename, a.MimeType, photo, !item.HasPrimaryPhoto())
+	if err != nil {
+		return err
+	}
+	a.Storage, a.HomeBoxItem, a.HomeBoxAttachment = store.StorageHomeBox, item.ID, id
+	return s.store.CreateAttachment(ctx, a)
+}
+
+// attachmentHomeBox returns the HomeBox connection of whoever stored a photo
+// there, so the household sees it through theirs, like Paperless documents.
+func (s *Server) attachmentHomeBox(ctx context.Context, a *store.Attachment, viewer int64) (*homebox.Client, error) {
+	owner := viewer
+	if a.AddedBy != nil {
+		owner = *a.AddedBy
+	}
+	st, err := s.store.Settings(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	return s.homeboxFor(st), nil
+}
+
+// sendHomeBoxPhotosLater sends a linked warranty's new photos to HomeBox in
+// the background, with the HomeBox key of the person who added them.
+func (s *Server) sendHomeBoxPhotosLater(uid, wid int64) {
+	s.background.Add(1)
+	go func() {
+		defer s.background.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		st, err := s.store.Settings(ctx, uid)
+		if err != nil {
+			slog.Warn("send photos to homebox", "warranty", wid, "err", err)
+			return
+		}
+		hb := s.homeboxFor(st)
+		if hb == nil {
+			return // they haven't connected HomeBox
+		}
+		if err := s.sendHomeBoxPhotos(ctx, hb, uid, wid); err != nil {
+			slog.Warn("send photos to homebox", "warranty", wid, "err", err)
+		}
+	}()
 }
 
 // userPaperlessWebURL is where a user's Paperless opens in the browser, or "".

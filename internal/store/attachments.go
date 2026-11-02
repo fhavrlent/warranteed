@@ -20,14 +20,19 @@ type Attachment struct {
 	PaperlessTaskID string `json:"-"`
 	Status          string `json:"status"`
 	// AddedBy is who attached it; Paperless documents open with their connection.
-	AddedBy   *int64 `json:"-"`
-	Error     string `json:"error"`
-	CreatedAt string `json:"createdAt"`
+	AddedBy *int64 `json:"-"`
+	// HomeBoxItem is the HomeBox item a photo was sent to, or that holds it
+	// when it is stored in HomeBox; HomeBoxAttachment is the photo there.
+	HomeBoxItem       string `json:"-"`
+	HomeBoxAttachment string `json:"-"`
+	Error             string `json:"error"`
+	CreatedAt         string `json:"createdAt"`
 }
 
 const (
 	StorageLocal     = "local"
 	StoragePaperless = "paperless"
+	StorageHomeBox   = "homebox"
 
 	StatusReady      = "ready"
 	StatusProcessing = "processing"
@@ -41,22 +46,22 @@ var AttachmentKinds = []string{"purchase", "terms", "card", "extended", "claim",
 func ValidKind(kind string) bool { return slices.Contains(AttachmentKinds, kind) }
 
 const attachmentCols = `a.id, a.warranty_id, a.kind, a.storage, a.filename, a.mime_type, a.size, a.local_path,
-	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at, a.added_by`
+	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at, a.added_by, a.homebox_item, a.homebox_attachment`
 
 func scanAttachment(row interface{ Scan(...any) error }) (*Attachment, error) {
 	var a Attachment
 	err := row.Scan(&a.ID, &a.WarrantyID, &a.Kind, &a.Storage, &a.Filename, &a.MimeType, &a.Size, &a.LocalPath,
-		&a.PaperlessDocID, &a.PaperlessTaskID, &a.Status, &a.Error, &a.CreatedAt, &a.AddedBy)
+		&a.PaperlessDocID, &a.PaperlessTaskID, &a.Status, &a.Error, &a.CreatedAt, &a.AddedBy, &a.HomeBoxItem, &a.HomeBoxAttachment)
 	return &a, err
 }
 
 func (s *Store) CreateAttachment(ctx context.Context, a *Attachment) error {
 	return s.db.QueryRowContext(ctx, `
 		INSERT INTO attachments (warranty_id, kind, storage, filename, mime_type, size, local_path,
-			paperless_doc_id, paperless_task_id, status, error, added_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
+			paperless_doc_id, paperless_task_id, status, error, added_by, homebox_item, homebox_attachment)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
 		a.WarrantyID, a.Kind, a.Storage, a.Filename, a.MimeType, a.Size, a.LocalPath,
-		a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy,
+		a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy, a.HomeBoxItem, a.HomeBoxAttachment,
 	).Scan(&a.ID, &a.CreatedAt)
 }
 
@@ -68,6 +73,12 @@ func (s *Store) GetAttachment(ctx context.Context, userID, id int64) (*Attachmen
 		return nil, ErrNotFound
 	}
 	return a, err
+}
+
+// SentToHomeBox records that a photo was sent to a HomeBox item.
+func (s *Store) SentToHomeBox(ctx context.Context, id int64, itemID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET homebox_item = ? WHERE id = ?`, itemID, id)
+	return err
 }
 
 func (s *Store) DeleteAttachment(ctx context.Context, id int64) error {

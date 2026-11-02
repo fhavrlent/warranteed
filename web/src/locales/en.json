@@ -258,7 +258,12 @@
     "renameTitle": "Rename file",
     "renamePaperless": "Changes the name shown here; the document in Paperless keeps its title.",
     "fileName": "File name",
-    "openInTab": "Open in new tab"
+    "openInTab": "Open in new tab",
+    "inHomebox": "Stored on the HomeBox item",
+    "remove": "Remove",
+    "removeTitle": "Remove photo?",
+    "removeText": "It will be removed from this warranty but stays on the item in HomeBox.",
+    "renameHomebox": "Changes the name shown here; the photo in HomeBox keeps its name."
   },
   "picker": {
     "title": "Link documents from Paperless",
@@ -282,14 +287,14 @@
     "unlinked": "Unlinked from HomeBox",
     "add": "Add to HomeBox",
     "addTitle": "Add to HomeBox",
-    "addDescription": "Creates an item with the serial number, purchase and warranty details, and links back to this warranty and its receipts in Paperless.",
+    "addDescription": "Creates an item with the serial number, purchase and warranty details and the product photos, and links back to this warranty and its receipts in Paperless.",
     "location": "Location",
     "noLocation": "No location",
     "create": "Create item",
     "created": "Added to HomeBox",
     "linkExisting": "Link existing item",
     "linkTitle": "Link a HomeBox item",
-    "linkDescription": "Pick the item this warranty belongs to. Empty purchase and warranty fields on it are filled in; nothing already there is changed.",
+    "linkDescription": "Pick the item this warranty belongs to. Empty purchase and warranty fields on it are filled in and the product photos are added; nothing already there is changed.",
     "search": "Search by name, serial number or #asset ID",
     "noResults": "No items found.",
     "linkButton": "Link",
@@ -313,7 +318,10 @@
     "keptHere": "Paperless can't take .{{ext}} files, so this one is stored here",
     "keptHereNoExt": "Paperless can't take this type of file, so this one is stored here",
     "typeOf": "Type of {{name}}",
-    "chooseType": "Choose type…"
+    "chooseType": "Choose type…",
+    "titlePhotos": "Add photos",
+    "wherePhotos": "Where to store photos",
+    "wherePhotosHint": "HomeBox keeps them on the linked item, and they show here too."
   },
   "settings": {
     "title": "Settings",
@@ -392,7 +400,9 @@
       "keySaved": "A key is saved. Enter a new one to replace it.",
       "keyHint": "In HomeBox: Profile → API keys. Keys expire after 30 days unless you set a later date.",
       "connected": "Connected as {{name}}",
-      "saved": "HomeBox key saved"
+      "saved": "HomeBox key saved",
+      "photosDefault": "Store product photos in HomeBox by default",
+      "photosDefaultHint": "For warranties linked to an item. You can still choose for each upload; photos on other warranties are stored here."
     },
     "household": {
       "description_one": "{{count}} person shares the household. New warranties are shared by default; you can make any of them private.",
@@ -520,6 +530,8 @@
     "homeboxNeedsToken": "Enter your HomeBox API key",
     "homeboxKeyRejected": "HomeBox rejected the API key. It may have expired — create a new one in HomeBox.",
     "homeboxItemGone": "That item no longer exists in HomeBox",
+    "homeboxNotLinked": "Link this warranty to a HomeBox item first",
+    "homeboxPhotoNoKey": "This photo is in HomeBox, but whoever added it has no HomeBox key saved",
     "homeboxNeedsItem": "Choose a HomeBox item",
     "homeboxAlreadyLinked": "This warranty is already linked to a HomeBox item",
     "homeboxBusy": "This warranty is being linked to HomeBox right now. Try again in a moment.",

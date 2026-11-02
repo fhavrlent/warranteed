@@ -37,11 +37,11 @@ You can drop the receipt and other documents into the same form. They're uploade
 
 ## Documents and photos
 
-Each warranty can hold its receipt, warranty terms and card, extended warranty, repair and claim reports, manuals, product photos and other files. When adding files, you choose a type for each one, so the right file is easy to find when you make a claim.
+Each warranty can hold its receipt, warranty terms and card, extended warranty, repair and claim reports, manuals, product photos and other files. You can pick several at once, with **Add documents** or **Photo**. When adding documents, you choose a type for each one, so the right file is easy to find when you make a claim.
 
 With Paperless-ngx connected:
 
-- Documents can be **stored in Paperless** instead of in Warranteed. The upload dialog asks where to store them. **Upload documents to Paperless by default** in Settings makes Paperless the default. Product photos are always stored in Warranteed, and so are file types Paperless can't take.
+- Documents can be **stored in Paperless** instead of in Warranteed. The upload dialog asks where to store them. **Upload documents to Paperless by default** in Settings makes Paperless the default. Product photos are stored in Warranteed or in [HomeBox](#homebox), never in Paperless, and file types Paperless can't take stay in Warranteed.
 - **Link from Paperless** attaches documents that are already there. Search by text, title or document ID.
 - A document stored in Paperless shows *Paperless is processing…* until Paperless has finished with it. If an upload fails, **Check again** retries it.
 - **Unlinking** a Paperless document only removes it from the warranty. The document stays in Paperless.
@@ -97,6 +97,8 @@ With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's
 
 - **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, a link to the warranty, and links to its receipts in Paperless. You can pick a location.
 - **Link existing item** searches HomeBox by name, serial number or #asset ID. Only empty fields on the item are filled in; nothing already there changes.
+- **Product photos** are copied to the item, both when adding and when linking, and so are photos you add to the warranty later. The first becomes the item's main photo unless it already has one. Each photo is copied once; deleting it in Warranteed leaves it in HomeBox. Receipts and other documents stay links to Paperless.
+- **Photos stored in HomeBox:** on a linked warranty, **Photo** asks where to store new photos. **HomeBox** puts them only on the item, and Warranteed shows them from there, so there's one copy. **Store product photos in HomeBox by default** in Settings makes HomeBox the default. Removing such a photo here leaves it on the item. The household sees it through the HomeBox key of whoever added it, so it stops showing if that key expires.
 - The warranty then shows the item's asset ID, the number printed on HomeBox labels, and a link to open it in HomeBox.
 - **Unlink** makes the warranty forget the item. The item stays in HomeBox.
 
@@ -134,7 +136,7 @@ Documents aren't part of the CSV.
 - **Display**: language (also used for reminders), date format, default currency, what "expiring soon" means, and the theme. You can also change the theme from the account menu.
 - **Reminders**: see [Reminders](#reminders).
 - **Paperless-ngx**: your API token (Paperless: *Profile → API Auth Token*), whether uploads go to Paperless by default, links back from Paperless, and drafts.
-- **HomeBox**: your API key.
+- **HomeBox**: your API key, and whether product photos are stored in HomeBox by default.
 - **Household**: who you share with, and sharing everything at once.
 - **Tags**, and **Import & export**.
 
