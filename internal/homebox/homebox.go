@@ -226,8 +226,8 @@ type Field struct {
 	BooleanValue bool    `json:"booleanValue"`
 }
 
-// LinkField is the text field Warranteed puts on the items it links, so that
-// several of them can be listed together; see ListURL.
+// LinkField is the text field Warranteed puts on the items it links, holding
+// the item's ID, so that several of them can be listed together; see ListURL.
 const LinkField = "Warranteed"
 
 // Field returns the text of the item's custom field name, or "".
@@ -260,10 +260,10 @@ func (it *Item) SetField(name, value string) {
 }
 
 // ListURL is the address of HomeBox's item list showing the items whose
-// LinkField holds one of values. base is HomeBox's public address.
-func ListURL(base string, values []string) string {
+// LinkField holds one of ids. base is HomeBox's public address.
+func ListURL(base string, ids []string) string {
 	q := url.Values{}
-	for _, v := range values {
+	for _, v := range ids {
 		q.Add("fields", LinkField+"="+v)
 	}
 	return base + "/items?" + q.Encode()

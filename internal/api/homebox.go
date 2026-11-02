@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -486,11 +485,8 @@ func fillHomeBoxItem(it *homebox.Item, wr *store.Warranty, st *store.Settings, o
 			*dst = v
 		}
 	}
-	// An item already linked to another warranty keeps its value; the field
-	// only has to tell the item apart.
-	if it.Field(homebox.LinkField) == "" {
-		it.SetField(homebox.LinkField, strconv.FormatInt(wr.ID, 10))
-	}
+	// The item's own ID, so no two items can share it.
+	it.SetField(homebox.LinkField, it.ID)
 	set(&it.Manufacturer, wr.Brand)
 	set(&it.ModelNumber, wr.Model)
 	if len(wr.SerialNumbers) > 0 {

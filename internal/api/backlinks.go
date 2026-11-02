@@ -165,7 +165,8 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 
 // homeboxBacklink is the link to the HomeBox items of warranties: the item
 // itself when there is one, or else HomeBox's list of the items by their link
-// field, which items linked before it existed get here. When an item can't
+// field, which holds each item's ID and which items linked before it existed
+// get here. When an item can't
 // be read for that, the link falls back to the first item.
 func (s *Server) homeboxBacklink(ctx context.Context, hb string, warranties []store.DocumentRef) string {
 	var items []store.DocumentRef
@@ -181,28 +182,25 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb string, warranties []st
 		return hb + "/item/" + url.PathEscape(items[0].HomeBoxID)
 	}
 	first := hb + "/item/" + url.PathEscape(items[0].HomeBoxID)
-	var values []string
+	var ids []string
 	for _, w := range items {
-		v, err := s.homeboxLinkValue(ctx, w)
-		if err != nil {
-			slog.Warn("read homebox link field", "item", w.HomeBoxID, "err", err)
+		if err := s.markHomeBoxItem(ctx, w); err != nil {
+			slog.Warn("mark homebox item", "item", w.HomeBoxID, "err", err)
 			return first
 		}
-		if !slices.Contains(values, v) {
-			values = append(values, v)
-		}
+		ids = append(ids, w.HomeBoxID)
 	}
-	return homebox.ListURL(hb, values)
+	return homebox.ListURL(hb, ids)
 }
 
-// homeboxLinkValue reads the link field of the warranty's item and fills it
-// in when it's empty. Whoever linked the item may not be whoever added the
-// receipt, so the HomeBox key of everyone sharing the warranty is tried,
-// the receipt's owner first.
-func (s *Server) homeboxLinkValue(ctx context.Context, w store.DocumentRef) (string, error) {
+// markHomeBoxItem makes sure the warranty's item has its ID in the link
+// field. Whoever linked the item may not be whoever added the receipt, so
+// the HomeBox key of everyone sharing the warranty is tried, the receipt's
+// owner first.
+func (s *Server) markHomeBoxItem(ctx context.Context, w store.DocumentRef) error {
 	users, err := s.store.HomeBoxUsers(ctx, w.WarrantyID)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if i := slices.Index(users, w.Owner); i > 0 {
 		users[0], users[i] = users[i], users[0]
@@ -213,7 +211,7 @@ func (s *Server) homeboxLinkValue(ctx context.Context, w store.DocumentRef) (str
 	for _, uid := range users {
 		st, serr := s.store.Settings(ctx, uid)
 		if serr != nil {
-			return "", serr
+			return serr
 		}
 		if hb = s.homeboxFor(st); hb == nil {
 			continue
@@ -222,19 +220,11 @@ func (s *Server) homeboxLinkValue(ctx context.Context, w store.DocumentRef) (str
 			break
 		}
 	}
-	if err != nil {
-		return "", err
+	if err != nil || it.Field(homebox.LinkField) == w.HomeBoxID {
+		return err
 	}
-	if v := it.Field(homebox.LinkField); v != "" {
-		return v, nil
-	}
-	v := strconv.FormatInt(w.WarrantyID, 10)
-	_, err = hb.Update(ctx, w.HomeBoxID, func(it *homebox.Item) {
-		if it.Field(homebox.LinkField) == "" {
-			it.SetField(homebox.LinkField, v)
-		}
-	})
-	return v, err
+	_, err = hb.Update(ctx, w.HomeBoxID, func(it *homebox.Item) { it.SetField(homebox.LinkField, w.HomeBoxID) })
+	return err
 }
 
 // setLinkField sets field id to want, or removes it when want is empty,

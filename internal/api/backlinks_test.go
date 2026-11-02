@@ -452,7 +452,7 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	plServer := httptest.NewServer(pl)
 	t.Cleanup(plServer.Close)
 	hb := &fieldHomeBox{items: map[string][]homebox.Field{
-		// Linked before: its value is kept, whatever it is.
+		// A value that isn't the item's ID is corrected; other fields stay.
 		"item-1": {{Type: "text", Name: homebox.LinkField, TextValue: "77"}, {Type: "text", Name: "Colour", TextValue: "red"}},
 		"item-2": nil,
 	}}
@@ -495,14 +495,14 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc}); err != nil {
 		t.Fatal(err)
 	}
-	want := fmt.Sprintf("https://homebox.example.test/items?fields=Warranteed%%3D77&fields=Warranteed%%3D%d", wids[1])
+	want := "https://homebox.example.test/items?fields=Warranteed%3Ditem-1&fields=Warranteed%3Ditem-2"
 	if got := pl.value(doc, "HomeBox"); got != want {
 		t.Errorf("HomeBox link = %q, want %q", got, want)
 	}
-	if got := hb.items["item-2"]; len(got) != 1 || got[0].TextValue != fmt.Sprint(wids[1]) {
+	if got := hb.items["item-2"]; len(got) != 1 || got[0].TextValue != "item-2" {
 		t.Errorf("item-2 fields = %+v", got)
 	}
-	if got := hb.items["item-1"]; len(got) != 2 || got[1].TextValue != "red" {
+	if got := hb.items["item-1"]; len(got) != 2 || got[0].TextValue != "item-1" || got[1].TextValue != "red" {
 		t.Errorf("item-1 fields = %+v", got)
 	}
 
