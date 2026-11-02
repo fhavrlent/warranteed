@@ -223,7 +223,8 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		fail(w, err)
 		return
 	}
-	s.syncWarrantyBacklinksLater(r.Context(), id)
+	// Once the item is filled in, which also gives it its link field.
+	defer s.syncWarrantyBacklinksLater(r.Context(), id)
 
 	lang := st.EffectiveLanguage()
 	item, err = hb.Update(ctx, item.ID, func(it *homebox.Item) { fillHomeBoxItem(it, wr, st, existing) })
@@ -422,17 +423,58 @@ func (s *Server) unlinkHomeBox(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.SetHomeBox(r.Context(), userID(r), id, nil); err != nil {
+	uid := userID(r)
+	wr, err := s.store.GetWarranty(r.Context(), uid, id)
+	if err != nil {
 		fail(w, err)
 		return
 	}
+	if err := s.store.SetHomeBox(r.Context(), uid, id, nil); err != nil {
+		fail(w, err)
+		return
+	}
+	if wr.HomeBox != nil {
+		// Another warranty linked to the item may be listed by its value.
+		inUse, err := s.store.HomeBoxItemLinked(r.Context(), wr.HomeBox.ID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		if !inUse {
+			s.clearHomeBoxField(r.Context(), uid, wr.HomeBox.ID)
+		}
+	}
 	s.syncWarrantyBacklinksLater(r.Context(), id)
-	wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
+	wr, err = s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	writeJSON(w, 200, wr)
+}
+
+// clearHomeBoxField removes the link field from an item no warranty is
+// linked to any more, if HomeBox can be reached; a value left behind only
+// keeps the item findable.
+func (s *Server) clearHomeBoxField(ctx context.Context, uid int64, itemID string) {
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		slog.Warn("read settings", "user", uid, "err", err)
+		return
+	}
+	hb := s.homeboxFor(st)
+	if hb == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	it, err := hb.Get(ctx, itemID)
+	if err == nil && it.Field(homebox.LinkField) != "" {
+		_, err = hb.Update(ctx, itemID, func(it *homebox.Item) { it.SetField(homebox.LinkField, "") })
+	}
+	if err != nil {
+		slog.Warn("clear homebox link field", "item", itemID, "err", err)
+	}
 }
 
 // fillHomeBoxItem copies the warranty's details onto the item. For an item
@@ -443,6 +485,8 @@ func fillHomeBoxItem(it *homebox.Item, wr *store.Warranty, st *store.Settings, o
 			*dst = v
 		}
 	}
+	// The item's own ID, so no two items can share it.
+	it.SetField(homebox.LinkField, it.ID)
 	set(&it.Manufacturer, wr.Brand)
 	set(&it.ModelNumber, wr.Model)
 	if len(wr.SerialNumbers) > 0 {
