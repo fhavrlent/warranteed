@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -196,7 +197,7 @@ func TestSetLinkField(t *testing.T) {
 
 	// HomeBox lists: only the ones filtered by Warranteed's field are ours.
 	hb := "https://homebox.example.test"
-	list := homebox.ListURL(hb, []string{"1", "2"})
+	list := homebox.ListURL(hb, "5-a1b2c3")
 	shelf := []paperless.CustomField{{Field: 7, Value: hb + "/items?tags=kitchen"}}
 	if _, changed := setLinkField(shelf, 7, list, hb+"/item/", homebox.ListPrefix(hb)); changed {
 		t.Error("a HomeBox list typed in by hand was overwritten")
@@ -414,7 +415,7 @@ func TestBacklinkFields(t *testing.T) {
 }
 
 // fieldHomeBox serves items with their custom fields, as HomeBox's GET and
-// PUT of an item do.
+// PUT of an item and its item list filtered by a field do.
 type fieldHomeBox struct {
 	mu    sync.Mutex
 	items map[string][]homebox.Field
@@ -424,9 +425,24 @@ type fieldHomeBox struct {
 func (f *fieldHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if r.Header.Get("Authorization") != "Bearer bob-key" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.URL.Path == "/api/v1/entities" {
+		name, value, _ := strings.Cut(r.URL.Query().Get("fields"), "=")
+		out := []map[string]string{}
+		for id, fields := range f.items {
+			if slices.ContainsFunc(fields, func(fl homebox.Field) bool { return fl.Name == name && fl.TextValue == value }) {
+				out = append(out, map[string]string{"id": id})
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"items": out})
+		return
+	}
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/entities/")
 	fields, ok := f.items[id]
-	if !ok || r.Header.Get("Authorization") != "Bearer bob-key" {
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
@@ -440,6 +456,20 @@ func (f *fieldHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"id": id, "fields": fields})
 }
 
+// values lists the item's link field values.
+func (f *fieldHomeBox) values(id string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, fl := range f.items[id] {
+		if fl.Name == homebox.LinkField {
+			out = append(out, fl.TextValue)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -451,15 +481,20 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	pl := &fakePaperless{fields: map[string]int64{}, values: map[int64][]paperless.CustomField{}}
 	plServer := httptest.NewServer(pl)
 	t.Cleanup(plServer.Close)
+	receipt, other := receiptValue(plServer.URL, 5), receiptValue(plServer.URL, 6)
 	hb := &fieldHomeBox{items: map[string][]homebox.Field{
-		// A value that isn't the item's ID is corrected; other fields stay.
-		"item-1": {{Type: "text", Name: homebox.LinkField, TextValue: "77"}, {Type: "text", Name: "Colour", TextValue: "red"}},
+		// Marked with its own ID by an earlier version; other fields stay.
+		"item-1": {{Type: "text", Name: homebox.LinkField, TextValue: "item-1"}, {Type: "text", Name: "Colour", TextValue: "red"}},
 		"item-2": nil,
+		"item-3": nil,
+		"item-4": nil,
+		// No longer on the receipt.
+		"item-9": {{Type: "text", Name: homebox.LinkField, TextValue: receipt}},
 	}}
 	hbServer := httptest.NewServer(hb)
 	t.Cleanup(hbServer.Close)
 
-	// Alice added the receipt from her Paperless; Bob, who shares the
+	// Alice added the receipts from her Paperless; Bob, who shares the
 	// warranties, linked them with his HomeBox key.
 	alice, _ := st.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "alice", Name: "Alice"})
 	settings, _ := st.Settings(ctx, alice.ID)
@@ -469,20 +504,26 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	bobSettings, _ := st.Settings(ctx, bob.ID)
 	bobSettings.HomeBoxToken = "bob-key"
 	st.SaveSettings(ctx, bob.ID, bobSettings)
-	doc := int64(5)
-	var wids []int64
 	months := 24
-	for i, item := range []string{"item-1", "item-2", ""} {
-		wid, err := st.CreateWarranty(ctx, alice.ID, &store.WarrantyInput{ProductName: fmt.Sprint("Product ", i), PurchaseDate: "2025-03-01", WarrantyMonths: &months})
+	// Receipt 5 has items 1 to 3 and a warranty without one; receipt 6 has
+	// items 2 and 4.
+	warranty := map[string]int64{}
+	for _, c := range []struct {
+		item string
+		docs []int64
+	}{{"item-1", []int64{5}}, {"item-2", []int64{5, 6}}, {"item-3", []int64{5}}, {"", []int64{5}}, {"item-4", []int64{6}}} {
+		wid, err := st.CreateWarranty(ctx, alice.ID, &store.WarrantyInput{ProductName: "Product " + c.item, PurchaseDate: "2025-03-01", WarrantyMonths: &months})
 		if err != nil {
 			t.Fatal(err)
 		}
-		st.CreateAttachment(ctx, &store.Attachment{WarrantyID: wid, Kind: "purchase", Storage: store.StoragePaperless, Filename: "r.pdf",
-			PaperlessDocID: &doc, Status: store.StatusReady, AddedBy: &alice.ID})
-		if item != "" {
-			st.SetHomeBox(ctx, alice.ID, wid, &store.HomeBoxLink{ID: item})
+		for _, d := range c.docs {
+			st.CreateAttachment(ctx, &store.Attachment{WarrantyID: wid, Kind: "purchase", Storage: store.StoragePaperless, Filename: "r.pdf",
+				PaperlessDocID: &d, Status: store.StatusReady, AddedBy: &alice.ID})
 		}
-		wids = append(wids, wid)
+		if c.item != "" {
+			st.SetHomeBox(ctx, alice.ID, wid, &store.HomeBoxLink{ID: c.item})
+		}
+		warranty[c.item] = wid
 	}
 
 	appURL, _ := url.Parse("https://warranty.example.test")
@@ -492,61 +533,67 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 		HomeBox:   config.HomeBox{URL: hbServer.URL, PublicURL: "https://homebox.example.test"},
 	}
 	srv := New(cfg, st, nil, nil, nil, nil, "test")
-	if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc}); err != nil {
-		t.Fatal(err)
+	sync := func(doc int64) {
+		t.Helper()
+		if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	want := "https://homebox.example.test/items?fields=Warranteed%3Ditem-1&fields=Warranteed%3Ditem-2"
-	if got := pl.value(doc, "HomeBox"); got != want {
-		t.Errorf("HomeBox link = %q, want %q", got, want)
+	sync(5)
+	sync(6)
+	for doc, value := range map[int64]string{5: receipt, 6: other} {
+		want := "https://homebox.example.test/items?fields=Warranteed%3D" + value
+		if got := pl.value(doc, "HomeBox"); got != want {
+			t.Errorf("document %d: HomeBox link = %q, want %q", doc, got, want)
+		}
 	}
-	if got := hb.items["item-2"]; len(got) != 1 || got[0].TextValue != "item-2" {
-		t.Errorf("item-2 fields = %+v", got)
+	for item, want := range map[string][]string{
+		"item-1": {receipt}, "item-2": {receipt, other}, "item-3": {receipt}, "item-4": {other}, "item-9": nil,
+	} {
+		if got := hb.values(item); !slices.Equal(got, want) {
+			t.Errorf("%s holds %v, want %v", item, got, want)
+		}
 	}
-	if got := hb.items["item-1"]; len(got) != 2 || got[0].TextValue != "item-1" || got[1].TextValue != "red" {
-		t.Errorf("item-1 fields = %+v", got)
+	if got := hb.items["item-1"]; len(got) != 2 || got[0].TextValue != "red" {
+		t.Errorf("item-1's other field: %+v", got)
 	}
 
-	// Already filled in: nothing more is written to HomeBox.
+	// Already marked: nothing more is written to HomeBox.
 	puts := hb.puts
-	if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc}); err != nil {
-		t.Fatal(err)
-	}
+	sync(5)
 	if hb.puts != puts {
 		t.Error("HomeBox items were written again")
 	}
 
-	// A second warranty on item-2: unlinking the first keeps its value, which
-	// the other may be listed by.
-	wid, err := st.CreateWarranty(ctx, alice.ID, &store.WarrantyInput{ProductName: "Other", PurchaseDate: "2025-03-01", WarrantyMonths: &months})
-	if err != nil {
-		t.Fatal(err)
-	}
-	st.SetHomeBox(ctx, alice.ID, wid, &store.HomeBoxLink{ID: "item-2"})
-	unlink := func(id int64) {
+	// Unlinked items come off the receipt's list; down to one, the receipt
+	// links to it directly and the value goes.
+	unlink := func(item string) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodDelete, "/", nil)
-		r.SetPathValue("id", fmt.Sprint(id))
+		r.SetPathValue("id", fmt.Sprint(warranty[item]))
 		w := httptest.NewRecorder()
 		srv.unlinkHomeBox(w, r.WithContext(auth.WithUser(ctx, bob)))
 		if w.Code != http.StatusOK {
 			t.Fatalf("unlink: %d %s", w.Code, w.Body)
 		}
+		srv.backlinks.Wait()
 	}
-	unlink(wids[1])
-	if got := hb.items["item-2"]; len(got) != 1 {
-		t.Errorf("item-2 lost its value while still linked: %+v", got)
+	unlink("item-3")
+	if got := hb.values("item-3"); got != nil {
+		t.Errorf("item-3 still holds %v", got)
 	}
-	// The last one: the value goes.
-	unlink(wid)
-	if got := hb.items["item-2"]; len(got) != 0 {
-		t.Errorf("item-2 kept its value: %+v", got)
+	unlink("item-4")
+	if got := pl.value(6, "HomeBox"); got != "https://homebox.example.test/item/item-2" {
+		t.Errorf("document 6: HomeBox link = %q", got)
 	}
-	srv.backlinks.Wait()
+	if got := hb.values("item-2"); !slices.Equal(got, []string{receipt}) {
+		t.Errorf("item-2 holds %v", got)
+	}
 
 	// HomeBox can't be reached: the first item is linked instead.
 	hbServer.Close()
-	srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc})
-	if got := pl.value(doc, "HomeBox"); got != "https://homebox.example.test/item/item-1" {
+	sync(5)
+	if got := pl.value(5, "HomeBox"); got != "https://homebox.example.test/item/item-1" {
 		t.Errorf("HomeBox link = %q", got)
 	}
 }

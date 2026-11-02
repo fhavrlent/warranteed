@@ -226,53 +226,52 @@ type Field struct {
 	BooleanValue bool    `json:"booleanValue"`
 }
 
-// LinkField is the text field Warranteed puts on the items it links, holding
-// the item's ID, so that several of them can be listed together; see ListURL.
+// LinkField is the text field Warranteed puts on the items of a receipt
+// with several of them, holding a short value for that receipt, so its link
+// lists them all; see ListURL. An item on several receipts has one per
+// receipt.
 const LinkField = "Warranteed"
 
-// Field returns the text of the item's custom field name, or "".
-func (it *Item) Field(name string) string {
-	for _, f := range it.Fields {
-		if f.Name == name {
-			return f.TextValue
-		}
-	}
-	return ""
+// HasField reports whether the item has text field name holding value.
+func (it *Item) HasField(name, value string) bool {
+	return slices.ContainsFunc(it.Fields, func(f Field) bool { return f.Name == name && f.TextValue == value })
 }
 
-// SetField sets the item's text field name to value, adding the field if it
-// isn't there, or removes it when value is empty.
-func (it *Item) SetField(name, value string) {
-	for i, f := range it.Fields {
-		if f.Name != name {
-			continue
-		}
-		if value == "" {
-			it.Fields = append(it.Fields[:i:i], it.Fields[i+1:]...)
-		} else {
-			it.Fields[i].Type, it.Fields[i].TextValue = "text", value
-		}
-		return
-	}
-	if value != "" {
+// AddField gives the item text field name holding value, unless it has it.
+func (it *Item) AddField(name, value string) {
+	if !it.HasField(name, value) {
 		it.Fields = append(it.Fields, Field{Type: "text", Name: name, TextValue: value})
 	}
 }
 
+// RemoveFields removes the item's fields name whose value drop says to.
+func (it *Item) RemoveFields(name string, drop func(value string) bool) {
+	it.Fields = slices.DeleteFunc(it.Fields, func(f Field) bool { return f.Name == name && drop(f.TextValue) })
+}
+
 // ListURL is the address of HomeBox's item list showing the items whose
-// LinkField holds one of ids. base is HomeBox's public address.
-func ListURL(base string, ids []string) string {
-	q := url.Values{}
-	for _, v := range ids {
-		q.Add("fields", LinkField+"="+v)
-	}
-	return base + "/items?" + q.Encode()
+// LinkField holds value. base is HomeBox's public address.
+func ListURL(base, value string) string {
+	return base + "/items?" + url.Values{"fields": {LinkField + "=" + value}}.Encode()
 }
 
 // ListPrefix is how every ListURL starts, telling them apart from other
 // item lists.
 func ListPrefix(base string) string {
 	return base + "/items?" + url.Values{"fields": {LinkField + "="}}.Encode()
+}
+
+// WithField lists the IDs of the items whose text field name holds value.
+func (c *Client) WithField(ctx context.Context, name, value string) ([]string, error) {
+	items, err := c.list(ctx, url.Values{"fields": {name + "=" + value}, "page": {"1"}, "pageSize": {"100"}})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+	}
+	return ids, nil
 }
 
 // Attachment is a file or photo on an item.
