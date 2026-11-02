@@ -140,16 +140,17 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 	}
 	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
 	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
-		// Whether the document links to a list of items now, which items may
-		// need taking off.
-		listed := false
+		// The list of items the document links to now, if it does: they may
+		// need taking off it.
+		list := ""
 		if id, err := pc.CustomFieldID(ctx, s.cfg.Paperless.HomeBoxField, "url", false); err == nil && id != 0 {
-			listed = slices.ContainsFunc(current, func(f paperless.CustomField) bool {
-				v, _ := f.Value.(string)
-				return f.Field == id && strings.HasPrefix(v, homebox.ListPrefix(hb))
-			})
+			for _, f := range current {
+				if v, _ := f.Value.(string); f.Field == id && strings.HasPrefix(v, homebox.ListPrefix(hb)) {
+					list = v
+				}
+			}
 		}
-		wantHomeBox = s.homeboxBacklink(ctx, hb, pc.BaseURL, doc.DocID, warranties, listed)
+		wantHomeBox = s.homeboxBacklink(ctx, hb, pc.BaseURL, doc.DocID, warranties, list)
 		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", homebox.ListPrefix(hb)}})
 	}
 
@@ -177,11 +178,12 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 // warranties: the item itself when there is one, or else HomeBox's list of
 // the items whose link field holds the document's value, which keeps the
 // link short however many there are. Items that no longer belong lose the
-// value, found with every HomeBox key, when the document lists items now or
-// is about to. When an item can't be marked, the link falls back to the
-// first one. HomeBox gets a time limit of its own, so that it being down
+// value, found with every HomeBox key, when the document lists items now
+// (list) or is about to. Until marking and that have worked, a list the
+// document has stays, so the next update tries again; without one, the link
+// falls back to the first item. HomeBox gets a time limit of its own, so that it being down
 // leaves time to update Paperless.
-func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, docID int64, warranties []store.DocumentRef, listed bool) string {
+func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, docID int64, warranties []store.DocumentRef, list string) string {
 	var items []string
 	for _, w := range warranties {
 		if w.HomeBoxID != "" && !slices.Contains(items, w.HomeBoxID) {
@@ -192,7 +194,7 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 	if len(items) > 0 {
 		want = hb + "/item/" + url.PathEscape(items[0])
 	}
-	if len(items) < 2 && !listed {
+	if len(items) < 2 && list == "" {
 		return want
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -215,14 +217,14 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 			}
 			marked = append(marked, id)
 		}
-		if len(marked) == len(items) {
-			want = homebox.ListURL(hb, value)
-		}
+	}
+	// The receipt's items keep its value, even those marking didn't reach.
+	keep := []string{}
+	if len(items) > 1 {
+		keep = items
 	}
 	// Items taken off the receipt may be reachable only with the key of
 	// someone it no longer concerns, so every key looks for them.
-	// Until that has worked, a document that lists items keeps doing so,
-	// so the next update tries again.
 	cleaned := true
 	keyHolders, err := s.store.HomeBoxKeyHolders(ctx)
 	if err != nil {
@@ -247,7 +249,7 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 			continue
 		}
 		for _, id := range ids {
-			if slices.Contains(marked, id) {
+			if slices.Contains(keep, id) {
 				continue
 			}
 			if err := s.updateHomeBoxItem(ctx, []*homebox.Client{c}, id, func(it *homebox.Item) {
@@ -258,8 +260,11 @@ func (s *Server) homeboxBacklink(ctx context.Context, hb, paperlessURL string, d
 			}
 		}
 	}
-	if listed && !cleaned {
+	switch {
+	case len(items) > 1 && len(marked) == len(items):
 		return homebox.ListURL(hb, value)
+	case list != "" && (len(items) > 1 || !cleaned):
+		return list
 	}
 	return want
 }

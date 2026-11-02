@@ -566,6 +566,25 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 		t.Error("HomeBox items were written again")
 	}
 
+	// An item gone from HomeBox: the others keep the receipt's value, and the
+	// receipt its list.
+	hb.mu.Lock()
+	gone := hb.items["item-1"]
+	delete(hb.items, "item-1")
+	hb.mu.Unlock()
+	sync(5)
+	for _, item := range []string{"item-2", "item-3"} {
+		if !slices.Contains(hb.values(item), receipt) {
+			t.Errorf("%s lost the receipt's value", item)
+		}
+	}
+	if got := pl.value(5, "HomeBox"); got != homebox.ListURL("https://homebox.example.test", receipt) {
+		t.Errorf("HomeBox link = %q", got)
+	}
+	hb.mu.Lock()
+	hb.items["item-1"] = gone
+	hb.mu.Unlock()
+
 	// Unlinked items come off the receipt's list; down to one, the receipt
 	// links to it directly and the value goes.
 	unlink := func(item string) {
@@ -611,8 +630,9 @@ func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
 	}
 
 	// HomeBox can't be reached: a receipt that lists items keeps its list,
-	// to take items off it later; otherwise the first item is linked.
-	list := homebox.ListURL("https://homebox.example.test", receipt)
+	// even one by item IDs from before, to finish later; otherwise the first
+	// item is linked.
+	list := "https://homebox.example.test/items?fields=Warranteed%3Ditem-1&fields=Warranteed%3Ditem-2"
 	pl.mu.Lock()
 	for i, f := range pl.values[5] {
 		if f.Field == pl.fields["HomeBox"] {
