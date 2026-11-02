@@ -30,6 +30,18 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 - Light and dark theme, usable on phones.
 - In English and Czech; more languages are easy to add.
 
+The [user guide](docs/user-guide.md) shows how to use it, and the [integration guide](docs/integrations.md) sets up Paperless-ngx, paperless-gpt, Claude, HomeBox and reminders step by step.
+
+## Tested with
+
+| | Version |
+| --- | --- |
+| Paperless-ngx | 3.3.4 (API v10). Documents also work with 2.20.15 (API v9) |
+| HomeBox | 0.27.1; earlier versions lack the API Warranteed uses |
+| Claude | `claude-haiku-5-5`, the default model for reading receipts |
+
+Drafts from Paperless custom fields were only tested against a simulated Paperless, not with paperless-gpt. Newer versions of each will probably work; please [open an issue](https://github.com/fhavrlent/warranteed/issues) if one doesn't.
+
 ## Installation
 
 ```sh
@@ -93,7 +105,7 @@ Warranteed can turn receipts added to Paperless into draft warranties, so you on
 3. Each user picks under **Settings → Paperless-ngx → Drafts from new documents** whether they get drafts and where their details come from:
    - **the document's own details:** title, date and correspondent;
    - **Paperless custom fields**, for example ones [paperless-gpt](https://github.com/icereed/paperless-gpt) fills in. Map them with `PAPERLESS_DRAFT_FIELDS`, e.g. `product=Product, price=Price, warranty_months=Warranty months` (also `brand`, `model`, `vendor`, `purchase_date`, `currency`, `serial`, `order`). If the fields are still empty when the document arrives, the draft is filled in once they have values, unless it was edited already;
-   - **Claude**, which reads the document itself, when `ANTHROPIC_API_KEY` is set. The document is sent to Anthropic.
+   - **Claude**, which reads the document itself, when `ANTHROPIC_API_KEY` is set. The document is sent to Anthropic. A receipt for several devices gives a draft for each (up to 10), leaving out delivery, food and other things nobody claims a warranty on.
 
 A draft goes to whoever owns the document in Paperless, matched through their Paperless token; a document nobody here owns goes to an admin. Only people who opted in get drafts. Drafts are listed under **To review** only for the person they were made for, count toward no totals and send no reminders until confirmed.
 
