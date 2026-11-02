@@ -56,7 +56,7 @@ If your server is set up for it, receipts added to Paperless can become draft wa
 | --- | --- | --- |
 | **On, with the document's own details** | The document's title, date and correspondent in Paperless | One |
 | **On, with Paperless custom fields** | Custom fields such as product, price and warranty length, filled in by paperless-gpt or by hand | One |
-| **On, read by Claude** | Claude reads the receipt itself. The document is sent to Anthropic | One per device on it, up to 10 |
+| **On, read by Claude** | Claude reads the receipt itself. The document is sent to Anthropic | One per device on it, or per product if you choose; up to 30 |
 
 Which documents become drafts is decided by the Paperless workflow your admin set up, often by a tag such as `warranty`. Only documents you own in Paperless become your drafts.
 
@@ -67,7 +67,7 @@ When a draft arrives, the list shows a banner and the **To review** filter. On e
 
 Until it's confirmed, a draft is visible only to you, sends no reminders and isn't counted in totals.
 
-With Claude, a receipt for several devices gives a draft for each, with the shop, date, order number and receipt filled in on all of them. Delivery, discounts, food and other things nobody claims a warranty on are left out. Delete any draft you don't need.
+With Claude, a receipt for several devices gives a draft for each, with the shop, date, order number and receipt filled in on all of them. Delivery, discounts, food, books, music and other things nobody claims a warranty on are left out. To get a draft for every product instead, set **Make drafts of** to **Every product** in the drafts settings. Delete any draft you don't need.
 
 Claude also:
 

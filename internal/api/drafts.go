@@ -32,6 +32,12 @@ import (
 // webhookHeader carries the shared secret (WARRANTEED_WEBHOOK_SECRET).
 const webhookHeader = "X-Warranteed-Secret"
 
+// Which products on a document Claude makes drafts of.
+const (
+	itemsWorthy = "worthy"
+	itemsAll    = "all"
+)
+
 // Which date drafts count warranties from, when a document gives both.
 const (
 	startReceived = "received"
@@ -297,7 +303,7 @@ func (s *Server) draftInputs(ctx context.Context, pc *paperless.Client, doc *pap
 	case st.DraftSource == sourceFields && s.sourceAvailable(sourceFields):
 		found = []receipts.Details{*fieldDetails(doc, s.fieldIDs(ctx, pc))}
 	case st.DraftSource == sourceClaude && s.sourceAvailable(sourceClaude):
-		d, err := s.readWithClaude(ctx, pc, doc.ID)
+		d, err := s.readWithClaude(ctx, pc, doc.ID, st.DraftItems == itemsAll)
 		if err != nil {
 			slog.Warn("read receipt with claude", "doc", doc.ID, "err", err)
 		}
@@ -468,7 +474,7 @@ func fieldDetails(doc *paperless.DocumentInfo, ids map[string]int64) *receipts.D
 
 // readWithClaude downloads the document (Paperless's archived copy is a PDF
 // for scans too) and has Claude read it.
-func (s *Server) readWithClaude(ctx context.Context, pc *paperless.Client, docID int64) ([]receipts.Details, error) {
+func (s *Server) readWithClaude(ctx context.Context, pc *paperless.Client, docID int64, every bool) ([]receipts.Details, error) {
 	resp, err := pc.Stream(ctx, docID, "download")
 	if err != nil {
 		return nil, err
@@ -483,7 +489,7 @@ func (s *Server) readWithClaude(ctx context.Context, pc *paperless.Client, docID
 		return nil, errors.New("the document is too large to send to Claude")
 	}
 	ct, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	return s.receipts.Read(ctx, data, ct)
+	return s.receipts.Read(ctx, data, ct, every)
 }
 
 // refillLater looks at the document's custom fields again over the next few

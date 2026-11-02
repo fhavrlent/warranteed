@@ -161,6 +161,7 @@ type settingsInput struct {
 	HomeBoxPhotos      *bool   `json:"homeboxPhotosDefault"` // nil keeps the setting
 	DraftSource        string  `json:"draftSource"`
 	WarrantyStart      string  `json:"warrantyStart"`
+	DraftItems         string  `json:"draftItems"`
 }
 
 var currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -224,6 +225,13 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 		st.WarrantyStart = in.WarrantyStart
 	default:
 		return msg("warrantyStart")
+	}
+	switch in.DraftItems {
+	case "": // older clients
+	case itemsWorthy, itemsAll:
+		st.DraftItems = in.DraftItems
+	default:
+		return msg("draftItems")
 	}
 	if in.PaperlessToken != nil {
 		st.PaperlessToken = strings.TrimSpace(*in.PaperlessToken)
