@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -118,7 +119,13 @@ type Summary struct {
 	Parent  *struct {
 		Name string `json:"name"`
 	} `json:"parent,omitempty"`
+	EntityType *struct {
+		IsLocation bool `json:"isLocation"`
+	} `json:"entityType,omitempty"`
 }
+
+// IsLocation reports whether it's a location rather than an item.
+func (s *Summary) IsLocation() bool { return s.EntityType != nil && s.EntityType.IsLocation }
 
 func (c *Client) list(ctx context.Context, q url.Values) ([]Summary, error) {
 	var out struct {
@@ -133,15 +140,62 @@ func (c *Client) list(ctx context.Context, q url.Values) ([]Summary, error) {
 	return out.Items, nil
 }
 
-// Search finds items by name, serial or model number, manufacturer and more;
-// "#000-123" looks one up by asset ID.
+// Search finds items and locations by name, serial or model number,
+// manufacturer and more; "#000-123" looks one up by asset ID. HomeBox lists
+// items unless asked for locations, so it asks for both, items first.
 func (c *Client) Search(ctx context.Context, query string) ([]Summary, error) {
-	return c.list(ctx, url.Values{"q": {query}, "page": {"1"}, "pageSize": {"20"}})
+	items, err := c.list(ctx, url.Values{"q": {query}, "page": {"1"}, "pageSize": {"20"}})
+	if err != nil {
+		return nil, err
+	}
+	locations, err := c.list(ctx, url.Values{"q": {query}, "isLocation": {"true"}, "page": {"1"}, "pageSize": {"20"}})
+	if err != nil {
+		return nil, err
+	}
+	out := items
+	for _, l := range locations {
+		if len(out) == 20 {
+			break
+		}
+		if !slices.ContainsFunc(out, func(it Summary) bool { return it.ID == l.ID }) {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }
 
-// Locations lists where items can be put.
-func (c *Client) Locations(ctx context.Context) ([]Summary, error) {
-	return c.list(ctx, url.Values{"isLocation": {"true"}, "page": {"1"}, "pageSize": {"500"}, "orderBy": {"name"}})
+// Place is somewhere an item can be put: a location, or an item that holds
+// other items, such as a box or an organizer. Path names what it's in.
+type Place struct {
+	ID   string
+	Name string
+	Path []string
+}
+
+// Places lists where items can be put, each after the place it's in.
+func (c *Client) Places(ctx context.Context) ([]Place, error) {
+	type node struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Type     string `json:"type"`
+		Children []node `json:"children"`
+	}
+	var tree []node
+	if err := c.do(ctx, http.MethodGet, "/entities/tree", url.Values{"withItems": {"true"}}, nil, &tree); err != nil {
+		return nil, err
+	}
+	out := []Place{}
+	var walk func(nodes []node, path []string)
+	walk = func(nodes []node, path []string) {
+		for _, n := range nodes {
+			if n.Type == "location" || len(n.Children) > 0 {
+				out = append(out, Place{ID: n.ID, Name: n.Name, Path: path})
+				walk(n.Children, append(slices.Clip(path), n.Name))
+			}
+		}
+	}
+	walk(tree, nil)
+	return out, nil
 }
 
 // Item is the subset of a HomeBox item that Warranteed reads or fills in.

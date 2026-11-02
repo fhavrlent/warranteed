@@ -331,7 +331,8 @@
     "noResults": "Žádné položky nenalezeny.",
     "linkButton": "Propojit",
     "linked": "Propojeno s HomeBoxem",
-    "connectHint": "Přidejte svůj API klíč do HomeBoxu a záruku propojíte s položkou."
+    "connectHint": "Přidejte svůj API klíč do HomeBoxu a záruku propojíte s položkou.",
+    "isLocation": "Umístění"
   },
   "upload": {
     "title": "Přidat dokumenty",

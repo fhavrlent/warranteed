@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -81,5 +83,52 @@ func TestErrors(t *testing.T) {
 	_, err = New(srv.URL, "key").Get(context.Background(), "missing")
 	if !errors.As(err, &he) || !he.NotFound() {
 		t.Errorf("expected not found, got %v", err)
+	}
+}
+
+func TestSearchFindsLocationsToo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("isLocation") == "true" {
+			w.Write([]byte(`{"items":[{"id":"loc-1","name":"Drawer organizer","entityType":{"isLocation":true}},
+				{"id":"item-1","name":"Cable organizer"}]}`))
+			return
+		}
+		w.Write([]byte(`{"items":[{"id":"item-1","name":"Cable organizer","entityType":{"isLocation":false}}]}`))
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, "key").Search(context.Background(), "organizer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "item-1" || got[0].IsLocation() || got[1].ID != "loc-1" || !got[1].IsLocation() {
+		t.Errorf("got %+v, want the item, then the location", got)
+	}
+}
+
+func TestPlaces(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/entities/tree" || r.URL.Query().Get("withItems") != "true" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`[{"id":"office","name":"Office","type":"location","children":[
+			{"id":"drawer","name":"Drawer","type":"location","children":[]},
+			{"id":"organizer","name":"Cable organizer","type":"item","children":[
+				{"id":"cable","name":"USB cable","type":"item","children":[]}]},
+			{"id":"lamp","name":"Lamp","type":"item","children":[]}]},
+			{"id":"garage","name":"Garage","type":"location"}]`))
+	}))
+	defer srv.Close()
+	got, err := New(srv.URL, "key").Places(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, p := range got {
+		names = append(names, strings.Join(append(slices.Clip(p.Path), p.Name), " › "))
+	}
+	want := "Office, Office › Drawer, Office › Cable organizer, Garage"
+	if strings.Join(names, ", ") != want {
+		t.Errorf("places = %s, want %s", strings.Join(names, ", "), want)
 	}
 }

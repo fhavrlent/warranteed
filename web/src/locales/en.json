@@ -305,7 +305,8 @@
     "noResults": "No items found.",
     "linkButton": "Link",
     "linked": "Linked to HomeBox",
-    "connectHint": "Add your HomeBox API key to link this warranty to an item."
+    "connectHint": "Add your HomeBox API key to link this warranty to an item.",
+    "isLocation": "Location"
   },
   "upload": {
     "title": "Add documents",
