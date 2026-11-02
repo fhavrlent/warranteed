@@ -27,6 +27,10 @@ type Details struct {
 	WarrantyMonths *int     `json:"warrantyMonths"`
 	SerialNumbers  []string `json:"serialNumbers"`
 	OrderNumber    string   `json:"orderNumber"`
+	// Extension is an extended warranty or warranty insurance bought with
+	// the product, as the document names it, adding ExtendedMonths.
+	Extension      string `json:"extension"`
+	ExtendedMonths *int   `json:"extendedMonths"`
 }
 
 // MaxItems is how many products Read returns at most.
@@ -45,6 +49,8 @@ type answer struct {
 		Price          *float64 `json:"price"`
 		WarrantyMonths *int     `json:"warrantyMonths"`
 		SerialNumbers  []string `json:"serialNumbers"`
+		Extension      string   `json:"extension"`
+		ExtendedMonths *int     `json:"extendedMonths"`
 	} `json:"items"`
 }
 
@@ -55,7 +61,7 @@ var schema = map[string]any{
 	"required":             []string{"vendor", "purchaseDate", "currency", "orderNumber", "items"},
 	"properties": map[string]any{
 		"vendor":       map[string]any{"type": "string", "description": "The shop that sold it"},
-		"purchaseDate": map[string]any{"type": "string", "description": "YYYY-MM-DD, or empty"},
+		"purchaseDate": map[string]any{"type": "string", "description": "When the buyer received the goods if the document says, otherwise when they were sold; YYYY-MM-DD, or empty"},
 		"currency":     map[string]any{"type": "string", "description": "ISO 4217 code such as CZK or EUR, or empty"},
 		"orderNumber":  map[string]any{"type": "string", "description": "Order or invoice number"},
 		"items": map[string]any{
@@ -63,7 +69,7 @@ var schema = map[string]any{
 			"items": map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
-				"required":             []string{"productName", "brand", "model", "price", "warrantyMonths", "serialNumbers"},
+				"required":             []string{"productName", "brand", "model", "price", "warrantyMonths", "serialNumbers", "extension", "extendedMonths"},
 				"properties": map[string]any{
 					"productName":    map[string]any{"type": "string", "description": "What the product is called, without the brand, in the document's language, e.g. \"Myčka nádobí\" or \"Galaxy S24\""},
 					"brand":          map[string]any{"type": "string"},
@@ -71,6 +77,8 @@ var schema = map[string]any{
 					"price":          map[string]any{"anyOf": []any{map[string]any{"type": "number"}, map[string]any{"type": "null"}}, "description": "Price of one piece including tax"},
 					"warrantyMonths": map[string]any{"anyOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "null"}}, "description": "Only if the document states the warranty length"},
 					"serialNumbers":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"extension":      map[string]any{"type": "string", "description": "An extended warranty or warranty insurance bought for this product, as the document names it, or empty"},
+					"extendedMonths": map[string]any{"anyOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "null"}}, "description": "Months that extension adds on top of the product's own warranty"},
 				},
 			},
 		},
@@ -83,7 +91,11 @@ List each product on the document that's worth tracking a warranty for: devices,
 
 Keep the document's language; never translate. For the product name, use what people call the product: its model name when it's known by one (a phone, a laptop), otherwise a short description from the document such as "Rychlovarná konvice", without the brand and without long lists of features. Copy model numbers and serial numbers exactly as printed.
 
-Give what one piece cost including tax; per-piece columns often leave the tax out, so add it or divide the line total by the quantity. Give the warranty length only when the document states it; don't assume a legal default. Leave anything the document doesn't show empty, or null for numbers.`
+Give what one piece cost including tax; per-piece columns often leave the tax out, so add it or divide the line total by the quantity. Give the warranty length only when the document states it; don't assume a legal default. A warranty column on a line that isn't a product, such as a service or insurance, says nothing about the products. Leave anything the document doesn't show empty, or null for numbers.
+
+An extended warranty or warranty insurance bought for a product (often a service line that names the product or its code) isn't a product of its own: put it on that product's entry, with the months it adds on top of the product's warranty. Its price isn't part of the product's price.
+
+For the purchase date, use the day the buyer received the goods when the document gives it (e.g. "Datum převzetí" or a delivery date), since warranties run from then; otherwise the date of sale or issue.`
 
 // Reader reads receipts with Claude.
 type Reader struct {
@@ -161,6 +173,7 @@ func (a *answer) details() []Details {
 		d := purchase
 		d.ProductName, d.Brand, d.Model, d.Price = it.ProductName, it.Brand, it.Model, it.Price
 		d.WarrantyMonths, d.SerialNumbers = it.WarrantyMonths, it.SerialNumbers
+		d.Extension, d.ExtendedMonths = it.Extension, it.ExtendedMonths
 		out = append(out, d)
 	}
 	return out

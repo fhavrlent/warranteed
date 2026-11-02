@@ -576,7 +576,15 @@
     "homeboxOrder": "Číslo objednávky: {{number}}",
     "homeboxSerials": "Sériová čísla: {{list}}",
     "testTitle": "Warranteed – test",
-    "testBody": "Oznámení fungují. Než záruka vyprší, dostanete připomínku."
+    "testBody": "Oznámení fungují. Než záruka vyprší, dostanete připomínku.",
+    "draftExtension_one": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem: {{name}}",
+    "draftExtension_few": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem: {{name}}",
+    "draftExtension_many": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem: {{name}}",
+    "draftExtension_other": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem: {{name}}",
+    "draftExtensionUnnamed_one": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem",
+    "draftExtensionUnnamed_few": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem",
+    "draftExtensionUnnamed_many": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem",
+    "draftExtensionUnnamed_other": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem"
   },
   "signIn": {
     "unreachable": "Poskytovatel identity není dostupný. Zkuste to za chvíli znovu.",

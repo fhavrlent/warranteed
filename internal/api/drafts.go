@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/receipts"
 	"github.com/fhavrlent/warranteed/internal/store"
@@ -303,6 +304,7 @@ func (s *Server) draftInputs(ctx context.Context, pc *paperless.Client, doc *pap
 	for i := range found {
 		item := *in
 		applyDetails(&item, &found[i])
+		addExtension(&item, &found[i], st.EffectiveLanguage())
 		out[i] = &item
 	}
 	return out
@@ -340,6 +342,29 @@ func applyDetails(in *store.WarrantyInput, d *receipts.Details) {
 			in.SerialNumbers = append(in.SerialNumbers, sn)
 		}
 	}
+}
+
+// addExtension lengthens the warranty by an extended warranty bought with the
+// product, and says so in the notes, in the user's language.
+func addExtension(in *store.WarrantyInput, d *receipts.Details, lang string) {
+	if d.ExtendedMonths == nil || *d.ExtendedMonths <= 0 || in.WarrantyMonths == nil {
+		return
+	}
+	months := *in.WarrantyMonths + *d.ExtendedMonths
+	if months > 1200 {
+		return
+	}
+	in.WarrantyMonths = &months
+	name := strings.TrimSpace(d.Extension)
+	key := "server.draftExtension"
+	if name == "" {
+		key = "server.draftExtensionUnnamed"
+	}
+	note := i18n.T(lang, key, i18n.Args{"count": *d.ExtendedMonths, "name": name})
+	if in.Notes != "" {
+		note = in.Notes + "\n" + note
+	}
+	in.Notes = note
 }
 
 // fieldIDs resolves the configured custom field names to IDs in pc's Paperless.

@@ -10,8 +10,8 @@ import (
 func TestDetails(t *testing.T) {
 	var a answer
 	if err := json.Unmarshal([]byte(`{"vendor":"Obchod","purchaseDate":"2026-10-31","currency":"CZK","orderNumber":"1001",
-		"items":[{"productName":"Rychlovarná konvice","brand":"Značka","model":"K100","price":799,"warrantyMonths":null,"serialNumbers":[]},
-		{"productName":"Toustovač","brand":"Značka","model":"T200","price":599,"warrantyMonths":24,"serialNumbers":["A1"]}]}`), &a); err != nil {
+		"items":[{"productName":"Rychlovarná konvice","brand":"Značka","model":"K100","price":799,"warrantyMonths":null,"serialNumbers":[],"extension":"","extendedMonths":null},
+		{"productName":"Toustovač","brand":"Značka","model":"T200","price":599,"warrantyMonths":24,"serialNumbers":["A1"],"extension":"Prodloužená záruka","extendedMonths":12}]}`), &a); err != nil {
 		t.Fatal(err)
 	}
 	got := a.details()
@@ -26,7 +26,8 @@ func TestDetails(t *testing.T) {
 	if got[0].Model != "K100" || *got[0].Price != 799 || got[0].WarrantyMonths != nil {
 		t.Errorf("first product: %+v", got[0])
 	}
-	if got[1].Model != "T200" || *got[1].WarrantyMonths != 24 || got[1].SerialNumbers[0] != "A1" {
+	if got[1].Model != "T200" || *got[1].WarrantyMonths != 24 || got[1].SerialNumbers[0] != "A1" ||
+		got[1].Extension != "Prodloužená záruka" || *got[1].ExtendedMonths != 12 {
 		t.Errorf("second product: %+v", got[1])
 	}
 }

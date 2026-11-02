@@ -528,7 +528,11 @@
     "homeboxOrder": "Order number: {{number}}",
     "homeboxSerials": "Serial numbers: {{list}}",
     "testTitle": "Warranteed test",
-    "testBody": "Notifications are working. You'll be reminded before warranties expire."
+    "testBody": "Notifications are working. You'll be reminded before warranties expire.",
+    "draftExtension_one": "Includes {{count}} month of extended warranty bought with it: {{name}}",
+    "draftExtension_other": "Includes {{count}} months of extended warranty bought with it: {{name}}",
+    "draftExtensionUnnamed_one": "Includes {{count}} month of extended warranty bought with it",
+    "draftExtensionUnnamed_other": "Includes {{count}} months of extended warranty bought with it"
   },
   "signIn": {
     "unreachable": "Could not reach the identity provider. Try again in a moment.",
