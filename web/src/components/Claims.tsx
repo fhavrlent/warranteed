@@ -1,4 +1,15 @@
-import { FileText, Link2, MoreHorizontal, Pencil, Plus, Trash2, Upload, Wrench } from "lucide-react";
+import {
+  CircleAlert,
+  FileText,
+  Link2,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  Wrench,
+} from "lucide-react";
 import { useRef, useState, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -195,15 +206,36 @@ const ClaimRow = ({
         <ul className="mt-2 flex flex-wrap gap-2">
           {docs.map((a) => (
             <li key={a.id}>
-              <a
-                href={fileUrl(a)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex max-w-64 items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-[13px] hover:bg-surface-2"
-              >
-                <FileText className="size-3.5 shrink-0 text-fg-subtle" />
-                <span className="truncate">{a.filename}</span>
-              </a>
+              {/* Only a ready document can be opened; Paperless may still be processing it. */}
+              {a.status === "ready" ? (
+                <a
+                  href={fileUrl(a)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex max-w-64 items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-[13px] hover:bg-surface-2"
+                >
+                  <FileText className="size-3.5 shrink-0 text-fg-subtle" />
+                  <span className="truncate">{a.filename}</span>
+                </a>
+              ) : (
+                <span
+                  title={a.status === "failed" ? a.error : undefined}
+                  className={cn(
+                    "inline-flex max-w-64 items-center gap-1.5 rounded-lg border border-dashed px-2 py-1 text-[13px]",
+                    a.status === "failed" ? "border-bad/40 text-bad" : "border-border text-fg-muted",
+                  )}
+                >
+                  {a.status === "failed" ? (
+                    <CircleAlert className="size-3.5 shrink-0" />
+                  ) : (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                  )}
+                  <span className="truncate">{a.filename}</span>
+                  <span className="shrink-0 text-xs">
+                    {a.status === "failed" ? t("attachments.failed") : t("attachments.processing")}
+                  </span>
+                </span>
+              )}
             </li>
           ))}
         </ul>

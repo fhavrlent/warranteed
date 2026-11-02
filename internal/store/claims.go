@@ -180,10 +180,19 @@ func (s *Store) ClaimSync(ctx context.Context, id int64) (c *Claim, itemID strin
 	return &cl, itemID, err
 }
 
-// SetClaimEntry records the claim's entry in HomeBox.
-func (s *Store) SetClaimEntry(ctx context.Context, id int64, entry string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE claims SET homebox_entry = ? WHERE id = ?`, entry, id)
-	return err
+// SetClaimEntry records the claim's entry in HomeBox item itemID. It reports
+// false, saving nothing, when the warranty is no longer linked to that item
+// (or the claim is gone), so the entry belongs to nothing here any more.
+func (s *Store) SetClaimEntry(ctx context.Context, id int64, itemID, entry string) (bool, error) {
+	// One statement, so it can't interleave with relinking, which clears entries.
+	res, err := s.db.ExecContext(ctx, `UPDATE claims SET homebox_entry = ? WHERE id = ?
+		AND warranty_id IN (SELECT w.id FROM warranties w WHERE w.homebox_id = ? AND w.homebox_id != '')`,
+		entry, id, itemID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // ClaimIDs lists a warranty's claims, oldest first.

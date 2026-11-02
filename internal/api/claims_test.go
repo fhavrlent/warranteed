@@ -125,3 +125,31 @@ func TestClaimsInHomeBox(t *testing.T) {
 		t.Errorf("entry left in HomeBox: %+v", f.hb.entries)
 	}
 }
+
+// A warranty unlinked while its claim is being added to HomeBox doesn't keep
+// the old item's entry, and the entry is taken out again.
+func TestClaimEntryWhileUnlinking(t *testing.T) {
+	f := newHomeBoxFixture(t)
+	if w := f.link(t); w.Code != 200 {
+		t.Fatalf("link: %d %s", w.Code, w.Body)
+	}
+	f.hb.onAddEntry = func() {
+		if err := f.srv.store.SetHomeBox(t.Context(), f.bob.ID, f.warrantyID, nil); err != nil {
+			t.Error(err)
+		}
+	}
+	w := f.claimRequest(t, f.srv.createClaim, f.bob, f.warrantyID, `{"title":"Cracked","reportedOn":"2025-06-01"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	var c store.Claim
+	json.NewDecoder(w.Body).Decode(&c)
+	if got, _, _ := f.srv.store.ClaimSync(t.Context(), c.ID); got.HomeBoxEntry != "" {
+		t.Errorf("kept entry %q of the old item", got.HomeBoxEntry)
+	}
+	f.hb.mu.Lock()
+	defer f.hb.mu.Unlock()
+	if len(f.hb.entries) != 0 {
+		t.Errorf("entry left in the old item: %+v", f.hb.entries)
+	}
+}

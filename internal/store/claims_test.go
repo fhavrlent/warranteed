@@ -76,8 +76,17 @@ func TestClaims(t *testing.T) {
 		t.Fatal("claim matched another warranty")
 	}
 
+	// An entry is only saved for the item the warranty is linked to.
+	if saved, _ := st.SetClaimEntry(ctx, c.ID, "item-1", "entry-0"); saved {
+		t.Fatal("saved an entry for an item the warranty isn't linked to")
+	}
+	if err := st.SetHomeBox(ctx, ann, wid, &store.HomeBoxLink{ID: "item-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if saved, _ := st.SetClaimEntry(ctx, c.ID, "item-1", "entry-1"); !saved {
+		t.Fatal("entry for the linked item wasn't saved")
+	}
 	// Linking to another HomeBox item forgets the entry in the old one.
-	st.SetClaimEntry(ctx, c.ID, "entry-1")
 	if err := st.SetHomeBox(ctx, ann, wid, &store.HomeBoxLink{ID: "item-2"}); err != nil {
 		t.Fatal(err)
 	}

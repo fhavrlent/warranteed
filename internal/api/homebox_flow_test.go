@@ -38,6 +38,8 @@ type fakeHomeBox struct {
 	// entries is the item's maintenance log by entry ID.
 	entries   map[string]homebox.MaintenanceEntry
 	lastEntry int
+	// onAddEntry runs while an entry is being added, before the answer.
+	onAddEntry func()
 }
 
 func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +57,11 @@ func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.entries = map[string]homebox.MaintenanceEntry{}
 		}
 		f.entries[e.ID] = e
+		hook := f.onAddEntry
 		f.mu.Unlock()
+		if hook != nil {
+			hook()
+		}
 		json.NewEncoder(w).Encode(e)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/maintenance/"):
 		id := strings.TrimPrefix(r.URL.Path, "/api/v1/maintenance/")

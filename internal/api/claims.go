@@ -151,7 +151,13 @@ func (s *Server) syncClaim(ctx context.Context, uid, claimID int64) error {
 		if id, err = hb.AddMaintenance(ctx, itemID, entry); err != nil {
 			continue
 		}
-		return s.store.SetClaimEntry(ctx, claimID, id)
+		saved, err := s.store.SetClaimEntry(ctx, claimID, itemID, id)
+		if err != nil || saved {
+			return err
+		}
+		// Unlinked or relinked meanwhile: the entry is in an item the
+		// warranty no longer belongs to, so take it out again.
+		return hb.DeleteMaintenance(ctx, id)
 	}
 	return err
 }
