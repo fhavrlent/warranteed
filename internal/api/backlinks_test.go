@@ -17,6 +17,7 @@ import (
 
 	"github.com/fhavrlent/warranteed/internal/config"
 	"github.com/fhavrlent/warranteed/internal/db"
+	"github.com/fhavrlent/warranteed/internal/homebox"
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
@@ -396,5 +397,110 @@ func TestBacklinkFields(t *testing.T) {
 	}
 	if v := slow.values[50]; len(v) != 1 || v[0].Value != float64(2) {
 		t.Errorf("the number field was changed: %v", v)
+	}
+}
+
+// fieldHomeBox serves items with their custom fields, as HomeBox's GET and
+// PUT of an item do.
+type fieldHomeBox struct {
+	mu    sync.Mutex
+	items map[string][]homebox.Field
+	puts  int
+}
+
+func (f *fieldHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/entities/")
+	fields, ok := f.items[id]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method == http.MethodPut {
+		var body struct{ Fields []homebox.Field }
+		json.NewDecoder(r.Body).Decode(&body)
+		fields = body.Fields
+		f.items[id] = fields
+		f.puts++
+	}
+	json.NewEncoder(w).Encode(map[string]any{"id": id, "fields": fields})
+}
+
+func TestBacklinksSeveralHomeBoxItems(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	st := store.New(database)
+	pl := &fakePaperless{fields: map[string]int64{}, values: map[int64][]paperless.CustomField{}}
+	plServer := httptest.NewServer(pl)
+	t.Cleanup(plServer.Close)
+	hb := &fieldHomeBox{items: map[string][]homebox.Field{
+		// Linked before: its value is kept, whatever it is.
+		"item-1": {{Type: "text", Name: homebox.LinkField, TextValue: "77"}, {Type: "text", Name: "Colour", TextValue: "red"}},
+		"item-2": nil,
+	}}
+	hbServer := httptest.NewServer(hb)
+	t.Cleanup(hbServer.Close)
+
+	alice, _ := st.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "alice", Name: "Alice"})
+	settings, _ := st.Settings(ctx, alice.ID)
+	settings.PaperlessURL, settings.PaperlessToken, settings.PaperlessBacklinks = plServer.URL, "token", true
+	settings.HomeBoxToken = "key"
+	st.SaveSettings(ctx, alice.ID, settings)
+	doc := int64(5)
+	var wids []int64
+	months := 24
+	for i, item := range []string{"item-1", "item-2", ""} {
+		wid, err := st.CreateWarranty(ctx, alice.ID, &store.WarrantyInput{ProductName: fmt.Sprint("Product ", i), PurchaseDate: "2025-03-01", WarrantyMonths: &months})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.CreateAttachment(ctx, &store.Attachment{WarrantyID: wid, Kind: "purchase", Storage: store.StoragePaperless, Filename: "r.pdf",
+			PaperlessDocID: &doc, Status: store.StatusReady, AddedBy: &alice.ID})
+		if item != "" {
+			st.SetHomeBox(ctx, alice.ID, wid, &store.HomeBoxLink{ID: item})
+		}
+		wids = append(wids, wid)
+	}
+
+	appURL, _ := url.Parse("https://warranty.example.test")
+	cfg := &config.Config{
+		AppURL:    appURL,
+		Paperless: config.Paperless{WarrantyField: "Warranty", HomeBoxField: "HomeBox"},
+		HomeBox:   config.HomeBox{URL: hbServer.URL, PublicURL: "https://homebox.example.test"},
+	}
+	srv := New(cfg, st, nil, nil, nil, nil, "test")
+	if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc}); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("https://homebox.example.test/items?fields=Warranteed%%3D77&fields=Warranteed%%3D%d", wids[1])
+	if got := pl.value(doc, "HomeBox"); got != want {
+		t.Errorf("HomeBox link = %q, want %q", got, want)
+	}
+	if got := hb.items["item-2"]; len(got) != 1 || got[0].TextValue != fmt.Sprint(wids[1]) {
+		t.Errorf("item-2 fields = %+v", got)
+	}
+	if got := hb.items["item-1"]; len(got) != 2 || got[1].TextValue != "red" {
+		t.Errorf("item-1 fields = %+v", got)
+	}
+
+	// Already filled in: nothing more is written to HomeBox.
+	puts := hb.puts
+	if err := srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc}); err != nil {
+		t.Fatal(err)
+	}
+	if hb.puts != puts {
+		t.Error("HomeBox items were written again")
+	}
+
+	// HomeBox can't be reached: the first item is linked instead.
+	hbServer.Close()
+	srv.syncBacklinks(ctx, store.PaperlessDoc{Owner: alice.ID, DocID: doc})
+	if got := pl.value(doc, "HomeBox"); got != "https://homebox.example.test/item/item-1" {
+		t.Errorf("HomeBox link = %q", got)
 	}
 }

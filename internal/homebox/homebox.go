@@ -212,7 +212,61 @@ type Item struct {
 	WarrantyExpires  string       `json:"warrantyExpires"`
 	WarrantyDetails  string       `json:"warrantyDetails"`
 	LifetimeWarranty bool         `json:"lifetimeWarranty"`
+	Fields           []Field      `json:"fields"`
 	Attachments      []Attachment `json:"attachments"`
+}
+
+// Field is a custom field on an item.
+type Field struct {
+	ID           string  `json:"id,omitempty"`
+	Type         string  `json:"type"`
+	Name         string  `json:"name"`
+	TextValue    string  `json:"textValue"`
+	NumberValue  float64 `json:"numberValue"`
+	BooleanValue bool    `json:"booleanValue"`
+}
+
+// LinkField is the text field Warranteed puts on the items it links, so that
+// several of them can be listed together; see ListURL.
+const LinkField = "Warranteed"
+
+// Field returns the text of the item's custom field name, or "".
+func (it *Item) Field(name string) string {
+	for _, f := range it.Fields {
+		if f.Name == name {
+			return f.TextValue
+		}
+	}
+	return ""
+}
+
+// SetField sets the item's text field name to value, adding the field if it
+// isn't there, or removes it when value is empty.
+func (it *Item) SetField(name, value string) {
+	for i, f := range it.Fields {
+		if f.Name != name {
+			continue
+		}
+		if value == "" {
+			it.Fields = append(it.Fields[:i:i], it.Fields[i+1:]...)
+		} else {
+			it.Fields[i].Type, it.Fields[i].TextValue = "text", value
+		}
+		return
+	}
+	if value != "" {
+		it.Fields = append(it.Fields, Field{Type: "text", Name: name, TextValue: value})
+	}
+}
+
+// ListURL is the address of HomeBox's item list showing the items whose
+// LinkField holds one of values. base is HomeBox's public address.
+func ListURL(base string, values []string) string {
+	q := url.Values{}
+	for _, v := range values {
+		q.Add("fields", LinkField+"="+v)
+	}
+	return base + "/items?" + q.Encode()
 }
 
 // Attachment is a file or photo on an item.
@@ -313,6 +367,10 @@ func (c *Client) Update(ctx context.Context, id string, change func(*Item)) (*It
 	body["warrantyExpires"] = item.WarrantyExpires
 	body["warrantyDetails"] = item.WarrantyDetails
 	body["lifetimeWarranty"] = item.LifetimeWarranty
+	if item.Fields == nil {
+		item.Fields = []Field{}
+	}
+	body["fields"] = item.Fields
 
 	var out Item
 	if err := c.do(ctx, http.MethodPut, "/entities/"+url.PathEscape(id), nil, body, &out); err != nil {

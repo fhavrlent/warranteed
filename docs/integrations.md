@@ -57,7 +57,7 @@ Turn on **Link documents back to their warranty** under **Settings → Paperless
 
 The fields are created the first time they're needed. For other names, e.g. in your language, set `PAPERLESS_WARRANTY_FIELD` and `PAPERLESS_HOMEBOX_FIELD` before turning links on. If a field of that name already exists, it must be a URL field.
 
-The links follow changes: attaching, unlinking, deleting a warranty and linking HomeBox all update them. When a document is attached to several warranties, as with drafts from a receipt for several devices, the Warranty link opens the list of all of them, and the HomeBox link points to the first one's item. A value someone typed into these fields by hand is never overwritten. Turning links on also fills them in on documents that were attached before.
+The links follow changes: attaching, unlinking, deleting a warranty and linking HomeBox all update them. When a document is attached to several warranties, as with drafts from a receipt for several devices, the Warranty link opens the list of all of them, and the HomeBox link opens HomeBox's list of their items. Warranteed finds those items by a "Warranteed" text field it adds to each item it links. If HomeBox can't be reached at the time, the link points to the first item until the next update. A value someone typed into these fields by hand is never overwritten. Turning links on also fills them in on documents that were attached before.
 
 ### Drafts from new documents
 
@@ -141,7 +141,7 @@ You need [HomeBox](https://homebox.software) v0.27 or later.
 1. Set `HOMEBOX_URL` to where Warranteed reaches HomeBox, and `HOMEBOX_PUBLIC_URL` if browsers use another address. Restart.
 2. Each user creates an API key in HomeBox (*Profile → API keys*) and saves it under **Settings → HomeBox**. Keys expire after 30 days unless given a later date, so a longer expiry saves renewing them.
 
-On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address). It can go into a location or into an item that already holds other items. **Link existing item** finds items and locations, and fills in only the empty fields instead.
+On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address), and a "Warranteed" custom field holding the warranty's number. It can go into a location or into an item that already holds other items. **Link existing item** finds items and locations, and fills in only the empty fields instead.
 
 Product photos are uploaded to the item too, then and whenever one is added to the warranty later, using the HomeBox key of whoever adds it. The first becomes the item's main photo unless it has one. Warranteed remembers which photos it sent, so none is sent twice.
 

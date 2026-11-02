@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fhavrlent/warranteed/internal/homebox"
 	"github.com/fhavrlent/warranteed/internal/i18n"
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/store"
@@ -24,8 +25,8 @@ import (
 
 // syncBacklinks brings the link fields of one document up to date. They point
 // to the warranty the document is attached to, or to the list of them when
-// there are several, and to the first HomeBox item among them, and are
-// removed when there is none. A value
+// there are several, and to their HomeBox item or items, and are removed
+// when there is none. A value
 // Warranteed didn't write, such as one a user typed in, is left alone.
 //
 // A document can be attached by several people using the same Paperless, so
@@ -134,13 +135,8 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 	}
 	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
 	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
-		for _, w := range warranties {
-			if w.HomeBoxID != "" {
-				wantHomeBox = hb + "/item/" + url.PathEscape(w.HomeBoxID)
-				break
-			}
-		}
-		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/"}})
+		wantHomeBox = s.homeboxBacklink(ctx, hb, warranties)
+		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/", hb + "/items?"}})
 	}
 
 	current, err := pc.DocumentCustomFields(ctx, doc.DocID)
@@ -165,6 +161,65 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 		return nil
 	}
 	return pc.SetDocumentCustomFields(ctx, doc.DocID, current)
+}
+
+// homeboxBacklink is the link to the HomeBox items of warranties: the item
+// itself when there is one, or else HomeBox's list of the items by their link
+// field, which items linked before it existed get here. When an item can't
+// be read for that, the link falls back to the first item.
+func (s *Server) homeboxBacklink(ctx context.Context, hb string, warranties []store.DocumentRef) string {
+	var items []store.DocumentRef
+	for _, w := range warranties {
+		if w.HomeBoxID != "" && !slices.ContainsFunc(items, func(i store.DocumentRef) bool { return i.HomeBoxID == w.HomeBoxID }) {
+			items = append(items, w)
+		}
+	}
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return hb + "/item/" + url.PathEscape(items[0].HomeBoxID)
+	}
+	first := hb + "/item/" + url.PathEscape(items[0].HomeBoxID)
+	var values []string
+	for _, w := range items {
+		v, err := s.homeboxLinkValue(ctx, w)
+		if err != nil {
+			slog.Warn("read homebox link field", "item", w.HomeBoxID, "err", err)
+			return first
+		}
+		if !slices.Contains(values, v) {
+			values = append(values, v)
+		}
+	}
+	return homebox.ListURL(hb, values)
+}
+
+// homeboxLinkValue reads the link field of the warranty's item, using its
+// owner's HomeBox key, and fills it in when it's empty.
+func (s *Server) homeboxLinkValue(ctx context.Context, w store.DocumentRef) (string, error) {
+	st, err := s.store.Settings(ctx, w.Owner)
+	if err != nil {
+		return "", err
+	}
+	hb := s.homeboxFor(st)
+	if hb == nil {
+		return "", errors.New("no homebox key")
+	}
+	it, err := hb.Get(ctx, w.HomeBoxID)
+	if err != nil {
+		return "", err
+	}
+	if v := it.Field(homebox.LinkField); v != "" {
+		return v, nil
+	}
+	v := strconv.FormatInt(w.WarrantyID, 10)
+	_, err = hb.Update(ctx, w.HomeBoxID, func(it *homebox.Item) {
+		if it.Field(homebox.LinkField) == "" {
+			it.SetField(homebox.LinkField, v)
+		}
+	})
+	return v, err
 }
 
 // setLinkField sets field id to want, or removes it when want is empty,
