@@ -23,7 +23,33 @@ export interface Attachment {
   status: "ready" | "processing" | "failed";
   error: string;
   createdAt: string;
+  /** The claim the document belongs to, if any. */
+  claimId: number | null;
 }
+
+export type ClaimStatus = "open" | "repaired" | "replaced" | "refunded" | "rejected";
+export const CLAIM_STATUSES: readonly ClaimStatus[] = ["open", "repaired", "replaced", "refunded", "rejected"];
+
+/** Something that went wrong and was reported under the warranty. */
+export interface Claim {
+  id: number;
+  warrantyId: number;
+  title: string;
+  status: ClaimStatus;
+  reportedOn: string;
+  resolvedOn: string | null;
+  caseNumber: string;
+  cost: number | null;
+  notes: string;
+  addedBy: { id: number; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ClaimInput = Pick<
+  Claim,
+  "title" | "status" | "reportedOn" | "resolvedOn" | "caseNumber" | "cost" | "notes"
+>;
 
 export type AttachmentKind = "purchase" | "terms" | "card" | "extended" | "claim" | "manual" | "photo" | "other";
 
@@ -55,6 +81,8 @@ export interface Warranty {
   serialNumbers: string[];
   tags: Tag[];
   attachments: Attachment[];
+  /** Newest first. */
+  claims: Claim[];
   spaceId: number;
   spaceKind: SpaceKind;
   addedBy: { id: number; name: string };
@@ -316,15 +344,24 @@ export const api = {
   archive: (id: number, archived: boolean) =>
     request<Warranty>("POST", `/api/warranties/${id}/${archived ? "archive" : "unarchive"}`),
 
-  upload: (warrantyId: number, file: File, kind: AttachmentKind, storage: Storage) => {
+  upload: (warrantyId: number, file: File, kind: AttachmentKind, storage: Storage, claimId?: number) => {
     const fd = new FormData();
     fd.append("kind", kind);
     fd.append("storage", storage);
+    if (claimId) fd.append("claimId", String(claimId));
     fd.append("file", file);
     return request<Attachment>("POST", `/api/warranties/${warrantyId}/attachments`, fd);
   },
-  linkPaperless: (warrantyId: number, documentIds: number[], kind: AttachmentKind) =>
-    request<Attachment[]>("POST", `/api/warranties/${warrantyId}/attachments/paperless`, { documentIds, kind }),
+  linkPaperless: (warrantyId: number, documentIds: number[], kind: AttachmentKind, claimId?: number) =>
+    request<Attachment[]>("POST", `/api/warranties/${warrantyId}/attachments/paperless`, {
+      documentIds,
+      kind,
+      claimId,
+    }),
+
+  createClaim: (warrantyId: number, c: ClaimInput) => request<Claim>("POST", `/api/warranties/${warrantyId}/claims`, c),
+  updateClaim: (id: number, c: ClaimInput) => request<Claim>("PUT", `/api/claims/${id}`, c),
+  deleteClaim: (id: number) => request<undefined>("DELETE", `/api/claims/${id}`),
   updateAttachment: (id: number, patch: { kind?: AttachmentKind; filename?: string }) =>
     request<Attachment>("PATCH", `/api/attachments/${id}`, patch),
   deleteAttachment: (id: number) => request<undefined>("DELETE", `/api/attachments/${id}`),

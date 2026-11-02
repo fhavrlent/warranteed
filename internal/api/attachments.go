@@ -240,6 +240,11 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := r.FormValue("storage")
+	claimID, err := s.claimOfForm(r.Context(), wid, r.FormValue("claimId"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	file, hdr, err := r.FormFile("file")
 	if err != nil {
 		writeMsg(w, http.StatusBadRequest, "server.uploadNoFile", nil)
@@ -272,6 +277,7 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		MimeType:   mimeType,
 		Size:       hdr.Size,
 		Status:     store.StatusReady,
+		ClaimID:    claimID,
 	}
 
 	if target == store.StoragePaperless && kind != "photo" {
@@ -358,6 +364,22 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 }
 
 // linkPaperless attaches documents that already exist in Paperless.
+// claimOfForm reads an upload's claimId: one of the warranty's claims, or
+// nil when there is none.
+func (s *Server) claimOfForm(ctx context.Context, warrantyID int64, value string) (*int64, error) {
+	if value == "" {
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil, i18n.NewError("server.claimNotFound", nil)
+	}
+	if err := s.store.ClaimOf(ctx, warrantyID, id); err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
 func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 	uid := userID(r)
 	wid, ok := pathID(w, r, "id")
@@ -367,6 +389,8 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		DocumentIDs []int64 `json:"documentIds"`
 		Kind        string  `json:"kind"`
+		// ClaimID attaches the documents to one of the warranty's claims.
+		ClaimID *int64 `json:"claimId"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -381,6 +405,12 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.store.GetWarranty(r.Context(), uid, wid); err != nil {
 		fail(w, err)
 		return
+	}
+	if in.ClaimID != nil {
+		if err := s.store.ClaimOf(r.Context(), wid, *in.ClaimID); err != nil {
+			fail(w, err)
+			return
+		}
 	}
 	pc, err := s.userPaperless(r.Context(), uid)
 	if err != nil {
@@ -411,6 +441,7 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 			MimeType:       doc.MimeType,
 			PaperlessDocID: &doc.ID,
 			Status:         store.StatusReady,
+			ClaimID:        in.ClaimID,
 		}
 		if err := s.store.CreateAttachment(r.Context(), a); err != nil {
 			fail(w, err)

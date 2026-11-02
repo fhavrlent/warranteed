@@ -18,6 +18,7 @@ import (
 	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/config"
 	"github.com/fhavrlent/warranteed/internal/db"
+	"github.com/fhavrlent/warranteed/internal/homebox"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
@@ -34,6 +35,9 @@ type fakeHomeBox struct {
 	attachments []string
 	// files are the uploaded photos by attachment ID.
 	files map[string]string
+	// entries is the item's maintenance log by entry ID.
+	entries   map[string]homebox.MaintenanceEntry
+	lastEntry int
 }
 
 func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +45,34 @@ func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	item := `{"id":"item-1","assetId":"000-001","name":"Dishwasher","attachments":[` + strings.Join(f.attachments, ",") + `]}`
 	f.mu.Unlock()
 	switch {
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/maintenance"):
+		var e homebox.MaintenanceEntry
+		json.NewDecoder(r.Body).Decode(&e)
+		f.mu.Lock()
+		f.lastEntry++
+		e.ID = fmt.Sprintf("entry-%d", f.lastEntry)
+		if f.entries == nil {
+			f.entries = map[string]homebox.MaintenanceEntry{}
+		}
+		f.entries[e.ID] = e
+		f.mu.Unlock()
+		json.NewEncoder(w).Encode(e)
+	case strings.HasPrefix(r.URL.Path, "/api/v1/maintenance/"):
+		id := strings.TrimPrefix(r.URL.Path, "/api/v1/maintenance/")
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if _, ok := f.entries[id]; !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			delete(f.entries, id)
+			return
+		}
+		var e homebox.MaintenanceEntry
+		json.NewDecoder(r.Body).Decode(&e)
+		e.ID = id
+		f.entries[id] = e
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/entities":
 		f.mu.Lock()
 		f.creates++

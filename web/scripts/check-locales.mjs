@@ -85,6 +85,7 @@ const sources = read(join(web, "src"), [".ts", ".tsx"]) + read(join(web, "..", "
 const DYNAMIC = [
   "status.",
   "kinds.",
+  "claims.status.",
   "signIn.",
   "settings.tags.colors.",
   "settings.paperless.draftSources.",

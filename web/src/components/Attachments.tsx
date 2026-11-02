@@ -520,14 +520,17 @@ const useDebounced = <T,>(value: T, ms: number): T => {
 };
 
 /** Mounted only while open, so each opening starts with a fresh search. */
-const PaperlessPicker = ({
+/** Finds documents in Paperless and links them to the warranty, or to one of its claims. */
+export const PaperlessPicker = ({
   onOpenChange,
   warranty,
   onLinked,
+  claimId,
 }: {
   onOpenChange: (o: boolean) => void;
   warranty: Warranty;
   onLinked: () => void;
+  claimId?: number;
 }) => {
   const { t } = useTranslation();
   const { fmtDate } = usePrefs();
@@ -542,14 +545,14 @@ const PaperlessPicker = ({
   const loading = search.isFetching;
   const error = search.error ? errorMessage(search.error) : null;
   const [picked, setPicked] = useState<number[]>([]);
-  const [kind, setKind] = useState<AttachmentKind>("purchase");
+  const [kind, setKind] = useState<AttachmentKind>(claimId ? "claim" : "purchase");
   const [saving, setSaving] = useState(false);
   const linked = new Set(warranty.attachments.map((a) => a.paperlessDocId).filter((id) => id !== null));
 
   const link = async () => {
     setSaving(true);
     try {
-      await api.linkPaperless(warranty.id, picked, kind);
+      await api.linkPaperless(warranty.id, picked, kind, claimId);
       onLinked();
       toast.success(t("picker.linked", { count: picked.length }));
       onOpenChange(false);
@@ -569,18 +572,22 @@ const PaperlessPicker = ({
       description={t("picker.description")}
       footer={
         <>
-          <Select
-            aria-label={t("picker.documentType")}
-            value={kind}
-            onChange={(e) => setKind(e.target.value as AttachmentKind)}
-            className="mr-auto w-48"
-          >
-            {DOCUMENT_KINDS.filter((k) => k !== "photo").map((k) => (
-              <option key={k} value={k}>
-                {t("picker.as", { kind: kindLabel(k) })}
-              </option>
-            ))}
-          </Select>
+          {claimId ? (
+            <span className="mr-auto" />
+          ) : (
+            <Select
+              aria-label={t("picker.documentType")}
+              value={kind}
+              onChange={(e) => setKind(e.target.value as AttachmentKind)}
+              className="mr-auto w-48"
+            >
+              {DOCUMENT_KINDS.filter((k) => k !== "photo").map((k) => (
+                <option key={k} value={k}>
+                  {t("picker.as", { kind: kindLabel(k) })}
+                </option>
+              ))}
+            </Select>
+          )}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
           </Button>

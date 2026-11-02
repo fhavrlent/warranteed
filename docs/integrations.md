@@ -142,7 +142,7 @@ You need [HomeBox](https://homebox.software) v0.27 or later.
 1. Set `HOMEBOX_URL` to where Warranteed reaches HomeBox, and `HOMEBOX_PUBLIC_URL` if browsers use another address. Restart.
 2. Each user creates an API key in HomeBox (*Profile → API keys*) and saves it under **Settings → HomeBox**. Keys expire after 30 days unless given a later date, so a longer expiry saves renewing them.
 
-On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, quantity, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address). It can go into a location or into an item that already holds other items. **Link existing item** finds items and locations, and fills in only the empty fields instead.
+On a warranty, **Add to HomeBox** creates an item: name, brand, model, serial number, purchase date, price, quantity, seller, warranty end date and details, plus links to the warranty and to its receipts in Paperless (with `PAPERLESS_PUBLIC_URL` as their address). It can go into a location or into an item that already holds other items. **Link existing item** finds items and locations, and fills in only the empty fields instead. Either way, the warranty's repairs and claims go into the item's maintenance log and stay in step with Warranteed.
 
 Product photos are uploaded to the item too, then and whenever one is added to the warranty later, using the HomeBox key of whoever adds it. The first becomes the item's main photo unless it has one. Warranteed remembers which photos it sent, so none is sent twice.
 

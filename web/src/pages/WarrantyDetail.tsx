@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { AttachmentsPanel } from "@/components/Attachments";
+import { ClaimsPanel } from "@/components/Claims";
 import { HomeBoxCard } from "@/components/HomeBox";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
@@ -301,6 +302,12 @@ export const WarrantyDetail = () => {
           <Card className="p-5 sm:p-6">
             <AttachmentsPanel warranty={w} />
           </Card>
+
+          {!w.draft && (
+            <Card className="p-5 sm:p-6">
+              <ClaimsPanel warranty={w} />
+            </Card>
+          )}
         </div>
 
         <aside className="flex w-full flex-col gap-6 lg:w-80">
