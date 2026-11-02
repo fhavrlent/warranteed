@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +23,9 @@ import (
 // the document belongs to and to that warranty's HomeBox item.
 
 // syncBacklinks brings the link fields of one document up to date. They point
-// to the oldest warranty the document is attached to and the first HomeBox
-// item among its warranties, and are removed when there is none. A value
+// to the warranty the document is attached to, or to the list of them when
+// there are several, and to the first HomeBox item among them, and are
+// removed when there is none. A value
 // Warranteed didn't write, such as one a user typed in, is left alone.
 //
 // A document can be attached by several people using the same Paperless, so
@@ -111,11 +114,25 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 
 	app := strings.TrimSuffix(s.cfg.AppURL.String(), "/")
 	wantWarranty, wantHomeBox := "", ""
-	if len(warranties) > 0 {
-		wantWarranty = fmt.Sprintf("%s/w/%d", app, warranties[0].WarrantyID)
+	// The warranties by ID, which also tells documents with the same ID in
+	// other people's Paperless apart.
+	var ids []string
+	for _, w := range warranties {
+		if id := strconv.FormatInt(w.WarrantyID, 10); !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
 	}
-	type linkField struct{ name, want, prefix string }
-	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, app + "/w/"}}
+	switch {
+	case len(ids) > 1:
+		wantWarranty = fmt.Sprintf("%s/?warranties=%s&filter=all", app, strings.Join(ids, ","))
+	case len(ids) == 1:
+		wantWarranty = fmt.Sprintf("%s/w/%s", app, ids[0])
+	}
+	type linkField struct {
+		name, want string
+		ours       []string // how values Warranteed wrote start
+	}
+	fields := []linkField{{s.cfg.Paperless.WarrantyField, wantWarranty, []string{app + "/w/", app + "/?warranties="}}}
 	if hb := s.cfg.HomeBox.PublicURL; hb != "" {
 		for _, w := range warranties {
 			if w.HomeBoxID != "" {
@@ -123,7 +140,7 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 				break
 			}
 		}
-		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, hb + "/item/"})
+		fields = append(fields, linkField{s.cfg.Paperless.HomeBoxField, wantHomeBox, []string{hb + "/item/"}})
 	}
 
 	current, err := pc.DocumentCustomFields(ctx, doc.DocID)
@@ -141,7 +158,7 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 			continue
 		}
 		var c bool
-		current, c = setLinkField(current, id, f.want, f.prefix)
+		current, c = setLinkField(current, id, f.want, f.ours...)
 		changed = changed || c
 	}
 	if !changed {
@@ -151,15 +168,19 @@ func (s *Server) syncBacklinks(ctx context.Context, doc store.PaperlessDoc) erro
 }
 
 // setLinkField sets field id to want, or removes it when want is empty,
-// unless it holds a value that doesn't start with prefix. It reports whether
-// anything changed.
-func setLinkField(fields []paperless.CustomField, id int64, want, prefix string) ([]paperless.CustomField, bool) {
+// unless it holds a value that doesn't start with one of ours. It reports
+// whether anything changed.
+func setLinkField(fields []paperless.CustomField, id int64, want string, ours ...string) ([]paperless.CustomField, bool) {
 	for i, f := range fields {
 		if f.Field != id {
 			continue
 		}
 		cur, isText := f.Value.(string)
-		if (f.Value != nil && !isText) || (cur != "" && !strings.HasPrefix(cur, prefix)) {
+		mine := cur == ""
+		for _, p := range ours {
+			mine = mine || strings.HasPrefix(cur, p)
+		}
+		if (f.Value != nil && !isText) || !mine {
 			return fields, false // someone else's value
 		}
 		if want == "" {
