@@ -173,29 +173,34 @@ func (s *Server) draftFromPaperless(ctx context.Context, docID int64) error {
 	if err != nil {
 		return err
 	}
-	in := s.draftInput(ctx, owner.client, doc, st)
-	in.Draft = true
-	wid, err := s.store.CreateWarranty(ctx, owner.id, in)
-	if err != nil {
-		return err
-	}
 	filename := doc.OriginalFileName
 	if doc.Title != "" {
 		filename = doc.Title + filepath.Ext(doc.OriginalFileName)
 	}
-	a := &store.Attachment{
-		AddedBy: &owner.id, WarrantyID: wid, Kind: "purchase", Storage: store.StoragePaperless,
-		Filename: cleanFilename(filename), MimeType: doc.MimeType, PaperlessDocID: &doc.ID, Status: store.StatusReady,
+	// One draft per product bought, each with the document attached.
+	var wids []int64
+	for _, in := range s.draftInputs(ctx, owner.client, doc, st) {
+		in.Draft = true
+		wid, err := s.store.CreateWarranty(ctx, owner.id, in)
+		if err != nil {
+			return err
+		}
+		a := &store.Attachment{
+			AddedBy: &owner.id, WarrantyID: wid, Kind: "purchase", Storage: store.StoragePaperless,
+			Filename: cleanFilename(filename), MimeType: doc.MimeType, PaperlessDocID: &doc.ID, Status: store.StatusReady,
+		}
+		if err := s.store.CreateAttachment(ctx, a); err != nil {
+			return err
+		}
+		wids = append(wids, wid)
 	}
-	if err := s.store.CreateAttachment(ctx, a); err != nil {
-		return err
-	}
-	slog.Info("draft from paperless", "doc", docID, "user", owner.id, "warranty", wid)
+	slog.Info("draft from paperless", "doc", docID, "user", owner.id, "warranties", wids)
 	s.syncBacklinksLater(store.PaperlessDoc{Owner: owner.id, DocID: docID})
 
 	// paperless-gpt may not have filled the fields yet; look again later.
+	// Fields describe one product, so there is one draft.
 	if st.DraftSource == sourceFields && s.sourceAvailable(sourceFields) && !hasFieldValues(doc, s.fieldIDs(ctx, owner.client)) {
-		s.refillLater(owner, wid, docID, st)
+		s.refillLater(owner, wids[0], docID, st)
 	}
 	return nil
 }
@@ -256,10 +261,11 @@ func (s *Server) sourceAvailable(source string) bool {
 	return false
 }
 
-// draftInput builds a draft from the document's own data, improved by the
-// user's chosen source where it knows more. A failing source only means
-// fewer details are filled in.
-func (s *Server) draftInput(ctx context.Context, pc *paperless.Client, doc *paperless.DocumentInfo, st *store.Settings) *store.WarrantyInput {
+// draftInputs builds drafts from the document's own data, improved by the
+// user's chosen source where it knows more: one per product the source finds,
+// or one when it finds none. A failing source only means fewer details are
+// filled in.
+func (s *Server) draftInputs(ctx context.Context, pc *paperless.Client, doc *paperless.DocumentInfo, st *store.Settings) []*store.WarrantyInput {
 	months := 24
 	in := &store.WarrantyInput{
 		ProductName:    strings.TrimSpace(doc.Title),
@@ -279,10 +285,10 @@ func (s *Server) draftInput(ctx context.Context, pc *paperless.Client, doc *pape
 		}
 	}
 
-	var found *receipts.Details
+	var found []receipts.Details
 	switch {
 	case st.DraftSource == sourceFields && s.sourceAvailable(sourceFields):
-		found = fieldDetails(doc, s.fieldIDs(ctx, pc))
+		found = []receipts.Details{*fieldDetails(doc, s.fieldIDs(ctx, pc))}
 	case st.DraftSource == sourceClaude && s.sourceAvailable(sourceClaude):
 		d, err := s.readWithClaude(ctx, pc, doc.ID)
 		if err != nil {
@@ -290,8 +296,16 @@ func (s *Server) draftInput(ctx context.Context, pc *paperless.Client, doc *pape
 		}
 		found = d
 	}
-	applyDetails(in, found)
-	return in
+	if len(found) == 0 {
+		return []*store.WarrantyInput{in}
+	}
+	out := make([]*store.WarrantyInput, len(found))
+	for i := range found {
+		item := *in
+		applyDetails(&item, &found[i])
+		out[i] = &item
+	}
+	return out
 }
 
 // applyDetails copies what a source found over the document's own data.
@@ -409,7 +423,7 @@ func fieldDetails(doc *paperless.DocumentInfo, ids map[string]int64) *receipts.D
 
 // readWithClaude downloads the document (Paperless's archived copy is a PDF
 // for scans too) and has Claude read it.
-func (s *Server) readWithClaude(ctx context.Context, pc *paperless.Client, docID int64) (*receipts.Details, error) {
+func (s *Server) readWithClaude(ctx context.Context, pc *paperless.Client, docID int64) ([]receipts.Details, error) {
 	resp, err := pc.Stream(ctx, docID, "download")
 	if err != nil {
 		return nil, err
