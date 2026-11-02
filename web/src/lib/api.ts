@@ -72,8 +72,11 @@ export interface HomeBoxItem {
   id: string;
   name: string;
   assetId: string;
-  /** Name of the location it's in, or "". */
+  /** Name of the location it's in, or "". For places to put a new item, the
+   * whole path, e.g. "Office › Desk". */
   location: string;
+  /** A location rather than an item. */
+  isLocation?: boolean;
 }
 
 export type SpaceKind = "personal" | "household" | "custom";

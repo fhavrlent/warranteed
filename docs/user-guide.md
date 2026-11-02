@@ -101,8 +101,8 @@ With a single user, none of this appears.
 
 With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's *Profile → API keys*), a warranty can be part of your inventory:
 
-- **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, a link to the warranty, and links to its receipts in Paperless. You can pick a location.
-- **Link existing item** searches HomeBox by name, serial number or #asset ID. Only empty fields on the item are filled in; nothing already there changes.
+- **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, a link to the warranty, and links to its receipts in Paperless. You can pick where it goes: a location, or an item that already holds other things, such as a box or an organizer.
+- **Link existing item** searches HomeBox items and locations by name, serial number or #asset ID, so something that is also a place, like an organizer set up as a location, can be linked too. Only empty fields on the item are filled in; nothing already there changes.
 - **Product photos** are copied to the item, both when adding and when linking, and so are photos you add to the warranty later. The first becomes the item's main photo unless it already has one. Each photo is copied once; deleting it in Warranteed leaves it in HomeBox. Receipts and other documents stay links to Paperless.
 - **Photos stored in HomeBox:** on a linked warranty, **Photo** asks where to store new photos. **HomeBox** puts them only on the item, and Warranteed shows them from there, so there's one copy. **Store product photos in HomeBox by default** in Settings makes HomeBox the default. Removing such a photo here leaves it on the item. The household sees it through the HomeBox key of whoever added it, so it stops showing if that key expires.
 - The warranty then shows the item's asset ID, the number printed on HomeBox labels, and a link to open it in HomeBox.

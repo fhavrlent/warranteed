@@ -135,7 +135,7 @@ const AddDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => v
           <option value="">{t("homebox.noLocation")}</option>
           {(locations.data ?? []).map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name}
+              {l.location ? `${l.location} › ${l.name}` : l.name}
             </option>
           ))}
         </Select>
@@ -229,7 +229,14 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
                 )}
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{item.name}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium">{item.name}</span>
+                    {item.isLocation && (
+                      <span className="shrink-0 rounded bg-surface-3 px-1.5 text-[11px] text-fg-muted">
+                        {t("homebox.isLocation")}
+                      </span>
+                    )}
+                  </span>
                   {item.location && <span className="block truncate text-xs text-fg-subtle">{item.location}</span>}
                 </span>
                 {item.assetId && <span className="shrink-0 font-mono text-xs text-fg-subtle">{item.assetId}</span>}

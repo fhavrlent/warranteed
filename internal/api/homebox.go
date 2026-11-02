@@ -62,6 +62,8 @@ type homeboxItem struct {
 	Name     string `json:"name"`
 	AssetID  string `json:"assetId"`
 	Location string `json:"location"`
+	// IsLocation marks a location rather than an item.
+	IsLocation bool `json:"isLocation"`
 }
 
 func toHomeBoxItems(list []homebox.Summary) []homeboxItem {
@@ -71,7 +73,7 @@ func toHomeBoxItems(list []homebox.Summary) []homeboxItem {
 		if it.Parent != nil {
 			loc = it.Parent.Name
 		}
-		out = append(out, homeboxItem{ID: it.ID, Name: it.Name, AssetID: it.AssetID, Location: loc})
+		out = append(out, homeboxItem{ID: it.ID, Name: it.Name, AssetID: it.AssetID, Location: loc, IsLocation: it.IsLocation()})
 	}
 	return out
 }
@@ -89,17 +91,23 @@ func (s *Server) searchHomeBox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, toHomeBoxItems(list))
 }
 
+// homeboxLocations lists where a new item can be put: locations, and items
+// that hold other items, with what they're in.
 func (s *Server) homeboxLocations(w http.ResponseWriter, r *http.Request) {
 	_, hb := s.userHomeBox(w, r)
 	if hb == nil {
 		return
 	}
-	list, err := hb.Locations(r.Context())
+	places, err := hb.Places(r.Context())
 	if err != nil {
 		homeboxFail(w, err)
 		return
 	}
-	writeJSON(w, 200, toHomeBoxItems(list))
+	out := make([]homeboxItem, 0, len(places))
+	for _, p := range places {
+		out = append(out, homeboxItem{ID: p.ID, Name: p.Name, Location: strings.Join(p.Path, " › ")})
+	}
+	writeJSON(w, 200, out)
 }
 
 // testHomeBox checks an API key before it is saved; without one it checks
