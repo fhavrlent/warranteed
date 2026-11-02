@@ -2,12 +2,14 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
+  Ban,
   Check,
   Copy,
   ExternalLink,
   Lock,
   MoreHorizontal,
   Pencil,
+  ShieldCheck,
   Trash2,
   Users,
 } from "lucide-react";
@@ -19,6 +21,7 @@ import { AttachmentsPanel } from "@/components/Attachments";
 import { HomeBoxCard } from "@/components/HomeBox";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
+import { VoidDialog } from "@/components/VoidDialog";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu";
@@ -37,6 +40,7 @@ export const WarrantyDetail = () => {
   const { soonDays, fmtDate, fmtMoney } = usePrefs();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [voiding, setVoiding] = useState(false);
   const invalidate = useInvalidate();
   const navigate = useNavigate();
   const { sharing, household, personal } = useSharing();
@@ -74,6 +78,16 @@ export const WarrantyDetail = () => {
       await api.archive(w.id, !w.archivedAt);
       invalidate();
       toast.success(w.archivedAt ? t("detail.restored") : t("detail.archived"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+
+  const unvoid = async () => {
+    try {
+      await api.setVoid(w.id, false);
+      invalidate();
+      toast.success(t("detail.unvoided"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -166,6 +180,24 @@ export const WarrantyDetail = () => {
               )}
             </div>
           )}
+          {w.voidedAt && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-bad/25 bg-bad-soft/50 px-5 py-4">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-bad">
+                  <Ban className="size-4" /> {t("detail.voidBanner")}
+                </p>
+                {w.voidReason && (
+                  <p className="mt-0.5 text-sm [overflow-wrap:anywhere] whitespace-pre-line">{w.voidReason}</p>
+                )}
+                <p className="mt-0.5 text-[13px] text-fg-muted">
+                  {t("detail.voidedOn", { date: fmtDate(w.voidedAt.slice(0, 10)) })}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => void unvoid()}>
+                <ShieldCheck /> {t("detail.unvoid")}
+              </Button>
+            </div>
+          )}
           <Card className="p-5 sm:p-6">
             <div className="flex items-start gap-4">
               {photo ? (
@@ -209,6 +241,16 @@ export const WarrantyDetail = () => {
                     </Button>
                   </MenuTrigger>
                   <MenuContent>
+                    {!w.draft &&
+                      (w.voidedAt ? (
+                        <MenuItem icon={<ShieldCheck />} onSelect={() => void unvoid()}>
+                          {t("detail.unvoid")}
+                        </MenuItem>
+                      ) : (
+                        <MenuItem icon={<Ban />} onSelect={() => setVoiding(true)}>
+                          {t("detail.markVoid")}
+                        </MenuItem>
+                      ))}
                     <MenuItem icon={w.archivedAt ? <ArchiveRestore /> : <Archive />} onSelect={archive}>
                       {w.archivedAt ? t("detail.unarchive") : t("detail.archive")}
                     </MenuItem>
@@ -326,6 +368,7 @@ export const WarrantyDetail = () => {
       </div>
 
       <WarrantyForm open={editing} onOpenChange={setEditing} warranty={w} />
+      {voiding && <VoidDialog w={w} onOpenChange={setVoiding} />}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}

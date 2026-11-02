@@ -8,11 +8,11 @@ import (
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
-const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,quantity,serial_numbers,tags,product_url,notes,archived,space
-Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,2,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,household
-Knife,,,,,2024-01-15,,,true,,,,,,,,false,personal
-Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,,Electronics,,,true,
-Broken,,,,,2024-01-01,,,false,,,,,,,,false,
+const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,quantity,serial_numbers,tags,product_url,notes,archived,void_reason,space
+Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,2,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,,household
+Knife,,,,,2024-01-15,,,true,,,,,,,,false,,personal
+Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,,Electronics,,,true,Water damage,
+Broken,,,,,2024-01-01,,,false,,,,,,,,false,,
 `
 
 func parseRows(t *testing.T) []func(string) string {
@@ -108,6 +108,26 @@ func TestParsePrice(t *testing.T) {
 	for _, in := range []string{"abc", "1.2.3,4.5", "-5", ""} {
 		if _, ok := parsePrice(in); ok {
 			t.Errorf("parsePrice(%q) should fail", in)
+		}
+	}
+}
+
+func TestVoidCell(t *testing.T) {
+	at := "2025-01-01"
+	for _, c := range []struct {
+		w    store.Warranty
+		cell string
+	}{
+		{store.Warranty{}, ""},
+		{store.Warranty{VoidedAt: &at}, "void"},
+		{store.Warranty{VoidedAt: &at, VoidReason: "Dropped"}, "Dropped"},
+	} {
+		if got := voidCell(&c.w); got != c.cell {
+			t.Errorf("voidCell(%+v) = %q, want %q", c.w, got, c.cell)
+		}
+		reason, void := parseVoid(c.cell)
+		if void != (c.w.VoidedAt != nil) || reason != c.w.VoidReason {
+			t.Errorf("parseVoid(%q) = %q, %v", c.cell, reason, void)
 		}
 	}
 }

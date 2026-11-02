@@ -10,7 +10,7 @@ How to use Warranteed day to day. Setting up the server and its connections to P
 - [Sharing with the household](#sharing-with-the-household)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
-- [Archiving and deleting](#archiving-and-deleting)
+- [Void, archiving and deleting](#void-archiving-and-deleting)
 - [Tags](#tags)
 - [Import and export](#import-and-export)
 - [Settings](#settings)
@@ -79,7 +79,7 @@ With custom fields, the draft may be made before paperless-gpt has filled them i
 ## Finding warranties
 
 - **Search** looks through products, brands, models, stores, order numbers, serial numbers, tags, notes and HomeBox asset IDs. It ignores accents and allows small typos.
-- **Filters**: Current, Expired, Archived, All, and To review when you have drafts. With a household, you can also show only the shared warranties or only your private ones. The list remembers your filter while the browser tab is open, so it's still there when you come back from a warranty.
+- **Filters**: Current, Expired, Void (when there are void warranties), Archived, All, and To review when you have drafts. With a household, you can also show only the shared warranties or only your private ones. The list remembers your filter while the browser tab is open, so it's still there when you come back from a warranty.
 - From a Paperless document attached to several warranties, the **Warranty** link opens the list of just those, drafts included. **Show all** goes back to everything.
 - **Sort** by expiry date, name, purchase date, price or when it was added.
 - Switch between the grid and the list view.
@@ -116,7 +116,9 @@ Under **Settings → Reminders**, add one or more notification URLs and when to 
 
 Discord, Telegram, Slack, Pushover, Pushbullet, IFTTT and Join work for everyone. Self-hosted services such as ntfy, Gotify, webhooks and email need an admin to allow their server first. The [integration guide](integrations.md#reminders) has URL examples.
 
-## Archiving and deleting
+## Void, archiving and deleting
+
+**Mark as void** is for a warranty that no longer applies though it hasn't expired, for example after a drop, a repair somewhere else or a broken seal, while you still have the product. You can say why. A void warranty sends no reminders and doesn't count towards the covered value; it's under the **Void** filter, with the reason at the top of its page, and **Make valid again** undoes it.
 
 **Archive** hides a warranty you no longer need, such as one for something you sold, without deleting it. It no longer sends reminders. Archived warranties are under the **Archived** filter, and **Restore from archive** brings one back.
 
@@ -133,7 +135,7 @@ Under **Settings → Import & export**:
 - **Export CSV** downloads all your warranties.
 - **Import CSV** reads a file in the same format, for example from a spreadsheet. Rows that already exist are skipped, and rows with problems are listed with the reason.
 
-The columns are `product_name`, `brand`, `model`, `vendor`, `order_number`, `purchase_date`, `warranty_months`, `warranty_end_date`, `lifetime`, `price`, `currency`, `quantity`, `serial_numbers`, `tags`, `product_url`, `notes`, `archived` and `space`. Only `product_name` and `purchase_date` are required, plus one of `warranty_months`, `warranty_end_date` or `lifetime=true`. `price` is per piece, and an empty `quantity` means one. Separate several serial numbers or tags with `;`. Dates are `YYYY-MM-DD`.
+The columns are `product_name`, `brand`, `model`, `vendor`, `order_number`, `purchase_date`, `warranty_months`, `warranty_end_date`, `lifetime`, `price`, `currency`, `quantity`, `serial_numbers`, `tags`, `product_url`, `notes`, `archived`, `void_reason` and `space`. Only `product_name` and `purchase_date` are required, plus one of `warranty_months`, `warranty_end_date` or `lifetime=true`. `price` is per piece, and an empty `quantity` means one. `void_reason` is why a warranty is void, or `void` for one without a reason, and empty otherwise. Separate several serial numbers or tags with `;`. Dates are `YYYY-MM-DD`.
 
 Documents aren't part of the CSV.
 

@@ -19,7 +19,7 @@ import (
 var csvHeader = []string{
 	"product_name", "brand", "model", "vendor", "order_number", "purchase_date",
 	"warranty_months", "warranty_end_date", "lifetime", "price", "currency",
-	"quantity", "serial_numbers", "tags", "product_url", "notes", "archived", "space",
+	"quantity", "serial_numbers", "tags", "product_url", "notes", "archived", "void_reason", "space",
 }
 
 const listSep = ";"
@@ -78,7 +78,7 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 			e(wr.ProductName), e(wr.Brand), e(wr.Model), e(wr.Vendor), e(wr.OrderNumber), wr.PurchaseDate,
 			months, end, strconv.FormatBool(wr.IsLifetime), price, e(wr.Currency), strconv.Itoa(wr.Quantity),
 			e(strings.Join(wr.SerialNumbers, listSep)), e(strings.Join(tags, listSep)),
-			e(wr.ProductURL), e(wr.Notes), strconv.FormatBool(wr.ArchivedAt != nil), wr.SpaceKind,
+			e(wr.ProductURL), e(wr.Notes), strconv.FormatBool(wr.ArchivedAt != nil), e(voidCell(wr)), wr.SpaceKind,
 		})
 	}
 	cw.Flush()
@@ -203,10 +203,41 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		if archived {
 			s.store.SetArchived(r.Context(), uid, id, true)
 		}
+		if reason, void := parseVoid(get("void_reason")); void {
+			s.store.SetVoid(r.Context(), uid, id, true, reason)
+		}
 		seen[key] = true
 		res.Imported++
 	}
 	writeJSON(w, 200, res)
+}
+
+// voidCell is a void warranty's reason, or voidNoReason; empty when it
+// isn't void.
+func voidCell(wr *store.Warranty) string {
+	switch {
+	case wr.VoidedAt == nil:
+		return ""
+	case wr.VoidReason == "":
+		return voidNoReason
+	}
+	return wr.VoidReason
+}
+
+// voidNoReason marks a void warranty without a reason in the void_reason
+// column.
+const voidNoReason = "void"
+
+// parseVoid reads the void_reason column: whether the warranty is void, and
+// why.
+func parseVoid(cell string) (reason string, void bool) {
+	if cell == "" {
+		return "", false
+	}
+	if strings.EqualFold(cell, voidNoReason) {
+		return "", true
+	}
+	return cell, true
 }
 
 func rowToInput(get func(string) string, st *store.Settings) (*store.WarrantyInput, bool, *i18n.Error) {
