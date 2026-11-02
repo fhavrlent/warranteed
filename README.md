@@ -26,6 +26,7 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 - Store receipts and manuals locally or in Paperless-ngx, or link documents already in Paperless.
 - Add warranties to your HomeBox inventory, or link them to items already there.
 - Expiry reminders via ntfy, Gotify, Discord, Telegram, email and other services.
+- A private calendar feed of warranty end dates for Apple, Google or Outlook Calendar.
 - Tags, serial numbers, quantities, void warranties, archiving, search, CSV export and import.
 - Light and dark theme, usable on phones.
 - In English and Czech; more languages are easy to add.
@@ -55,7 +56,7 @@ Edit `.env` (at least `WARRANTEED_APP_URL` and the `OIDC_*` values), then:
 docker compose up -d
 ```
 
-Run it behind a reverse proxy with HTTPS and set `WARRANTEED_APP_URL` to the public URL.
+Run it behind a reverse proxy with HTTPS and set `WARRANTEED_APP_URL` to the public URL. If the proxy asks people to sign in (Authelia, an Authentik outpost and the like), let `/calendar/` through without it: calendar apps can't sign in, and those links carry their own secret.
 
 ## Sign-in
 

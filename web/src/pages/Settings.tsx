@@ -1,8 +1,10 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   Boxes,
+  CalendarDays,
   CheckCircle2,
+  Copy,
   Database,
   Download,
   FileUp,
@@ -70,6 +72,7 @@ export const Settings = () => {
       <div className="flex flex-col gap-6">
         <Display s={settings} />
         <Notifications s={settings} />
+        <Calendar />
         <Paperless s={settings} />
         <HomeBox s={settings} />
         <Household />
@@ -799,6 +802,117 @@ const Household = () => {
         confirmLabel={t("settings.household.confirm")}
         loading={moving}
         onConfirm={() => void moveAll()}
+      />
+    </Section>
+  );
+};
+
+const Calendar = () => {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data, isPending, isError, refetch } = useQuery({ queryKey: keys.calendar, queryFn: api.calendar });
+  const [busy, setBusy] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const url = data?.url ?? null;
+
+  const change = async (call: () => Promise<{ url: string | null }>, message: string) => {
+    setBusy(true);
+    try {
+      qc.setQueryData(keys.calendar, await call());
+      toast.success(message);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+      setRenewing(false);
+    }
+  };
+
+  const copy = () => {
+    // The Clipboard API only exists on HTTPS (or localhost) pages.
+    if (!url || !window.isSecureContext) {
+      toast.error(t("common.copyNeedsHttps"));
+      return;
+    }
+    navigator.clipboard.writeText(url).then(
+      () => toast.success(t("common.copied")),
+      () => toast.error(t("common.copyFailed")),
+    );
+  };
+
+  return (
+    <Section
+      icon={<CalendarDays />}
+      title={t("settings.calendar.title")}
+      description={t("settings.calendar.description")}
+    >
+      {/* Only offer a new link once we know there isn't one. */}
+      {isPending ? (
+        <div className="h-9 w-48 animate-pulse rounded-lg bg-surface-3/60" />
+      ) : isError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-bad">{t("settings.calendar.loadFailed")}</p>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      ) : !url ? (
+        <div>
+          <Button
+            variant="outline"
+            loading={busy}
+            onClick={() => void change(api.newCalendar, t("settings.calendar.created"))}
+          >
+            {t("settings.calendar.create")}
+          </Button>
+        </div>
+      ) : (
+        <>
+          <Field label={t("settings.calendar.link")} htmlFor="calendarUrl" hint={t("settings.calendar.linkHint")}>
+            <div className="flex gap-2">
+              <Input
+                id="calendarUrl"
+                readOnly
+                value={url}
+                className="font-mono text-[13px]"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t("settings.calendar.copy")}
+                title={t("settings.calendar.copy")}
+                onClick={copy}
+              >
+                <Copy />
+              </Button>
+            </div>
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => window.location.assign(url.replace(/^https?:/, "webcal:"))}>
+              {t("settings.calendar.subscribe")}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setRenewing(true)}>
+              {t("settings.calendar.renew")}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => void change(api.deleteCalendar, t("settings.calendar.removed"))}
+            >
+              {t("settings.calendar.remove")}
+            </Button>
+          </div>
+        </>
+      )}
+      <ConfirmDialog
+        open={renewing}
+        onOpenChange={setRenewing}
+        title={t("settings.calendar.renewTitle")}
+        description={t("settings.calendar.renewText")}
+        confirmLabel={t("settings.calendar.renewConfirm")}
+        loading={busy}
+        onConfirm={() => void change(api.renewCalendar, t("settings.calendar.renewed"))}
       />
     </Section>
   );

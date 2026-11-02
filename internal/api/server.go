@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 
 	api := http.NewServeMux()
 	mux.HandleFunc("POST /hooks/paperless", s.paperlessWebhook)
+	mux.HandleFunc("GET /calendar/{file}", s.calendarFeed)
 
 	api.HandleFunc("GET /api/me", s.me)
 	api.HandleFunc("GET /api/me/picture", s.mePicture)
@@ -121,6 +122,10 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/tags", s.listTags)
 	api.HandleFunc("PATCH /api/tags/{id}", s.updateTag)
 	api.HandleFunc("DELETE /api/tags/{id}", s.deleteTag)
+
+	api.HandleFunc("GET /api/calendar", s.getCalendar)
+	api.HandleFunc("POST /api/calendar", s.newCalendar)
+	api.HandleFunc("DELETE /api/calendar", s.deleteCalendar)
 
 	api.HandleFunc("GET /api/export.csv", s.exportCSV)
 	api.HandleFunc("POST /api/import", s.importCSV)

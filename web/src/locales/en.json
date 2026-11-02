@@ -8,6 +8,7 @@
     "dialog": "Dialog",
     "copy": "Copy {{label}}",
     "copied": "Copied",
+    "retry": "Try again",
     "copyFailed": "Couldn't copy",
     "copyNeedsHttps": "Copying needs HTTPS",
     "remove": "Remove {{name}}",
@@ -389,6 +390,24 @@
       "testSent": "Test notification sent",
       "schedule": "Checked daily in the server's timezone ({{timezone}})."
     },
+    "calendar": {
+      "title": "Calendar",
+      "description": "Subscribe to a private link in Apple, Google or Outlook Calendar to see when warranties end. It lists the warranties you see here, except lifetime, void and archived ones.",
+      "create": "Create calendar link",
+      "created": "Calendar link created",
+      "link": "Calendar link",
+      "linkHint": "Anyone with this link can see your warranty end dates, so keep it private. Calendar apps check it for changes a few times a day.",
+      "copy": "Copy link",
+      "subscribe": "Open in calendar app",
+      "renew": "Get a new link",
+      "renewed": "New link created; the old one no longer works",
+      "remove": "Turn off",
+      "removed": "Calendar link turned off",
+      "renewTitle": "Get a new calendar link?",
+      "renewText": "The current link stops working, so calendars subscribed to it stop updating. Use this if the link got out.",
+      "renewConfirm": "Get a new link",
+      "loadFailed": "Couldn’t load your calendar link."
+    },
     "paperless": {
       "description": "Store receipts and manuals in your Paperless-ngx archive instead of here, or link documents that are already there.",
       "notSetUp": "Paperless isn't set up on this server. An admin can enable it with <code>PAPERLESS_URL</code>.",
@@ -619,5 +638,11 @@
     "inDays_other": "in {{count}} days",
     "monthsLong": "January,February,March,April,May,June,July,August,September,October,November,December",
     "monthsShort": "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
+  },
+  "calendar": {
+    "name": "Warranty end dates",
+    "event": "Warranty ends: {{name}}",
+    "bought": "Bought {{date}}",
+    "boughtFrom": "Bought {{date}} from {{vendor}}"
   }
 }
