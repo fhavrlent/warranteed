@@ -1,4 +1,16 @@
-import { ArrowDownUp, LayoutGrid, List, Lock, Paperclip, Plus, Search, ShieldCheck, Users, X } from "lucide-react";
+import {
+  ArrowDownNarrowWide,
+  ArrowDownWideNarrow,
+  LayoutGrid,
+  List,
+  Lock,
+  Paperclip,
+  Plus,
+  Search,
+  ShieldCheck,
+  Users,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router";
@@ -19,6 +31,17 @@ const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime"
 type Who = "all" | "shared" | "mine";
 const WHO: readonly Who[] = ["all", "shared", "mine"];
 type Sort = "expiry" | "name" | "purchase" | "price" | "added";
+type Order = "natural" | "reversed";
+// How each sort reads, first its usual order then reversed, and which of the
+// two goes from low to high.
+const ORDER_LABELS = {
+  expiry: ["list.orderSoonest", "list.orderLatest"],
+  name: ["list.orderAZ", "list.orderZA"],
+  purchase: ["list.orderNewest", "list.orderOldest"],
+  price: ["list.orderHighest", "list.orderLowest"],
+  added: ["list.orderNewest", "list.orderOldest"],
+} as const;
+const ASCENDING: Record<Sort, boolean> = { expiry: true, name: true, purchase: false, price: false, added: false };
 
 // Placeholder cards while loading.
 const SKELETONS = ["s1", "s2", "s3", "s4", "s5", "s6"];
@@ -86,7 +109,14 @@ export const Warranties = () => {
     }
     return [...byName.values()];
   }, [tags]);
-  const [sort, setSort] = usePersisted<Sort>("warranteed-sort", "expiry");
+  const [sort, setSortKey] = usePersisted<Sort>("warranteed-sort", "expiry");
+  const [order, setOrder] = usePersisted<Order>("warranteed-sort-order", "natural");
+  const reversed = order === "reversed";
+  // Another sort starts in its usual order.
+  const setSort = (v: Sort) => {
+    setSortKey(v);
+    setOrder("natural");
+  };
   const [view, setView] = usePersisted<"grid" | "list">("warranteed-view", "grid");
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -199,12 +229,7 @@ export const Warranties = () => {
       return score > 0;
     });
     const byName = (a: Warranty, b: Warranty) => displayName(a).localeCompare(displayName(b));
-    res.sort((A, B) => {
-      const a = A.w,
-        b = B.w;
-      // When searching, exact matches come before ones found despite typos.
-      const byScore = (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0);
-      if (byScore !== 0) return byScore;
+    const bySort = (a: Warranty, b: Warranty) => {
       switch (sort) {
         case "name":
           return byName(a, b);
@@ -218,9 +243,17 @@ export const Warranties = () => {
           if (!a.expiresOn !== !b.expiresOn) return a.expiresOn ? -1 : 1;
           return (a.expiresOn ?? "").localeCompare(b.expiresOn ?? "") || byName(a, b);
       }
+    };
+    res.sort((A, B) => {
+      const a = A.w,
+        b = B.w;
+      // When searching, exact matches come before ones found despite typos.
+      const byScore = (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0);
+      if (byScore !== 0) return byScore;
+      return reversed ? -bySort(a, b) : bySort(a, b);
     });
     return res;
-  }, [withStatus, filter, tag, q, sort, who, only]);
+  }, [withStatus, filter, tag, q, sort, reversed, who, only]);
 
   // A restored "To review" with nothing left to review goes back to Current.
   useEffect(() => {
@@ -374,13 +407,12 @@ export const Warranties = () => {
                 { value: "all", label: t("list.filterAll") },
               ]}
             />
-            <div className="relative">
-              <ArrowDownUp className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-fg-subtle" />
+            <div className="flex">
               <Select
                 aria-label={t("list.sort")}
                 value={sort}
                 onChange={(e) => setSort(e.target.value as Sort)}
-                className="h-9 w-auto rounded-lg pl-8 text-[13px]"
+                className="relative h-9 w-auto rounded-r-none text-[13px] focus:z-10"
               >
                 <option value="expiry">{t("list.sortExpiry")}</option>
                 <option value="name">{t("list.sortName")}</option>
@@ -388,6 +420,16 @@ export const Warranties = () => {
                 <option value="price">{t("list.sortPrice")}</option>
                 <option value="added">{t("list.sortAdded")}</option>
               </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setOrder(reversed ? "natural" : "reversed")}
+                aria-label={t("list.reverseOrder", { order: t(ORDER_LABELS[sort][reversed ? 1 : 0]) })}
+                title={t(ORDER_LABELS[sort][reversed ? 1 : 0])}
+                className="-ml-px rounded-l-none text-fg-muted focus-visible:z-10"
+              >
+                {ASCENDING[sort] !== reversed ? <ArrowDownNarrowWide /> : <ArrowDownWideNarrow />}
+              </Button>
             </div>
             <Segmented
               value={view}
@@ -476,7 +518,12 @@ export const Warranties = () => {
               <div className="flex min-w-0 items-center gap-3">
                 <ProductThumb w={w} className="size-9 rounded-lg" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{displayName(w)}</p>
+                  <p
+                    className="line-clamp-3 text-sm font-medium [overflow-wrap:anywhere] md:line-clamp-2"
+                    title={displayName(w)}
+                  >
+                    {displayName(w)}
+                  </p>
                   <p className="truncate text-xs text-fg-subtle">
                     {[w.model, w.vendor].filter(Boolean).join(" · ") || " "}
                   </p>
@@ -579,19 +626,19 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
       <div className="flex items-start gap-3">
         <ProductThumb w={w} className="size-11 rounded-xl text-base" />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 truncate font-medium">
-            <span className="truncate">{displayName(w)}</span>
+          <p className="line-clamp-3 leading-snug font-medium [overflow-wrap:anywhere]" title={displayName(w)}>
+            {displayName(w)}
             {sharing && w.spaceKind === "personal" && (
-              <Lock className="size-3.5 shrink-0 text-fg-subtle" aria-label={t("list.private")} />
+              <Lock className="ml-1.5 inline size-3.5 align-[-0.1em] text-fg-subtle" aria-label={t("list.private")} />
             )}
           </p>
           <p className="truncate text-[13px] text-fg-subtle">
             {[w.model, w.vendor].filter(Boolean).join(" · ") || " "}
           </p>
         </div>
-        <StatusBadge status={s} />
       </div>
-      <div className="mt-4">
+      {/* At the bottom, so bars line up across cards with names of any length. */}
+      <div className="mt-auto pt-4">
         <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[13px]">
           <span className={cn("font-medium", s === "expiring" && "text-warn", s === "expired" && "text-bad")}>
             {expiryText(w)}
@@ -600,7 +647,8 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
         </div>
         <CoverageBar w={w} status={s} />
       </div>
-      <div className="mt-3.5 flex min-h-5.5 items-center gap-1.5">
+      <div className="mt-3.5 flex min-h-5.5 flex-wrap items-center gap-1.5">
+        <StatusBadge status={s} />
         {w.tags.slice(0, 3).map((tg) => (
           <TagChip key={tg.id} tag={tg} />
         ))}
