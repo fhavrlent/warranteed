@@ -602,12 +602,21 @@ func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool
 // MaxVoidReason is the longest reason for voiding a warranty, in characters.
 const MaxVoidReason = 500
 
-// SetVoid marks a warranty void, with an optional reason, or not void.
-func (s *Store) SetVoid(ctx context.Context, userID, id int64, void bool, reason string) error {
-	reason = strings.TrimSpace(reason)
-	if utf8.RuneCountInString(reason) > MaxVoidReason {
+// CheckVoidReason reports whether reason is short enough to void a
+// warranty for.
+func CheckVoidReason(reason string) error {
+	if utf8.RuneCountInString(strings.TrimSpace(reason)) > MaxVoidReason {
 		return invalid("voidReason", i18n.Args{"max": MaxVoidReason})
 	}
+	return nil
+}
+
+// SetVoid marks a warranty void, with an optional reason, or not void.
+func (s *Store) SetVoid(ctx context.Context, userID, id int64, void bool, reason string) error {
+	if err := CheckVoidReason(reason); err != nil {
+		return err
+	}
+	reason = strings.TrimSpace(reason)
 	var at any
 	if void {
 		at = now()

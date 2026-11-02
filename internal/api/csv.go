@@ -186,6 +186,12 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		if id, ok := spaceByKind[strings.ToLower(get("space"))]; ok {
 			in.SpaceID = &id
 		}
+		// Checked before saving, so a row is imported as it is or not at all.
+		voidReason, void := parseVoid(get("void_reason"))
+		if err := store.CheckVoidReason(voidReason); err != nil {
+			res.Errors = append(res.Errors, rowError(rowNum, err.(*store.ValidationError)))
+			continue
+		}
 		key := strings.ToLower(in.ProductName) + "|" + in.PurchaseDate
 		if seen[key] {
 			res.Skipped++
@@ -203,8 +209,11 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		if archived {
 			s.store.SetArchived(r.Context(), uid, id, true)
 		}
-		if reason, void := parseVoid(get("void_reason")); void {
-			s.store.SetVoid(r.Context(), uid, id, true, reason)
+		if void {
+			if err := s.store.SetVoid(r.Context(), uid, id, true, voidReason); err != nil {
+				fail(w, err)
+				return
+			}
 		}
 		seen[key] = true
 		res.Imported++
