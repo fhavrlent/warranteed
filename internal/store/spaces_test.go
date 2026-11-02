@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fhavrlent/warranteed/internal/db"
@@ -237,5 +238,47 @@ func TestQuantity(t *testing.T) {
 	}
 	if w, _ = st.GetWarranty(ctx, uid, id); w.Quantity != 2 {
 		t.Fatalf("quantity %d after update, want 2", w.Quantity)
+	}
+}
+
+func TestVoid(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	uid := user(t, st, "ann")
+	id := add(t, st, uid, "Kettle", nil)
+
+	if err := st.SetVoid(ctx, uid, id, true, "  Dropped  "); err != nil {
+		t.Fatal(err)
+	}
+	w, _ := st.GetWarranty(ctx, uid, id)
+	if w.VoidedAt == nil || w.VoidReason != "Dropped" {
+		t.Fatalf("after voiding: %+v", w)
+	}
+	// A void warranty gets no reminders.
+	if list, _ := st.ActiveWithExpiry(ctx, uid); len(list) != 0 {
+		t.Fatalf("void warranty is still reminded about: %d", len(list))
+	}
+
+	if err := st.SetVoid(ctx, uid, id, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	w, _ = st.GetWarranty(ctx, uid, id)
+	if w.VoidedAt != nil || w.VoidReason != "" {
+		t.Fatalf("after restoring: %+v", w)
+	}
+	if list, _ := st.ActiveWithExpiry(ctx, uid); len(list) != 1 {
+		t.Fatalf("restored warranty gets no reminders")
+	}
+
+	long := strings.Repeat("x", store.MaxVoidReason+1)
+	if err := st.SetVoid(ctx, uid, id, true, long); err == nil {
+		t.Fatal("too long a reason should fail")
+	}
+	// Someone who can't see it can't void it.
+	other := user(t, st, "bob")
+	priv, _ := spaces(t, st, uid)
+	mine := add(t, st, uid, "Private", &priv)
+	if err := st.SetVoid(ctx, other, mine, true, ""); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("voiding someone else's private warranty: %v", err)
 	}
 }

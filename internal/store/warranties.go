@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fhavrlent/warranteed/internal/i18n"
 )
@@ -28,10 +29,14 @@ type Warranty struct {
 	Price           *float64 `json:"price"`
 	Currency        string   `json:"currency"`
 	// Quantity is how many pieces were bought together; Price is per piece.
-	Quantity      int          `json:"quantity"`
-	ProductURL    string       `json:"productUrl"`
-	Notes         string       `json:"notes"`
-	ArchivedAt    *string      `json:"archivedAt"`
+	Quantity   int     `json:"quantity"`
+	ProductURL string  `json:"productUrl"`
+	Notes      string  `json:"notes"`
+	ArchivedAt *string `json:"archivedAt"`
+	// VoidedAt is set when the warranty no longer applies though it hasn't
+	// expired, for VoidReason.
+	VoidedAt      *string      `json:"voidedAt"`
+	VoidReason    string       `json:"voidReason"`
 	CreatedAt     string       `json:"createdAt"`
 	UpdatedAt     string       `json:"updatedAt"`
 	SerialNumbers []string     `json:"serialNumbers"`
@@ -193,7 +198,8 @@ const visibleTo = `w.space_id IN (SELECT sm.space_id FROM space_members sm
 const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_number, w.purchase_date,
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
 	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
-	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received, w.quantity`
+	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received, w.quantity,
+	w.voided_at, w.void_reason`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
@@ -204,7 +210,8 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	err := row.Scan(&w.ID, &w.ProductName, &w.Brand, &w.Model, &w.Vendor, &w.OrderNumber, &w.PurchaseDate,
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
-		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received, &w.Quantity)
+		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received, &w.Quantity,
+		&w.VoidedAt, &w.VoidReason)
 	if err != nil {
 		return nil, err
 	}
@@ -592,6 +599,42 @@ func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool
 	return nil
 }
 
+// MaxVoidReason is the longest reason for voiding a warranty, in characters.
+const MaxVoidReason = 500
+
+// CheckVoidReason reports whether reason is short enough to void a
+// warranty for.
+func CheckVoidReason(reason string) error {
+	if utf8.RuneCountInString(strings.TrimSpace(reason)) > MaxVoidReason {
+		return invalid("voidReason", i18n.Args{"max": MaxVoidReason})
+	}
+	return nil
+}
+
+// SetVoid marks a warranty void, with an optional reason, or not void.
+func (s *Store) SetVoid(ctx context.Context, userID, id int64, void bool, reason string) error {
+	if err := CheckVoidReason(reason); err != nil {
+		return err
+	}
+	reason = strings.TrimSpace(reason)
+	var at any
+	if void {
+		at = now()
+	} else {
+		reason = ""
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE warranties AS w SET voided_at = ?, void_reason = ?, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
+		at, reason, now(), userID, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // DeleteWarranty deletes a warranty and returns its attachments, so the
 // caller can remove what it kept of them on disk. In a shared space only the
 // person who added it may delete it.
@@ -792,10 +835,12 @@ func (s *Store) DeleteTag(ctx context.Context, userID, id int64) error {
 
 // ---- reminders ----
 
-// ActiveWithExpiry returns the non-archived, non-lifetime warranties the user can see.
+// ActiveWithExpiry returns the warranties the user can see that will expire:
+// not archived, void, lifetime or drafts.
 func (s *Store) ActiveWithExpiry(ctx context.Context, userID int64) ([]*Warranty, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+warrantyCols+` FROM `+warrantyFrom+`
-		WHERE `+visibleTo+` AND w.archived_at IS NULL AND NOT w.draft AND w.expires_on IS NOT NULL
+		WHERE `+visibleTo+` AND w.archived_at IS NULL AND w.voided_at IS NULL AND NOT w.draft
+		AND w.expires_on IS NOT NULL
 		ORDER BY w.expires_on`, userID)
 	if err != nil {
 		return nil, err

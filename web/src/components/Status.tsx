@@ -1,4 +1,4 @@
-import { Archive, CircleAlert, CircleCheck, CircleDashed, CircleX, Infinity as InfinityIcon } from "lucide-react";
+import { Archive, Ban, CircleAlert, CircleCheck, CircleDashed, CircleX, Infinity as InfinityIcon } from "lucide-react";
 import type { Warranty } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { coverageUsed, statusLabel, type Status } from "@/lib/warranty";
@@ -9,6 +9,7 @@ const styles: Record<Status, string> = {
   expiring: "bg-warn-soft text-warn",
   expired: "bg-bad-soft text-bad",
   lifetime: "bg-life-soft text-life",
+  void: "bg-surface-3 text-bad",
   archived: "bg-surface-3 text-fg-muted",
 };
 
@@ -18,6 +19,7 @@ const icons = {
   expiring: CircleAlert,
   expired: CircleX,
   lifetime: InfinityIcon,
+  void: Ban,
   archived: Archive,
 };
 
@@ -43,6 +45,7 @@ const barColor: Record<Status, string> = {
   expiring: "bg-warn",
   expired: "bg-bad",
   lifetime: "bg-life",
+  void: "bg-fg-subtle",
   archived: "bg-fg-subtle",
 };
 

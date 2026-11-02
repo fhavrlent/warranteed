@@ -26,7 +26,7 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 - Store receipts and manuals locally or in Paperless-ngx, or link documents already in Paperless.
 - Add warranties to your HomeBox inventory, or link them to items already there.
 - Expiry reminders via ntfy, Gotify, Discord, Telegram, email and other services.
-- Tags, serial numbers, archiving, search, CSV export and import.
+- Tags, serial numbers, quantities, void warranties, archiving, search, CSV export and import.
 - Light and dark theme, usable on phones.
 - In English and Czech; more languages are easy to add.
 

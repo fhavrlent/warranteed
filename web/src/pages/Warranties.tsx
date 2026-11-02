@@ -26,8 +26,8 @@ import { matcher } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { displayName, photoOf, statusOf, tagDot, totalPrice, type Status, expiryText } from "@/lib/warranty";
 
-type Filter = "current" | "expiring" | "expired" | "lifetime" | "archived" | "all" | "review";
-const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime", "archived", "all", "review"];
+type Filter = "current" | "expiring" | "expired" | "lifetime" | "void" | "archived" | "all" | "review";
+const FILTERS: readonly Filter[] = ["current", "expiring", "expired", "lifetime", "void", "archived", "all", "review"];
 type Who = "all" | "shared" | "mine";
 const WHO: readonly Who[] = ["all", "shared", "mine"];
 type Sort = "expiry" | "name" | "purchase" | "price" | "added";
@@ -172,7 +172,15 @@ export const Warranties = () => {
   const withStatus = useMemo(() => (list ?? []).map((w) => ({ w, s: statusOf(w, soonDays) })), [list, soonDays]);
 
   const counts = useMemo(() => {
-    const c: Record<Status, number> = { draft: 0, active: 0, expiring: 0, expired: 0, lifetime: 0, archived: 0 };
+    const c: Record<Status, number> = {
+      draft: 0,
+      active: 0,
+      expiring: 0,
+      expired: 0,
+      lifetime: 0,
+      void: 0,
+      archived: 0,
+    };
     for (const { s } of withStatus) c[s]++;
     return c;
   }, [withStatus]);
@@ -200,7 +208,7 @@ export const Warranties = () => {
       if (filter === "review" ? s !== "draft" : s === "draft" && !only) return false;
       switch (filter) {
         case "current":
-          if (s === "archived" || s === "expired") return false;
+          if (s === "archived" || s === "expired" || s === "void") return false;
           break;
         case "all":
         case "review":
@@ -403,6 +411,9 @@ export const Warranties = () => {
                   : []),
                 { value: "current", label: t("list.filterCurrent") },
                 { value: "expired", label: t("list.filterExpired"), count: counts.expired || undefined },
+                ...(counts.void > 0 || filter === "void"
+                  ? [{ value: "void" as const, label: t("list.filterVoid"), count: counts.void || undefined }]
+                  : []),
                 { value: "archived", label: t("list.filterArchived"), count: counts.archived || undefined },
                 { value: "all", label: t("list.filterAll") },
               ]}
@@ -625,7 +636,7 @@ const WarrantyCard = ({ w, s, fmtDate }: { w: Warranty; s: Status; fmtDate: (d: 
       to={`/w/${w.id}`}
       className={cn(
         "group flex min-w-0 flex-col rounded-2xl border border-border bg-surface p-4 shadow-card transition-all hover:-translate-y-px hover:border-border-strong hover:shadow-pop",
-        s === "archived" && "opacity-70",
+        (s === "archived" || s === "void") && "opacity-70",
       )}
     >
       <div className="flex items-start gap-3">

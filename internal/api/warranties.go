@@ -125,6 +125,32 @@ func (s *Server) archiveWarranty(archived bool) http.HandlerFunc {
 	}
 }
 
+// voidWarranty marks a warranty void, with the reason in the body, or not.
+func (s *Server) voidWarranty(void bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r, "id")
+		if !ok {
+			return
+		}
+		var in struct {
+			Reason string `json:"reason"`
+		}
+		if void && !decode(w, r, &in) {
+			return
+		}
+		if err := s.store.SetVoid(r.Context(), userID(r), id, void, in.Reason); err != nil {
+			fail(w, err)
+			return
+		}
+		wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		writeJSON(w, 200, wr)
+	}
+}
+
 func (s *Server) listTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := s.store.ListTags(r.Context(), userID(r))
 	if err != nil {

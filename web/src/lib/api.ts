@@ -47,6 +47,9 @@ export interface Warranty {
   productUrl: string;
   notes: string;
   archivedAt: string | null;
+  /** Set when the warranty no longer applies though it hasn't expired. */
+  voidedAt: string | null;
+  voidReason: string;
   createdAt: string;
   updatedAt: string;
   serialNumbers: string[];
@@ -301,6 +304,8 @@ export const api = {
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
   deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
   confirmWarranty: (id: number) => request<Warranty>("POST", `/api/warranties/${id}/confirm`),
+  setVoid: (id: number, isVoid: boolean, reason = "") =>
+    request<Warranty>("POST", `/api/warranties/${id}/${isVoid ? "void" : "unvoid"}`, isVoid ? { reason } : undefined),
   archive: (id: number, archived: boolean) =>
     request<Warranty>("POST", `/api/warranties/${id}/${archived ? "archive" : "unarchive"}`),
 

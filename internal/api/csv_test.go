@@ -1,18 +1,25 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"encoding/csv"
+	"encoding/json"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/store"
 )
 
-const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,quantity,serial_numbers,tags,product_url,notes,archived,space
-Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,2,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,household
-Knife,,,,,2024-01-15,,,true,,,,,,,,false,personal
-Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,,Electronics,,,true,
-Broken,,,,,2024-01-01,,,false,,,,,,,,false,
+const sampleCSV = `product_name,brand,model,vendor,order_number,purchase_date,warranty_months,warranty_end_date,lifetime,price,currency,quantity,serial_numbers,tags,product_url,notes,archived,void_reason,space
+Washing Machine,Bosch,WM-900,Datart,A-1,2023-06-01,30,,false,499.99,CZK,2,SN-1;SN-2,Home;Laundry,example.com/wm,Keep the box,false,,household
+Knife,,,,,2024-01-15,,,true,,,,,,,,false,,personal
+Old Phone,,,,,15.03.2022,,2024-03-15,false,,,,,Electronics,,,true,Water damage,
+Broken,,,,,2024-01-01,,,false,,,,,,,,false,,
 `
 
 func parseRows(t *testing.T) []func(string) string {
@@ -108,6 +115,63 @@ func TestParsePrice(t *testing.T) {
 	for _, in := range []string{"abc", "1.2.3,4.5", "-5", ""} {
 		if _, ok := parsePrice(in); ok {
 			t.Errorf("parsePrice(%q) should fail", in)
+		}
+	}
+}
+
+func TestVoidCell(t *testing.T) {
+	at := "2025-01-01"
+	for _, c := range []struct {
+		w    store.Warranty
+		cell string
+	}{
+		{store.Warranty{}, ""},
+		{store.Warranty{VoidedAt: &at}, "void"},
+		{store.Warranty{VoidedAt: &at, VoidReason: "Dropped"}, "Dropped"},
+	} {
+		if got := voidCell(&c.w); got != c.cell {
+			t.Errorf("voidCell(%+v) = %q, want %q", c.w, got, c.cell)
+		}
+		reason, void := parseVoid(c.cell)
+		if void != (c.w.VoidedAt != nil) || reason != c.w.VoidReason {
+			t.Errorf("parseVoid(%q) = %q, %v", c.cell, reason, void)
+		}
+	}
+}
+
+// A row whose void reason is too long isn't imported at all, rather than as
+// a valid warranty.
+func TestImportVoidReason(t *testing.T) {
+	f := newHomeBoxFixture(t)
+	csvText := strings.Join(csvHeader, ",") + "\n" +
+		"Toaster,,,,,2025-01-01,24,,false,,,,,,,,false," + strings.Repeat("x", store.MaxVoidReason+1) + ",household\n" +
+		"Kettle,,,,,2025-01-01,24,,false,,,,,,,,false,Dropped,household\n"
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, _ := mw.CreateFormFile("file", "import.csv")
+	part.Write([]byte(csvText))
+	mw.Close()
+	r := httptest.NewRequest(http.MethodPost, "/api/import", &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+	f.srv.importCSV(w, r.WithContext(auth.WithUser(r.Context(), f.bob)))
+
+	var res importResult
+	if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Imported != 1 || len(res.Errors) != 1 || res.Errors[0].Code != "server.voidReason" {
+		t.Fatalf("result: %+v", res)
+	}
+	list, _ := f.srv.store.ListWarranties(context.Background(), f.bob.ID)
+	for _, wr := range list {
+		switch wr.ProductName {
+		case "Toaster":
+			t.Error("the row with too long a reason was imported")
+		case "Kettle":
+			if wr.VoidedAt == nil || wr.VoidReason != "Dropped" {
+				t.Errorf("kettle: %+v", wr)
+			}
 		}
 	}
 }
