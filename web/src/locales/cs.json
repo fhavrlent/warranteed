@@ -280,7 +280,12 @@
     "renameTitle": "Přejmenovat soubor",
     "renamePaperless": "Změní název zobrazený tady; dokument v Paperless si ponechá svůj.",
     "fileName": "Název souboru",
-    "openInTab": "Otevřít v nové kartě"
+    "openInTab": "Otevřít v nové kartě",
+    "inHomebox": "Uloženo u položky v HomeBoxu",
+    "remove": "Odebrat",
+    "removeTitle": "Odebrat fotku?",
+    "removeText": "Ze záruky zmizí, ale u položky v HomeBoxu zůstane.",
+    "renameHomebox": "Změní název zobrazený tady; fotka v HomeBoxu si ponechá svůj."
   },
   "picker": {
     "title": "Připojit dokumenty z Paperless",
@@ -306,14 +311,14 @@
     "unlinked": "Odpojeno od HomeBoxu",
     "add": "Přidat do HomeBoxu",
     "addTitle": "Přidat do HomeBoxu",
-    "addDescription": "Vytvoří položku se sériovým číslem, údaji o nákupu a záruce a s odkazy zpět na tuto záruku a její účtenky v Paperless.",
+    "addDescription": "Vytvoří položku se sériovým číslem, údaji o nákupu a záruce a fotkami produktu a s odkazy zpět na tuto záruku a její účtenky v Paperless.",
     "location": "Umístění",
     "noLocation": "Bez umístění",
     "create": "Vytvořit položku",
     "created": "Přidáno do HomeBoxu",
     "linkExisting": "Propojit s existující položkou",
     "linkTitle": "Propojit s položkou v HomeBoxu",
-    "linkDescription": "Vyberte položku, ke které záruka patří. Doplní se prázdné údaje o nákupu a záruce; nic, co tam už je, se nezmění.",
+    "linkDescription": "Vyberte položku, ke které záruka patří. Doplní se prázdné údaje o nákupu a záruce a přidají se fotky produktu; nic, co tam už je, se nezmění.",
     "search": "Hledat podle názvu, sériového čísla nebo #ID majetku",
     "noResults": "Žádné položky nenalezeny.",
     "linkButton": "Propojit",
@@ -341,7 +346,10 @@
     "keptHere": "Paperless neumí soubory .{{ext}}, tenhle se proto uloží tady",
     "keptHereNoExt": "Paperless tento typ souboru neumí, uloží se proto tady",
     "typeOf": "Typ souboru {{name}}",
-    "chooseType": "Vyberte typ…"
+    "chooseType": "Vyberte typ…",
+    "titlePhotos": "Přidat fotky",
+    "wherePhotos": "Kam uložit fotky",
+    "wherePhotosHint": "HomeBox je uloží k propojené položce a uvidíte je i tady."
   },
   "settings": {
     "title": "Nastavení",
@@ -426,7 +434,9 @@
       "keySaved": "Klíč je uložený. Pro výměnu zadejte nový.",
       "keyHint": "V HomeBoxu: Profil → API klíče. Klíče vyprší po 30 dnech, pokud nenastavíte pozdější datum.",
       "connected": "Připojeno jako {{name}}",
-      "saved": "Klíč k HomeBoxu uložen"
+      "saved": "Klíč k HomeBoxu uložen",
+      "photosDefault": "Ukládat fotky produktu do HomeBoxu",
+      "photosDefaultHint": "U záruk propojených s položkou. Při každém nahrání můžete zvolit jinak; fotky u ostatních záruk se ukládají sem."
     },
     "household": {
       "description_one": "Domácnost sdílí {{count}} člověk. Nové záruky se sdílejí automaticky; kteroukoli můžete nastavit jako soukromou.",
@@ -568,6 +578,8 @@
     "homeboxNeedsToken": "Zadejte svůj API klíč do HomeBoxu",
     "homeboxKeyRejected": "HomeBox odmítl API klíč. Možná vypršel — vytvořte v HomeBoxu nový.",
     "homeboxItemGone": "Tato položka už v HomeBoxu neexistuje",
+    "homeboxNotLinked": "Nejdřív propojte záruku s položkou v HomeBoxu",
+    "homeboxPhotoNoKey": "Fotka je v HomeBoxu, ale kdo ji přidal, nemá uložený klíč k HomeBoxu",
     "homeboxNeedsItem": "Vyberte položku v HomeBoxu",
     "homeboxAlreadyLinked": "Tato záruka už je propojená s položkou v HomeBoxu",
     "homeboxBusy": "Tato záruka se právě propojuje s HomeBoxem. Zkuste to za chvíli znovu.",

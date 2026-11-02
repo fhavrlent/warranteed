@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strings"
 	"time"
@@ -66,11 +68,16 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	return c.send(req, out)
+}
+
+// send makes the request with the API key and decodes the JSON answer into out.
+func (c *Client) send(req *http.Request, out any) error {
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/json")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not reach HomeBox: %w", err)
@@ -139,21 +146,39 @@ func (c *Client) Locations(ctx context.Context) ([]Summary, error) {
 
 // Item is the subset of a HomeBox item that Warranteed reads or fills in.
 type Item struct {
-	ID               string  `json:"id"`
-	AssetID          string  `json:"assetId"`
-	Name             string  `json:"name"`
-	SerialNumber     string  `json:"serialNumber"`
-	ModelNumber      string  `json:"modelNumber"`
-	Manufacturer     string  `json:"manufacturer"`
-	PurchaseDate     string  `json:"purchaseDate"`
-	PurchasePrice    float64 `json:"purchasePrice"`
-	PurchaseFrom     string  `json:"purchaseFrom"`
-	WarrantyExpires  string  `json:"warrantyExpires"`
-	WarrantyDetails  string  `json:"warrantyDetails"`
-	LifetimeWarranty bool    `json:"lifetimeWarranty"`
-	Attachments      []struct {
-		Path string `json:"path"`
-	} `json:"attachments"`
+	ID               string       `json:"id"`
+	AssetID          string       `json:"assetId"`
+	Name             string       `json:"name"`
+	SerialNumber     string       `json:"serialNumber"`
+	ModelNumber      string       `json:"modelNumber"`
+	Manufacturer     string       `json:"manufacturer"`
+	PurchaseDate     string       `json:"purchaseDate"`
+	PurchasePrice    float64      `json:"purchasePrice"`
+	PurchaseFrom     string       `json:"purchaseFrom"`
+	WarrantyExpires  string       `json:"warrantyExpires"`
+	WarrantyDetails  string       `json:"warrantyDetails"`
+	LifetimeWarranty bool         `json:"lifetimeWarranty"`
+	Attachments      []Attachment `json:"attachments"`
+}
+
+// Attachment is a file or photo on an item.
+type Attachment struct {
+	ID        string `json:"id"`
+	CreatedAt string `json:"createdAt"`
+	Title     string `json:"title"`
+	Path      string `json:"path"`
+	Type      string `json:"type"`
+	Primary   bool   `json:"primary"`
+}
+
+// HasPrimaryPhoto reports whether the item has a main photo.
+func (it *Item) HasPrimaryPhoto() bool {
+	for _, a := range it.Attachments {
+		if a.Type == "photo" && a.Primary {
+			return true
+		}
+	}
+	return false
 }
 
 // Create adds an item, optionally in a location.
@@ -247,4 +272,79 @@ func (c *Client) Update(ctx context.Context, id string, change func(*Item)) (*It
 func (c *Client) AddLink(ctx context.Context, id, link, title, kind string) error {
 	body := map[string]string{"source_type": "link", "external_id": link, "title": title, "attachment_type": kind}
 	return c.do(ctx, http.MethodPost, "/entities/"+url.PathEscape(id)+"/attachments/external", nil, body, nil)
+}
+
+// UploadPhoto adds a photo to item, as it was just read, and returns the
+// photo's attachment ID; primary makes it the item's main photo.
+func (c *Client) UploadPhoto(ctx context.Context, item *Item, name, mimeType string, photo io.Reader, primary bool) (string, error) {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", multipart.FileContentDisposition("file", name))
+	h.Set("Content-Type", mimeType)
+	part, err := mw.CreatePart(h)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(part, photo); err != nil {
+		return "", err
+	}
+	for k, v := range map[string]string{"name": name, "type": "photo", "primary": fmt.Sprint(primary)} {
+		if err := mw.WriteField(k, v); err != nil {
+			return "", err
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.BaseURL+"/api/v1/entities/"+url.PathEscape(item.ID)+"/attachments", &body)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	// HomeBox answers with the item. The photo is the attachment that
+	// wasn't there before and has its name; if something else added one
+	// with the same name meanwhile, the newest of them.
+	var after Item
+	if err := c.send(req, &after); err != nil {
+		return "", err
+	}
+	known := map[string]bool{}
+	for _, a := range item.Attachments {
+		known[a.ID] = true
+	}
+	found, at := "", time.Time{}
+	for _, a := range after.Attachments {
+		if known[a.ID] || a.Title != name {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339Nano, a.CreatedAt); found == "" || (err == nil && t.After(at)) {
+			found, at = a.ID, t
+		}
+	}
+	if found == "" {
+		return "", fmt.Errorf("HomeBox did not list the uploaded photo")
+	}
+	return found, nil
+}
+
+// OpenAttachment fetches an item's file or photo; the caller closes the body.
+func (c *Client) OpenAttachment(ctx context.Context, itemID, attachmentID string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.BaseURL+"/api/v1/entities/"+url.PathEscape(itemID)+"/attachments/"+url.PathEscape(attachmentID), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("could not reach HomeBox: %w", err)
+	}
+	if res.StatusCode >= 300 {
+		defer res.Body.Close()
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		return nil, &Error{Status: res.StatusCode, Body: string(b)}
+	}
+	return res, nil
 }

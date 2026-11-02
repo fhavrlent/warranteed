@@ -269,6 +269,9 @@ type Settings struct {
 	HomeBoxToken       string `json:"-"`
 	PaperlessDefault   bool   `json:"paperlessDefault"`
 	PaperlessBacklinks bool   `json:"paperlessBacklinks"`
+	// HomeBoxPhotosDefault stores product photos in HomeBox by default, on
+	// warranties linked to an item.
+	HomeBoxPhotosDefault bool `json:"homeboxPhotosDefault"`
 	// DraftSource is whether the user gets drafts from new Paperless
 	// documents ("off" by default), and where their details come from:
 	// "paperless", "fields" or "claude".
@@ -279,10 +282,10 @@ func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	var st Settings
 	err := s.db.QueryRowContext(ctx, `
 		SELECT date_format, currency, theme, language, browser_language, expiring_soon_days, notify_urls, notify_days,
-		       paperless_url, paperless_public_url, paperless_token, paperless_default, paperless_backlinks, homebox_token, draft_source
+		       paperless_url, paperless_public_url, paperless_token, paperless_default, paperless_backlinks, homebox_token, homebox_photos_default, draft_source
 		FROM user_settings WHERE user_id = ?`, userID,
 	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.Language, &st.BrowserLanguage, &st.ExpiringSoonDays, &st.NotifyURLs,
-		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.PaperlessBacklinks, &st.HomeBoxToken, &st.DraftSource)
+		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.PaperlessBacklinks, &st.HomeBoxToken, &st.HomeBoxPhotosDefault, &st.DraftSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -311,10 +314,10 @@ func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) er
 		UPDATE user_settings SET
 			date_format = ?, currency = ?, theme = ?, language = ?, expiring_soon_days = ?, notify_urls = ?,
 			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?,
-			paperless_backlinks = ?, homebox_token = ?, draft_source = ?
+			paperless_backlinks = ?, homebox_token = ?, homebox_photos_default = ?, draft_source = ?
 		WHERE user_id = ?`,
 		st.DateFormat, st.Currency, st.Theme, st.Language, st.ExpiringSoonDays, st.NotifyURLs,
-		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, st.DraftSource, userID)
+		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, st.HomeBoxPhotosDefault, st.DraftSource, userID)
 	return err
 }
 

@@ -113,7 +113,7 @@ A draft goes to whoever owns the document in Paperless, matched through their Pa
 
 With [HomeBox](https://homebox.software) (v0.27 or later), a warranty can be added to your inventory or linked to an item that's already there. Set `HOMEBOX_URL` to your HomeBox instance, and `HOMEBOX_PUBLIC_URL` if that's an internal address. Each user adds their own API key under **Settings → HomeBox** (in HomeBox: *Profile → API keys*). Keys expire after 30 days unless you give them a later date.
 
-On a warranty, **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, plus links back to the warranty and to its receipts in Paperless. **Link existing item** searches HomeBox instead and only fills in fields that are empty. The warranty then shows the item's asset ID, the number on HomeBox labels, and searching for it in Warranteed finds the warranty.
+On a warranty, **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, plus links back to the warranty and to its receipts in Paperless. **Link existing item** searches HomeBox instead and only fills in fields that are empty. Product photos are copied to the item, including ones added later, or can be stored only in HomeBox and shown from there. The warranty then shows the item's asset ID, the number on HomeBox labels, and searching for it in Warranteed finds the warranty.
 
 ## Reminders
 

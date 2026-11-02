@@ -607,6 +607,22 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
               {status}
             </p>
           )}
+          <label
+            className={cn(
+              "flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-3",
+              !s.homeboxEnabled && "opacity-50",
+            )}
+          >
+            <span>
+              <span className="block text-sm font-medium">{t("settings.homebox.photosDefault")}</span>
+              <span className="block text-xs text-fg-subtle">{t("settings.homebox.photosDefaultHint")}</span>
+            </span>
+            <Switch
+              checked={s.homeboxPhotosDefault}
+              disabled={!s.homeboxEnabled}
+              onCheckedChange={(v) => update({ homeboxPhotosDefault: v })}
+            />
+          </label>
         </>
       )}
     </Section>

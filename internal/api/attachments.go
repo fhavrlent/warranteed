@@ -264,6 +264,25 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if target == store.StorageHomeBox && kind == "photo" {
+		if wr.HomeBox == nil {
+			writeMsg(w, http.StatusBadRequest, "server.homeboxNotLinked", nil)
+			return
+		}
+		_, hb := s.userHomeBox(w, r)
+		if hb == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+		defer cancel()
+		if err := s.storeHomeBoxPhoto(ctx, hb, wr.HomeBox.ID, a, file); err != nil {
+			homeboxFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, a)
+		return
+	}
+
 	name, size, err := s.files.Save(file, strings.ToLower(filepath.Ext(filename)))
 	if err != nil {
 		fail(w, err)
@@ -274,6 +293,9 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		s.files.Remove(name)
 		fail(w, err)
 		return
+	}
+	if kind == "photo" && wr.HomeBox != nil {
+		s.sendHomeBoxPhotosLater(uid, wid)
 	}
 	writeJSON(w, http.StatusCreated, a)
 }
@@ -390,8 +412,8 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
-// deleteAttachment removes the attachment. Paperless documents are only
-// unlinked; they stay in Paperless.
+// deleteAttachment removes the attachment. Paperless documents and photos
+// stored in HomeBox are only unlinked; they stay where they are.
 func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -507,6 +529,11 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		return
 	}
 
+	if a.Storage == store.StorageHomeBox {
+		s.proxyHomeBox(w, r, a, download)
+		return
+	}
+
 	if a.PaperlessDocID == nil {
 		writeMsg(w, http.StatusConflict, "server.paperlessProcessing", nil)
 		return
@@ -553,6 +580,33 @@ func (s *Server) proxyPaperless(w http.ResponseWriter, r *http.Request, pc *pape
 		}
 		setDisposition(w, filename, ct, download)
 	}
+	io.Copy(w, resp.Body)
+}
+
+// proxyHomeBox serves a photo stored in HomeBox. Thumbnails are the photo
+// itself, as for photos stored here.
+func (s *Server) proxyHomeBox(w http.ResponseWriter, r *http.Request, a *store.Attachment, download bool) {
+	hb, err := s.attachmentHomeBox(r.Context(), a, userID(r))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if hb == nil {
+		writeMsg(w, http.StatusBadGateway, "server.homeboxPhotoNoKey", nil)
+		return
+	}
+	resp, err := hb.OpenAttachment(r.Context(), a.HomeBoxItem, a.HomeBoxAttachment)
+	if err != nil {
+		homeboxFail(w, err)
+		return
+	}
+	defer resp.Body.Close()
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		w.Header().Set("Content-Length", cl)
+	}
+	// The type is the one checked on upload, so HomeBox can't make it active content.
+	w.Header().Set("Content-Type", a.MimeType)
+	setDisposition(w, a.Filename, a.MimeType, download)
 	io.Copy(w, resp.Body)
 }
 
