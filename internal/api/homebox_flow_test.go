@@ -40,11 +40,19 @@ type fakeHomeBox struct {
 	lastEntry int
 	// onAddEntry runs while an entry is being added, before the answer.
 	onAddEntry func()
+	// newItem is the ID of items it creates; item-1 if empty.
+	newItem string
 }
 
 func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	id := "item-1"
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/api/v1/entities/"); ok {
+		id, _, _ = strings.Cut(rest, "/")
+	} else if r.URL.Path == "/api/v1/entities" && f.newItem != "" {
+		id = f.newItem
+	}
 	f.mu.Lock()
-	item := `{"id":"item-1","assetId":"000-001","name":"Dishwasher","attachments":[` + strings.Join(f.attachments, ",") + `]}`
+	item := fmt.Sprintf(`{"id":%q,"assetId":"000-001","name":"Dishwasher","attachments":[`, id) + strings.Join(f.attachments, ",") + `]}`
 	f.mu.Unlock()
 	switch {
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/maintenance"):
@@ -107,14 +115,14 @@ func (f *fakeHomeBox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		file.Close()
 		f.mu.Lock()
 		f.photos = append(f.photos, hdr.Filename+" "+r.FormValue("primary"))
-		id := fmt.Sprintf("photo-%d", len(f.photos))
+		photoID := fmt.Sprintf("photo-%d", len(f.photos))
 		if f.files == nil {
 			f.files = map[string]string{}
 		}
-		f.files[id] = string(data)
+		f.files[photoID] = string(data)
 		f.attachments = append(f.attachments, fmt.Sprintf(`{"id":%q,"createdAt":"2026-01-01T10:00:%02d.5Z","title":%q,"type":"photo","primary":%s}`,
-			id, len(f.photos), hdr.Filename, r.FormValue("primary")))
-		item = `{"id":"item-1","attachments":[` + strings.Join(f.attachments, ",") + `]}`
+			photoID, len(f.photos), hdr.Filename, r.FormValue("primary")))
+		item = fmt.Sprintf(`{"id":%q,"attachments":[`, id) + strings.Join(f.attachments, ",") + `]}`
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte(item))

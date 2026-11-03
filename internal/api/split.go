@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/fhavrlent/warranteed/internal/homebox"
@@ -26,6 +28,9 @@ func (s *Server) splitWarranty(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	// One split of a warranty at a time, so each reads the pieces the last
+	// one left, here and in HomeBox.
+	defer s.lockPhotos(fmt.Sprintf("split:%d", id))()
 	uid := userID(r)
 	wr, err := s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {
@@ -74,7 +79,7 @@ func (s *Server) splitWarranty(w http.ResponseWriter, r *http.Request) {
 		HomeBoxError string `json:"homeboxError,omitempty"`
 	}
 	if in.HomeBox && wr.HomeBox != nil {
-		if err := s.splitHomeBoxItem(r.Context(), uid, wr, newID, in.Pieces); err != nil {
+		if err := s.splitHomeBoxItem(r.Context(), uid, wr, newID); err != nil {
 			out.HomeBoxError = err.Error()
 		}
 	}
@@ -86,9 +91,9 @@ func (s *Server) splitWarranty(w http.ResponseWriter, r *http.Request) {
 }
 
 // splitHomeBoxItem adds an item for the split-off warranty next to the
-// original's, as adding it to HomeBox would, and lowers the original item's
-// quantity to match its warranty.
-func (s *Server) splitHomeBoxItem(reqCtx context.Context, uid int64, orig *store.Warranty, newID int64, pieces int) error {
+// original's, as adding it to HomeBox would, and makes the original item
+// match what's left of its warranty. orig is the warranty before the split.
+func (s *Server) splitHomeBoxItem(reqCtx context.Context, uid int64, orig *store.Warranty, newID int64) error {
 	st, err := s.store.Settings(reqCtx, uid)
 	if err != nil {
 		return err
@@ -118,13 +123,71 @@ func (s *Server) splitHomeBoxItem(reqCtx context.Context, uid int64, orig *store
 	if err := s.joinHomeBoxItem(reqCtx, ctx, uid, st, hb, nw, created, false); err != nil {
 		return err
 	}
-	// Only when the item counted the same pieces, so a quantity set by hand
-	// in HomeBox stays.
+	if err := s.copyHomeBoxPhotos(ctx, hb, uid, nw, created.ID); err != nil {
+		return err
+	}
+	rest, err := s.store.GetWarranty(reqCtx, uid, orig.ID)
+	if err != nil {
+		return err
+	}
 	defer s.lockPhotos("item:" + item.ID)()
-	_, err = hb.Update(ctx, item.ID, func(it *homebox.Item) {
-		if it.Quantity == orig.Quantity {
-			it.Quantity = orig.Quantity - pieces
-		}
-	})
+	_, err = hb.Update(ctx, item.ID, func(it *homebox.Item) { shrinkHomeBoxItem(it, orig, rest, st) })
 	return err
+}
+
+// shrinkHomeBoxItem updates the item of a warranty that had pieces split off,
+// from before to rest. Only what still shows the warranty as it was before
+// changes, so values set by hand in HomeBox stay.
+func shrinkHomeBoxItem(it *homebox.Item, before, rest *store.Warranty, st *store.Settings) {
+	if it.Quantity == before.Quantity {
+		it.Quantity = rest.Quantity
+	}
+	if it.SerialNumber != "" && slices.Contains(before.SerialNumbers, it.SerialNumber) &&
+		!slices.Contains(rest.SerialNumbers, it.SerialNumber) {
+		it.SerialNumber = ""
+		if len(rest.SerialNumbers) > 0 {
+			it.SerialNumber = rest.SerialNumbers[0]
+		}
+	}
+	if it.WarrantyDetails == warrantyDetails(before, st) {
+		it.WarrantyDetails = warrantyDetails(rest, st)
+	}
+}
+
+// copyHomeBoxPhotos puts the split-off warranty's photos stored in HomeBox,
+// which are still on the original's item, on its own item too.
+func (s *Server) copyHomeBoxPhotos(ctx context.Context, hb *homebox.Client, uid int64, wr *store.Warranty, itemID string) error {
+	defer s.lockPhotos(wr.ID)()
+	defer s.lockPhotos("item:" + itemID)()
+	for _, a := range wr.Attachments {
+		if a.Kind != "photo" || a.Storage != store.StorageHomeBox || a.HomeBoxItem == itemID {
+			continue
+		}
+		// Read through the key of whoever stored it, as it's shown.
+		src, err := s.attachmentHomeBox(ctx, &a, uid)
+		if err != nil {
+			return err
+		}
+		if src == nil {
+			src = hb
+		}
+		res, err := src.OpenAttachment(ctx, a.HomeBoxItem, a.HomeBoxAttachment)
+		if err != nil {
+			return err
+		}
+		item, err := hb.Get(ctx, itemID)
+		if err != nil {
+			res.Body.Close()
+			return err
+		}
+		id, err := hb.UploadPhoto(ctx, item, a.Filename, a.MimeType, res.Body, !item.HasPrimaryPhoto())
+		res.Body.Close()
+		if err != nil {
+			return err
+		}
+		if err := s.store.MovedInHomeBox(ctx, a.ID, itemID, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
