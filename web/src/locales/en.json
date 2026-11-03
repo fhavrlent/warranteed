@@ -587,6 +587,10 @@
     "claimResolved": "The date resolved must be a valid date",
     "claimResolvedBefore": "A claim can’t be resolved before it was reported",
     "claimNotFound": "That claim isn’t on this warranty",
+    "splitDraft": "Confirm the draft before splitting it",
+    "splitPieces": "You can split off 1 to {{max}} pieces",
+    "splitSerial": "A serial number to move isn’t on this warranty",
+    "splitFiles": "Couldn’t copy the warranty’s files",
     "quantity": "Quantity must be a whole number from 1 to {{max}}",
     "endDate": "Warranty end date must be a valid date",
     "endBeforePurchase": "Warranty cannot end before the purchase date",
@@ -698,5 +702,23 @@
     },
     "homeboxName": "Warranty claim: {{title}}",
     "homeboxCase": "Case number: {{number}}"
+  },
+  "split": {
+    "menu": "Split off pieces",
+    "title": "Split off pieces",
+    "description_one": "This warranty covers {{count}} piece.",
+    "description_other": "This warranty covers {{count}} pieces. Move some to a warranty of their own, for example when you sell or lend one, so each can be archived, voided or claimed on by itself.",
+    "pieces": "Pieces to split off",
+    "piecesRange": "Enter a whole number from 1 to {{max}}",
+    "left_one": "{{count}} piece stays on this warranty.",
+    "left_other": "{{count}} pieces stay on this warranty.",
+    "serials": "Serial numbers that go with them",
+    "homebox": "Split the HomeBox item too",
+    "homeboxHint": "Adds an item for the new warranty next to this one, and lowers this item’s quantity.",
+    "copies": "The new warranty gets the same purchase and coverage details, tags and documents. Claims stay here.",
+    "confirm": "Split off",
+    "done_one": "{{count}} piece moved to a new warranty",
+    "done_other": "{{count}} pieces moved to a new warranty",
+    "homeboxFailed": "The warranty was split, but not the HomeBox item: {{error}}"
   }
 }

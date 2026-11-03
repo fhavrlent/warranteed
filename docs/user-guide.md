@@ -105,6 +105,7 @@ When something breaks, **Add claim** under **Claims** on the warranty records wh
 
 A claim's menu adds documents to it, such as the shop's letter, photos of the defect or the repair report. They're stored like other documents, in Paperless if that's your default, and also appear among the warranty's documents. Deleting a claim keeps its documents on the warranty.
 
+## HomeBox
 
 With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's *Profile → API keys*), a warranty can be part of your inventory:
 
@@ -113,6 +114,7 @@ With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's
 - **Product photos** are copied to the item, both when adding and when linking, and so are photos you add to the warranty later. The first becomes the item's main photo unless it already has one. Each photo is copied once; deleting it in Warranteed leaves it in HomeBox. Receipts and other documents stay links to Paperless.
 - **Photos stored in HomeBox:** on a linked warranty, **Photo** asks where to store new photos. **HomeBox** puts them only on the item, and Warranteed shows them from there, so there's one copy. **Store product photos in HomeBox by default** in Settings makes HomeBox the default. Removing such a photo here leaves it on the item. The household sees it through the HomeBox key of whoever added it, so it stops showing if that key expires.
 - The warranty then shows the item's asset ID, the number printed on HomeBox labels, and a link to open it in HomeBox.
+- **Split off pieces** can add an item for the split-off warranty next to the original and lower the original's quantity, instead of you duplicating the item in HomeBox.
 - **Claims** are added to the item's maintenance log, with when they were reported and resolved, the cost, and the status and notes in the description. Changing or deleting a claim changes or removes its entry; claims made before linking are added when you link.
 - **Unlink** makes the warranty forget the item. The item stays in HomeBox, with any claim entries.
 
@@ -131,6 +133,8 @@ Under **Settings → Calendar**, **Create calendar link** gives you a private li
 Anyone with the link can see your warranty end dates. **Get a new link** replaces it, and the old one stops working; **Turn off** removes it.
 
 ## Void, archiving and deleting
+
+**Split off pieces** is for a warranty that covers several pieces whose paths part, for example when you sell one and lend another. It moves the pieces you choose, with their serial numbers, to a new warranty with the same purchase and coverage details, tags and documents, so each can be archived, voided or claimed on by itself. Claims stay with the original. On a warranty linked to HomeBox it can split the item too: the new warranty gets its own item in the same place, and the original item's quantity goes down.
 
 **Mark as void** is for a warranty that no longer applies though it hasn't expired, for example after a drop, a repair somewhere else or a broken seal, while you still have the product. You can say why. A void warranty sends no reminders and doesn't count towards the covered value; it's under the **Void** filter, with the reason at the top of its page, and **Make valid again** undoes it.
 

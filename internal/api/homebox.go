@@ -218,22 +218,46 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		homeboxFail(w, err)
 		return
 	}
-	// Link first: from here on the item exists, even if filling it in fails.
-	if err := s.store.SetHomeBox(r.Context(), uid, id, &store.HomeBoxLink{ID: item.ID, AssetID: item.AssetID}); err != nil {
+	if err := s.joinHomeBoxItem(r.Context(), ctx, uid, st, hb, wr, item, existing); err != nil {
+		var ve *store.ValidationError
+		if errors.Is(err, store.ErrNotFound) || errors.As(err, &ve) {
+			fail(w, err)
+		} else {
+			homeboxFail(w, err)
+		}
+		return
+	}
+
+	wr, err = s.store.GetWarranty(r.Context(), uid, id)
+	if err != nil {
 		fail(w, err)
 		return
 	}
+	writeJSON(w, 200, wr)
+}
+
+// joinHomeBoxItem links the warranty to item, then fills in its purchase and
+// warranty details, adds links back to the warranty and its receipts in
+// Paperless, and copies its photos and claims. existing says the item was
+// already in HomeBox, so only its empty fields are filled in. reqCtx is the
+// request's, ctx the one HomeBox calls are limited by.
+func (s *Server) joinHomeBoxItem(reqCtx, ctx context.Context, uid int64, st *store.Settings, hb *homebox.Client,
+	wr *store.Warranty, item *homebox.Item, existing bool) error {
+	id := wr.ID
+	// Link first: from here on the item exists, even if filling it in fails.
+	if err := s.store.SetHomeBox(reqCtx, uid, id, &store.HomeBoxLink{ID: item.ID, AssetID: item.AssetID}); err != nil {
+		return err
+	}
 	// Once the item is filled in, so the two updates don't overlap.
-	defer s.syncWarrantyBacklinksLater(r.Context(), id)
+	defer s.syncWarrantyBacklinksLater(reqCtx, id)
 
 	lang := st.EffectiveLanguage()
 	// Taking turns with other changes to the item, such as receipts' values.
 	unlock := s.lockPhotos("item:" + item.ID)
-	item, err = hb.Update(ctx, item.ID, func(it *homebox.Item) { fillHomeBoxItem(it, wr, st, existing) })
+	item, err := hb.Update(ctx, item.ID, func(it *homebox.Item) { fillHomeBoxItem(it, wr, st, existing) })
 	unlock()
 	if err != nil {
-		homeboxFail(w, err)
-		return
+		return err
 	}
 	have := map[string]bool{}
 	for _, a := range item.Attachments {
@@ -258,9 +282,8 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 		}
 		web, ok := webURLs[owner]
 		if !ok {
-			if web, err = s.userPaperlessWebURL(r.Context(), owner); err != nil {
-				fail(w, err)
-				return
+			if web, err = s.userPaperlessWebURL(reqCtx, owner); err != nil {
+				return err
 			}
 			webURLs[owner] = web
 		}
@@ -278,28 +301,20 @@ func (s *Server) linkHomeBox(w http.ResponseWriter, r *http.Request,
 			continue
 		}
 		if err := hb.AddLink(ctx, item.ID, l.url, l.title, l.kind); err != nil {
-			homeboxFail(w, err)
-			return
+			return err
 		}
 	}
-	photoCtx, cancelPhotos := context.WithTimeout(r.Context(), 2*time.Minute)
+	photoCtx, cancelPhotos := context.WithTimeout(reqCtx, 2*time.Minute)
 	defer cancelPhotos()
 	if err := s.sendHomeBoxPhotos(photoCtx, hb, uid, id); err != nil {
-		homeboxFail(w, err)
-		return
+		return err
 	}
 	// The item is linked either way; a claim that didn't make it is copied
 	// again when it's next changed.
 	if err := s.syncClaims(photoCtx, uid, id); err != nil {
 		slog.Warn("copy claims to homebox", "warranty", id, "err", err)
 	}
-
-	wr, err = s.store.GetWarranty(r.Context(), uid, id)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	writeJSON(w, 200, wr)
+	return nil
 }
 
 // sendHomeBoxPhotos uploads the warranty's product photos that its HomeBox

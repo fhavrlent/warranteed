@@ -83,6 +83,13 @@ func (s *Store) SentToHomeBox(ctx context.Context, id int64, itemID string) erro
 	return err
 }
 
+// MovedInHomeBox records that a photo stored in HomeBox is now on another item.
+func (s *Store) MovedInHomeBox(ctx context.Context, id int64, itemID, attachmentID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET homebox_item = ?, homebox_attachment = ? WHERE id = ?`,
+		itemID, attachmentID, id)
+	return err
+}
+
 func (s *Store) DeleteAttachment(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE id = ?`, id)
 	return err

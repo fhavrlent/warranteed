@@ -216,6 +216,10 @@ type Item struct {
 	LifetimeWarranty bool         `json:"lifetimeWarranty"`
 	Fields           []Field      `json:"fields"`
 	Attachments      []Attachment `json:"attachments"`
+	// Parent is the location or item this item is in, if any.
+	Parent *struct {
+		ID string `json:"id"`
+	} `json:"parent,omitempty"`
 }
 
 // Field is a custom field on an item.
