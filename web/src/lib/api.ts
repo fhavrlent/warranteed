@@ -339,6 +339,9 @@ export const api = {
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
   deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
   confirmWarranty: (id: number) => request<Warranty>("POST", `/api/warranties/${id}/confirm`),
+  /** Moves pieces to a new warranty; with homebox, a linked item is split too. */
+  splitWarranty: (id: number, input: { pieces: number; serialNumbers: string[]; homebox: boolean }) =>
+    request<{ warranty: Warranty; homeboxError?: string }>("POST", `/api/warranties/${id}/split`, input),
   setVoid: (id: number, isVoid: boolean, reason = "") =>
     request<Warranty>("POST", `/api/warranties/${id}/${isVoid ? "void" : "unvoid"}`, isVoid ? { reason } : undefined),
   archive: (id: number, archived: boolean) =>

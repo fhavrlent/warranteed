@@ -9,6 +9,7 @@ import {
   Lock,
   MoreHorizontal,
   Pencil,
+  Scissors,
   ShieldCheck,
   Trash2,
   Users,
@@ -22,6 +23,7 @@ import { ClaimsPanel } from "@/components/Claims";
 import { HomeBoxCard } from "@/components/HomeBox";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
+import { SplitDialog } from "@/components/SplitDialog";
 import { VoidDialog } from "@/components/VoidDialog";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -42,6 +44,7 @@ export const WarrantyDetail = () => {
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const [splitting, setSplitting] = useState(false);
   const invalidate = useInvalidate();
   const navigate = useNavigate();
   const { sharing, household, personal } = useSharing();
@@ -242,6 +245,11 @@ export const WarrantyDetail = () => {
                     </Button>
                   </MenuTrigger>
                   <MenuContent>
+                    {!w.draft && w.quantity > 1 && (
+                      <MenuItem icon={<Scissors />} onSelect={() => setSplitting(true)}>
+                        {t("split.menu")}
+                      </MenuItem>
+                    )}
                     {!w.draft &&
                       (w.voidedAt ? (
                         <MenuItem icon={<ShieldCheck />} onSelect={() => void unvoid()}>
@@ -376,6 +384,7 @@ export const WarrantyDetail = () => {
 
       <WarrantyForm open={editing} onOpenChange={setEditing} warranty={w} />
       {voiding && <VoidDialog w={w} onOpenChange={setVoiding} />}
+      {splitting && <SplitDialog w={w} onClose={() => setSplitting(false)} />}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}

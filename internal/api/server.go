@@ -95,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/warranties/{id}/confirm", s.confirmWarranty)
 	api.HandleFunc("POST /api/warranties/{id}/archive", s.archiveWarranty(true))
 	api.HandleFunc("POST /api/warranties/{id}/unarchive", s.archiveWarranty(false))
+	api.HandleFunc("POST /api/warranties/{id}/split", s.splitWarranty)
 	api.HandleFunc("POST /api/warranties/{id}/void", s.voidWarranty(true))
 	api.HandleFunc("POST /api/warranties/{id}/unvoid", s.voidWarranty(false))
 	api.HandleFunc("POST /api/warranties/{id}/attachments", s.uploadAttachment)
