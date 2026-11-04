@@ -107,6 +107,14 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/attachments/{id}", s.deleteAttachment)
 	api.HandleFunc("POST /api/attachments/{id}/retry", s.retryAttachment)
 
+	api.HandleFunc("POST /api/settings/wherehouse/connect", s.connectWherehouse)
+	api.HandleFunc("DELETE /api/settings/wherehouse", s.disconnectWherehouse)
+	api.HandleFunc("GET /api/wherehouse/places", s.wherehousePlaces)
+	api.HandleFunc("GET /api/wherehouse/search", s.searchWherehouse)
+	api.HandleFunc("POST /api/warranties/{id}/wherehouse", s.addToWherehouse)
+	api.HandleFunc("PUT /api/warranties/{id}/wherehouse", s.linkWherehouseThing)
+	api.HandleFunc("DELETE /api/warranties/{id}/wherehouse", s.unlinkWherehouse)
+
 	api.HandleFunc("POST /api/warranties/{id}/homebox", s.createHomeBoxItem)
 	api.HandleFunc("PUT /api/warranties/{id}/homebox", s.linkHomeBoxItem)
 	api.HandleFunc("DELETE /api/warranties/{id}/homebox", s.unlinkHomeBox)
@@ -135,6 +143,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/export.csv", s.exportCSV)
 	api.HandleFunc("POST /api/import", s.importCSV)
 
+	mux.Handle("GET /wherehouse/callback", s.auth.Middleware(http.HandlerFunc(s.wherehouseCallback)))
 	mux.Handle("/api/", s.auth.Middleware(api))
 	mux.Handle("/", s.spa())
 

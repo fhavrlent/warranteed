@@ -1,0 +1,558 @@
+package api
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/fhavrlent/warranteed/internal/i18n"
+	"github.com/fhavrlent/warranteed/internal/store"
+	"github.com/fhavrlent/warranteed/internal/wherehouse"
+)
+
+// wherehouseFor returns a Wherehouse client with the person's token, or nil
+// when Wherehouse isn't set up here or they haven't connected.
+func (s *Server) wherehouseFor(st *store.Settings) *wherehouse.Client {
+	if s.cfg.Wherehouse.URL == "" || st.WherehouseToken == "" {
+		return nil
+	}
+	return wherehouse.New(s.cfg.Wherehouse.URL, st.WherehouseToken)
+}
+
+// wherehouseFail reports an error from Wherehouse: a token it no longer
+// takes or a thing that's gone in the reader's language, anything else as
+// Wherehouse put it.
+func wherehouseFail(w http.ResponseWriter, err error) {
+	var we *wherehouse.Error
+	switch {
+	case errors.As(err, &we) && we.Unauthorized():
+		writeMsg(w, http.StatusBadGateway, "server.wherehouseTokenRejected", nil)
+	case errors.As(err, &we) && we.NotFound():
+		writeMsg(w, http.StatusNotFound, "server.wherehouseThingGone", nil)
+	default:
+		writeErr(w, http.StatusBadGateway, err)
+	}
+}
+
+func (s *Server) userWherehouse(w http.ResponseWriter, r *http.Request) (*store.Settings, *wherehouse.Client) {
+	st, err := s.store.Settings(r.Context(), userID(r))
+	if err != nil {
+		fail(w, err)
+		return nil, nil
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		writeMsg(w, http.StatusBadRequest, "server.wherehouseNotConnected", nil)
+		return nil, nil
+	}
+	return st, wh
+}
+
+// ---- connecting ----
+
+const wherehouseStateCookie = "warranteed_wherehouse_state"
+
+func (s *Server) wherehouseCallbackURL() string {
+	return strings.TrimSuffix(s.cfg.AppURL.String(), "/") + "/wherehouse/callback"
+}
+
+// connectWherehouse answers where to send the browser to connect: Wherehouse's
+// page where the person allows Warranteed.
+func (s *Server) connectWherehouse(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Wherehouse.URL == "" {
+		writeMsg(w, http.StatusBadRequest, "server.wherehouseNotConfigured", nil)
+		return
+	}
+	b := make([]byte, 16)
+	rand.Read(b)
+	state := hex.EncodeToString(b)
+	http.SetCookie(w, &http.Cookie{Name: wherehouseStateCookie, Value: state, Path: "/wherehouse/", MaxAge: 600,
+		HttpOnly: true, Secure: s.cfg.Secure(), SameSite: http.SameSiteLaxMode})
+	writeJSON(w, 200, map[string]string{"url": wherehouse.ConnectURL(s.cfg.Wherehouse.PublicURL, s.wherehouseCallbackURL(), state)})
+}
+
+// wherehouseCallback is where Wherehouse sends the browser back with a code,
+// which is swapped for the person's token.
+func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
+	done := func(result string) {
+		http.SetCookie(w, &http.Cookie{Name: wherehouseStateCookie, Path: "/wherehouse/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.Secure()})
+		http.Redirect(w, r, "/settings?wherehouse="+result+"#wherehouse", http.StatusSeeOther)
+	}
+	q := r.URL.Query()
+	c, err := r.Cookie(wherehouseStateCookie)
+	if err != nil || c.Value == "" || c.Value != q.Get("state") {
+		done("state")
+		return
+	}
+	if q.Get("error") != "" || q.Get("code") == "" {
+		done("denied")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	got, err := wherehouse.New(s.cfg.Wherehouse.URL, "").Exchange(ctx, q.Get("code"), s.wherehouseCallbackURL())
+	if err != nil {
+		slog.Warn("wherehouse connect", "err", err)
+		done("failed")
+		return
+	}
+	if err := s.store.SetWherehouseConnection(r.Context(), userID(r), got.Token, got.Household.Name); err != nil {
+		fail(w, err)
+		return
+	}
+	done("connected")
+}
+
+// disconnectWherehouse forgets the person's connection. Links to things stay,
+// for whenever someone connects again.
+func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.SetWherehouseConnection(r.Context(), userID(r), "", ""); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- finding things ----
+
+type wherehouseThing struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Label string `json:"label"`
+	// Path is where it is, e.g. "House › Garage".
+	Path    string `json:"path"`
+	IsPlace bool   `json:"isPlace"`
+}
+
+func toWherehouseThings(list []wherehouse.Thing) []wherehouseThing {
+	out := make([]wherehouseThing, 0, len(list))
+	for _, t := range list {
+		out = append(out, wherehouseThing{ID: t.ID, Name: t.Name, Label: t.Label, Path: t.PathText(),
+			IsPlace: t.Kind.IsPlace || t.Contains > 0})
+	}
+	return out
+}
+
+func (s *Server) wherehousePlaces(w http.ResponseWriter, r *http.Request) {
+	_, wh := s.userWherehouse(w, r)
+	if wh == nil {
+		return
+	}
+	list, err := wh.Places(r.Context())
+	if err != nil {
+		wherehouseFail(w, err)
+		return
+	}
+	writeJSON(w, 200, toWherehouseThings(list))
+}
+
+func (s *Server) searchWherehouse(w http.ResponseWriter, r *http.Request) {
+	_, wh := s.userWherehouse(w, r)
+	if wh == nil {
+		return
+	}
+	list, err := wh.Search(r.Context(), strings.TrimSpace(r.URL.Query().Get("q")))
+	if err != nil {
+		wherehouseFail(w, err)
+		return
+	}
+	writeJSON(w, 200, toWherehouseThings(list))
+}
+
+// ---- linking ----
+
+// addToWherehouse makes a thing for the warranty's product in Wherehouse,
+// inside parentId (null: not put anywhere yet), and links them.
+func (s *Server) addToWherehouse(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ParentID *int64 `json:"parentId"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	s.linkWherehouse(w, r, func(ctx context.Context, wh *wherehouse.Client, wr *store.Warranty) (int64, error) {
+		t, err := wh.Create(ctx, newThing(wr, in.ParentID))
+		if err != nil {
+			return 0, err
+		}
+		return t.ID, nil
+	})
+}
+
+// linkWherehouseThing links the warranty to a thing already in Wherehouse.
+func (s *Server) linkWherehouseThing(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ThingID int64 `json:"thingId"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.ThingID <= 0 {
+		writeMsg(w, http.StatusBadRequest, "server.wherehouseNeedsThing", nil)
+		return
+	}
+	s.linkWherehouse(w, r, func(context.Context, *wherehouse.Client, *store.Warranty) (int64, error) { return in.ThingID, nil })
+}
+
+func newThing(wr *store.Warranty, parent *int64) wherehouse.NewThing {
+	t := wherehouse.NewThing{ParentID: parent, Name: displayName(wr), Quantity: max(wr.Quantity, 1),
+		Manufacturer: wr.Brand, Model: wr.Model}
+	if len(wr.SerialNumbers) > 0 {
+		t.Serial = wr.SerialNumbers[0]
+	}
+	return t
+}
+
+func (s *Server) linkWherehouse(w http.ResponseWriter, r *http.Request,
+	pick func(context.Context, *wherehouse.Client, *store.Warranty) (int64, error)) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, busy := s.homeboxBusy.LoadOrStore("wh:"+strconv.FormatInt(id, 10), true); busy {
+		writeMsg(w, http.StatusConflict, "server.homeboxBusy", nil)
+		return
+	}
+	defer s.homeboxBusy.Delete("wh:" + strconv.FormatInt(id, 10))
+	uid := userID(r)
+	st, wh := s.userWherehouse(w, r)
+	if wh == nil {
+		return
+	}
+	wr, err := s.store.GetWarranty(r.Context(), uid, id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if wr.Wherehouse != nil {
+		writeMsg(w, http.StatusConflict, "server.wherehouseAlreadyLinked", nil)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+	defer cancel()
+	thing, err := pick(ctx, wh, wr)
+	if err != nil {
+		wherehouseFail(w, err)
+		return
+	}
+	if err := s.joinWherehouse(ctx, uid, st, wh, wr, thing); err != nil {
+		var ve *store.ValidationError
+		if errors.Is(err, store.ErrNotFound) || errors.As(err, &ve) {
+			fail(w, err)
+		} else {
+			wherehouseFail(w, err)
+		}
+		return
+	}
+	if wr, err = s.store.GetWarranty(r.Context(), uid, id); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, 200, wr)
+}
+
+// joinWherehouse links a warranty to a thing: the thing gets its purchase and
+// warranty details, which Warranteed keeps from then on, the warranty's
+// photos if it has none, and its claims in the maintenance log.
+func (s *Server) joinWherehouse(ctx context.Context, uid int64, st *store.Settings, wh *wherehouse.Client,
+	wr *store.Warranty, thing int64) error {
+	t, err := wh.SetLink(ctx, thing, s.wherehouseLink(wr, st))
+	if err != nil {
+		return err
+	}
+	if err := s.store.SetWherehouse(ctx, uid, wr.ID, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()}); err != nil {
+		return err
+	}
+	if len(t.Photos) == 0 {
+		for _, a := range wr.Attachments {
+			if a.Kind != "photo" || a.Storage != store.StorageLocal {
+				continue
+			}
+			f, err := s.files.Open(a.LocalPath)
+			if err != nil {
+				continue
+			}
+			err = wh.UploadPhoto(ctx, t.ID, a.Filename, a.MimeType, f)
+			f.Close()
+			if err != nil {
+				slog.Warn("photo to wherehouse", "warranty", wr.ID, "err", err)
+			}
+		}
+	}
+	ids, err := s.store.ClaimIDs(ctx, wr.ID)
+	if err != nil {
+		return err
+	}
+	for _, c := range ids {
+		if err := s.syncWherehouseClaim(ctx, uid, c); err != nil {
+			slog.Warn("claim to wherehouse", "claim", c, "err", err)
+		}
+	}
+	return nil
+}
+
+// wherehouseLink is what a linked thing is told of its warranty.
+func (s *Server) wherehouseLink(wr *store.Warranty, st *store.Settings) wherehouse.Link {
+	lang := st.EffectiveLanguage()
+	p := &wherehouse.Purchase{
+		PurchasePrice:    wr.Price,
+		PurchaseFrom:     wr.Vendor,
+		Currency:         strings.ToUpper(wr.Currency),
+		LifetimeWarranty: wr.IsLifetime,
+		WarrantyDetails:  warrantyDetails(wr, st),
+	}
+	if wr.PurchaseDate != "" {
+		d := wr.PurchaseDate
+		p.PurchaseDate = &d
+	}
+	if !wr.IsLifetime && wr.ExpiresOn != nil {
+		d := *wr.ExpiresOn
+		p.WarrantyUntil = &d
+	}
+	title := i18n.T(lang, "server.wherehouseTitle", nil)
+	switch {
+	case wr.VoidedAt != nil:
+		title = i18n.T(lang, "server.wherehouseTitleVoid", nil)
+	case wr.IsLifetime:
+		title = i18n.T(lang, "server.wherehouseTitleLifetime", nil)
+	case wr.ExpiresOn != nil:
+		title = i18n.T(lang, "server.wherehouseTitleUntil", i18n.Args{"date": *wr.ExpiresOn})
+	}
+	return wherehouse.Link{
+		ExternalID: strconv.FormatInt(wr.ID, 10),
+		URL:        fmt.Sprintf("%s/w/%d", strings.TrimSuffix(s.cfg.AppURL.String(), "/"), wr.ID),
+		Title:      title,
+		Purchase:   p,
+	}
+}
+
+// wherehouseClients are the Wherehouse connections to update a warranty's
+// thing with: the person's first, then those of others who can see it.
+func (s *Server) wherehouseClients(ctx context.Context, uid, warrantyID int64) ([]*wherehouse.Client, *store.Settings, error) {
+	users := []int64{uid}
+	others, err := s.store.WherehouseUsers(ctx, warrantyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, id := range others {
+		if !slices.Contains(users, id) {
+			users = append(users, id)
+		}
+	}
+	var out []*wherehouse.Client
+	var first *store.Settings
+	for _, u := range users {
+		st, err := s.store.Settings(ctx, u)
+		if err != nil {
+			return nil, nil, err
+		}
+		if first == nil {
+			first = st
+		}
+		if c := s.wherehouseFor(st); c != nil {
+			out = append(out, c)
+		}
+	}
+	return out, first, nil
+}
+
+// pushWherehouseLater sends a linked warranty's changed details to its thing.
+func (s *Server) pushWherehouseLater(uid, warrantyID int64) {
+	s.inBackground("update wherehouse", func(ctx context.Context) error {
+		wr, err := s.store.GetWarranty(ctx, uid, warrantyID)
+		if err != nil || wr.Wherehouse == nil {
+			return err
+		}
+		clients, st, err := s.wherehouseClients(ctx, uid, warrantyID)
+		if err != nil {
+			return err
+		}
+		for _, wh := range clients {
+			if _, err = wh.SetLink(ctx, wr.Wherehouse.Thing, s.wherehouseLink(wr, st)); err == nil {
+				return nil
+			}
+		}
+		return err
+	})
+}
+
+func (s *Server) unlinkWherehouse(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	uid := userID(r)
+	wr, err := s.store.GetWarranty(r.Context(), uid, id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if wr.Wherehouse == nil {
+		writeJSON(w, 200, wr)
+		return
+	}
+	// The thing there keeps its details, which become Wherehouse's own.
+	if clients, _, err := s.wherehouseClients(r.Context(), uid, id); err == nil {
+		for _, wh := range clients {
+			var we *wherehouse.Error
+			if err := wh.RemoveLink(r.Context(), wr.Wherehouse.Thing); err == nil || (errors.As(err, &we) && we.NotFound()) {
+				break
+			}
+		}
+	}
+	if err := s.store.SetWherehouse(r.Context(), uid, id, nil); err != nil {
+		fail(w, err)
+		return
+	}
+	if wr, err = s.store.GetWarranty(r.Context(), uid, id); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, 200, wr)
+}
+
+// ---- claims ----
+
+// syncWherehouseClaim writes a claim to its warranty's thing: a new entry in
+// the maintenance log, or the one it has, written over.
+func (s *Server) syncWherehouseClaim(ctx context.Context, uid, claimID int64) error {
+	defer s.lockPhotos(claimKey(claimID) + ":wh")()
+	entry, thing, err := s.store.ClaimWherehouse(ctx, claimID)
+	if errors.Is(err, store.ErrNotFound) || thing == nil {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	c, _, err := s.store.ClaimSync(ctx, claimID)
+	if err != nil {
+		return err
+	}
+	clients, st, err := s.wherehouseClients(ctx, uid, c.WarrantyID)
+	if err != nil {
+		return err
+	}
+	m := s.claimMaintenance(c, st)
+	err = errors.New("no wherehouse connection")
+	for _, wh := range clients {
+		if entry != nil {
+			if err = wh.UpdateMaintenance(ctx, *entry, m); err == nil {
+				return nil
+			}
+			var we *wherehouse.Error
+			if !errors.As(err, &we) || !we.NotFound() {
+				continue
+			}
+		}
+		var id int64
+		if id, err = wh.AddMaintenance(ctx, *thing, m); err != nil {
+			continue
+		}
+		saved, err := s.store.SetClaimWherehouseEntry(ctx, claimID, *thing, id)
+		if err != nil || saved {
+			return err
+		}
+		return wh.DeleteMaintenance(ctx, id)
+	}
+	return err
+}
+
+// claimMaintenance is how a claim reads in Wherehouse's maintenance log.
+func (s *Server) claimMaintenance(c *store.Claim, st *store.Settings) wherehouse.Maintenance {
+	e := s.claimEntry(c, st)
+	m := wherehouse.Maintenance{Title: e.Name, Notes: e.Description, Cost: c.Cost}
+	if c.ResolvedOn != nil {
+		m.DoneOn = c.ResolvedOn
+	} else {
+		reported := c.ReportedOn
+		m.DoneOn = &reported
+	}
+	return m
+}
+
+// ---- keeping in step ----
+
+// SyncWherehouse reads each connected person's Wherehouse changes every few
+// minutes: where linked things are now, and which were sold, archived or
+// deleted there. A sold or archived thing archives its warranty; a deleted
+// one is unlinked.
+func (s *Server) SyncWherehouse(ctx context.Context) {
+	if s.cfg.Wherehouse.URL == "" {
+		return
+	}
+	tick := time.NewTicker(10 * time.Minute)
+	defer tick.Stop()
+	for {
+		users, err := s.store.WherehouseConnected(ctx)
+		if err != nil {
+			slog.Warn("wherehouse sync", "err", err)
+		}
+		for _, uid := range users {
+			if err := s.syncWherehouseUser(ctx, uid); err != nil {
+				slog.Warn("wherehouse sync", "user", uid, "err", err)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		return err
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		return nil
+	}
+	cctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	ch, err := wh.Changes(cctx, st.WherehouseSince)
+	if err != nil {
+		return err
+	}
+	for _, t := range ch.Things {
+		ids, err := s.store.LinkedToThing(ctx, uid, t.ID)
+		if err != nil {
+			return err
+		}
+		for _, wid := range ids {
+			if err := s.store.SetWherehouseSeen(ctx, wid, t.Label, t.PathText()); err != nil {
+				return err
+			}
+			if t.SoldDate != nil || t.ArchivedAt != nil {
+				wr, err := s.store.GetWarranty(ctx, uid, wid)
+				if err == nil && wr.ArchivedAt == nil && !wr.Draft {
+					if err := s.store.SetArchived(ctx, uid, wid, true); err != nil {
+						return err
+					}
+					slog.Info("warranty archived: its thing was sold or archived in Wherehouse", "warranty", wid)
+				}
+			}
+		}
+	}
+	for _, thing := range ch.Deleted {
+		ids, err := s.store.LinkedToThing(ctx, uid, thing)
+		if err != nil {
+			return err
+		}
+		for _, wid := range ids {
+			if err := s.store.SetWherehouse(ctx, uid, wid, nil); err != nil {
+				return err
+			}
+		}
+	}
+	return s.store.SetWherehouseSince(ctx, uid, ch.Until)
+}

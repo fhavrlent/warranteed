@@ -515,6 +515,13 @@
       "problems_one": "{{count}} with problems",
       "problems_other": "{{count}} with problems",
       "row": "Row {{row}}: {{message}}"
+    },
+    "wherehouse": {
+      "description": "Keep warranted products in your Wherehouse inventory: where they are, with their warranty. Selling or archiving a thing there archives its warranty here.",
+      "connected": "Connected to the household “{{household}}”",
+      "connect": "Connect to Wherehouse",
+      "connectedToast": "Connected to Wherehouse",
+      "failed": "Couldn’t connect to Wherehouse. Try again."
     }
   },
   "errors": {
@@ -624,7 +631,17 @@
     "draftExtensionUnnamed_one": "Includes {{count}} month of extended warranty bought with it",
     "draftExtensionUnnamed_other": "Includes {{count}} months of extended warranty bought with it",
     "warrantyStart": "Choose which date warranties count from",
-    "draftItems": "Choose which products get drafts"
+    "draftItems": "Choose which products get drafts",
+    "wherehouseTokenRejected": "Wherehouse no longer accepts your connection. Connect again in Settings.",
+    "wherehouseThingGone": "That thing no longer exists in Wherehouse",
+    "wherehouseNotConnected": "Connect to Wherehouse in Settings first",
+    "wherehouseNotConfigured": "Wherehouse isn’t set up on this server; set WHEREHOUSE_URL",
+    "wherehouseNeedsThing": "Pick a thing",
+    "wherehouseAlreadyLinked": "This warranty is already on a thing in Wherehouse",
+    "wherehouseTitle": "Warranty",
+    "wherehouseTitleVoid": "Warranty void",
+    "wherehouseTitleLifetime": "Lifetime warranty",
+    "wherehouseTitleUntil": "Warranty until {{date}}"
   },
   "signIn": {
     "unreachable": "Could not reach the identity provider. Try again in a moment.",
@@ -720,5 +737,31 @@
     "done_one": "{{count}} piece moved to a new warranty",
     "done_other": "{{count}} pieces moved to a new warranty",
     "homeboxFailed": "The warranty was split, but not the HomeBox item: {{error}}"
+  },
+  "wherehouse": {
+    "where": "Where",
+    "nowhere": "Not put anywhere yet",
+    "label": "Label",
+    "open": "Open in Wherehouse",
+    "unlink": "Unlink",
+    "add": "Add to Wherehouse",
+    "linkExisting": "Link existing thing",
+    "connectHint": "Connect to Wherehouse to keep this in your inventory:",
+    "unlinked": "Unlinked from Wherehouse",
+    "unlinkTitle": "Unlink from Wherehouse?",
+    "unlinkText": "The thing stays in Wherehouse with its details, which can then be changed there.",
+    "created": "Added to Wherehouse",
+    "addTitle": "Add to Wherehouse",
+    "addDescription": "The product becomes a thing in Wherehouse with its purchase and warranty, photos and claims. Warranteed keeps those up to date.",
+    "place": "Put it in",
+    "noPlace": "Nowhere yet (put it away later)",
+    "create": "Add",
+    "linked": "Linked to Wherehouse",
+    "linkTitle": "Link a thing in Wherehouse",
+    "linkDescription": "Its purchase and warranty details are then kept by Warranteed.",
+    "linkButton": "Link",
+    "search": "Search Wherehouse",
+    "noResults": "Nothing found",
+    "addOnConfirm": "Add to Wherehouse"
   }
 }

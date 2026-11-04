@@ -565,6 +565,13 @@
       "problems_many": "{{count}} s problémy",
       "problems_other": "{{count}} s problémy",
       "row": "Řádek {{row}}: {{message}}"
+    },
+    "wherehouse": {
+      "description": "Mějte výrobky se zárukou i v inventáři Wherehouse: kde jsou a s jakou zárukou. Prodej nebo archivace věci tam archivuje její záruku tady.",
+      "connected": "Připojeno k domácnosti „{{household}}“",
+      "connect": "Připojit Wherehouse",
+      "connectedToast": "Wherehouse připojen",
+      "failed": "Wherehouse se nepodařilo připojit. Zkuste to znovu."
     }
   },
   "errors": {
@@ -678,7 +685,17 @@
     "draftExtensionUnnamed_many": "Včetně {{count}} měsíce prodloužené záruky koupené spolu s produktem",
     "draftExtensionUnnamed_other": "Včetně {{count}} měsíců prodloužené záruky koupené spolu s produktem",
     "warrantyStart": "Vyberte, od kterého data se záruka počítá",
-    "draftItems": "Vyberte, pro které produkty vytvářet koncepty"
+    "draftItems": "Vyberte, pro které produkty vytvářet koncepty",
+    "wherehouseTokenRejected": "Wherehouse už vaše připojení nepřijímá. Připojte se znovu v Nastavení.",
+    "wherehouseThingGone": "Ta věc ve Wherehouse už neexistuje",
+    "wherehouseNotConnected": "Nejdřív se připojte k Wherehouse v Nastavení",
+    "wherehouseNotConfigured": "Wherehouse není na serveru nastavený; nastavte WHEREHOUSE_URL",
+    "wherehouseNeedsThing": "Vyberte věc",
+    "wherehouseAlreadyLinked": "Tahle záruka už je u věci ve Wherehouse",
+    "wherehouseTitle": "Záruka",
+    "wherehouseTitleVoid": "Záruka neplatná",
+    "wherehouseTitleLifetime": "Doživotní záruka",
+    "wherehouseTitleUntil": "Záruka do {{date}}"
   },
   "signIn": {
     "unreachable": "Poskytovatel identity není dostupný. Zkuste to za chvíli znovu.",
@@ -784,5 +801,31 @@
     "done_many": "{{count}} kusu přesunuto do nové záruky",
     "done_other": "{{count}} kusů přesunuto do nové záruky",
     "homeboxFailed": "Záruka je rozdělená, ale položka v HomeBoxu ne: {{error}}"
+  },
+  "wherehouse": {
+    "where": "Kde",
+    "nowhere": "Zatím nikde",
+    "label": "Štítek",
+    "open": "Otevřít ve Wherehouse",
+    "unlink": "Odpojit",
+    "add": "Přidat do Wherehouse",
+    "linkExisting": "Propojit s existující věcí",
+    "connectHint": "Připojte Wherehouse a mějte to i v inventáři:",
+    "unlinked": "Odpojeno od Wherehouse",
+    "unlinkTitle": "Odpojit od Wherehouse?",
+    "unlinkText": "Věc zůstane ve Wherehouse i s údaji, které tam pak půjde měnit.",
+    "created": "Přidáno do Wherehouse",
+    "addTitle": "Přidat do Wherehouse",
+    "addDescription": "Výrobek se stane věcí ve Wherehouse i s nákupem a zárukou, fotkami a reklamacemi. Warranteed je udržuje aktuální.",
+    "place": "Dát do",
+    "noPlace": "Zatím nikam (uklidit později)",
+    "create": "Přidat",
+    "linked": "Propojeno s Wherehouse",
+    "linkTitle": "Propojit s věcí ve Wherehouse",
+    "linkDescription": "Její nákup a záruku pak vede Warranteed.",
+    "linkButton": "Propojit",
+    "search": "Hledat ve Wherehouse",
+    "noResults": "Nic se nenašlo",
+    "addOnConfirm": "Přidat do Wherehouse"
   }
 }

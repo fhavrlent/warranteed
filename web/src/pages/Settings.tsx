@@ -8,13 +8,14 @@ import {
   Database,
   Download,
   FileUp,
+  MapPin,
   Palette,
   Plug,
   Tag as TagIcon,
   Trash2,
   Users,
 } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { TagChip } from "@/components/Tags";
@@ -75,6 +76,7 @@ export const Settings = () => {
         <Calendar />
         <Paperless s={settings} />
         <HomeBox s={settings} />
+        {settings.wherehouseServerUrl && <Wherehouse s={settings} />}
         <Household />
         <Tags />
         <Data />
@@ -665,6 +667,53 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
             />
           </label>
         </>
+      )}
+    </Section>
+  );
+};
+
+const Wherehouse = ({ s }: { s: SettingsT }) => {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  // Coming back from connecting: say how it went, once.
+  const [result] = useState(() => new URLSearchParams(location.search).get("wherehouse"));
+  useEffect(() => {
+    if (!result) return;
+    if (result === "connected") toast.success(t("settings.wherehouse.connectedToast"));
+    else toast.error(t("settings.wherehouse.failed"));
+    history.replaceState(null, "", location.pathname + location.hash);
+  }, [result, t]);
+  const connect = async () => {
+    try {
+      location.assign((await api.connectWherehouse()).url);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+  const disconnect = async () => {
+    try {
+      await api.disconnectWherehouse();
+      await qc.invalidateQueries({ queryKey: ["settings"] });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+  return (
+    <Section id="wherehouse" icon={<MapPin />} title="Wherehouse" description={t("settings.wherehouse.description")}>
+      {s.wherehouseConnected ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-[13px] text-ok">
+            <CheckCircle2 className="size-4" />
+            {t("settings.wherehouse.connected", { household: s.wherehouseHousehold })}
+          </p>
+          <Button variant="ghost" onClick={disconnect}>
+            {t("settings.paperless.disconnect")}
+          </Button>
+        </div>
+      ) : (
+        <Button onClick={connect} className="w-fit">
+          {t("settings.wherehouse.connect")}
+        </Button>
       )}
     </Section>
   );

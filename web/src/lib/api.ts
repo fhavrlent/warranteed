@@ -88,6 +88,8 @@ export interface Warranty {
   addedBy: { id: number; name: string };
   /** The linked HomeBox item, if any. */
   homebox: HomeBoxLink | null;
+  /** The linked thing in Wherehouse, if any. */
+  wherehouse: WherehouseLink | null;
   /** Made from a new document in Paperless and not confirmed yet. */
   draft: boolean;
   /** A draft's document dates of sale and receipt, when they differ. */
@@ -95,6 +97,22 @@ export interface Warranty {
 }
 
 export type DraftSource = "off" | "paperless" | "fields" | "claude";
+
+export interface WherehouseLink {
+  thing: number;
+  /** Its label code there, or "". */
+  label: string;
+  /** Where it is, e.g. "House › Garage", as last heard. */
+  path: string;
+}
+
+export interface WherehouseThing {
+  id: number;
+  name: string;
+  label: string;
+  path: string;
+  isPlace: boolean;
+}
 
 export interface HomeBoxLink {
   id: string;
@@ -194,6 +212,11 @@ export interface Settings {
   hasHomeboxToken: boolean;
   /** HomeBox is set up and the user has an API key. */
   homeboxEnabled: boolean;
+  /** Where browsers open the server's Wherehouse, "" when there is none. */
+  wherehouseServerUrl: string;
+  wherehouseConnected: boolean;
+  /** The Wherehouse household the connection works in. */
+  wherehouseHousehold: string;
 }
 
 export type SettingsInput = Omit<
@@ -338,7 +361,9 @@ export const api = {
   createWarranty: (w: WarrantyInput) => request<Warranty>("POST", "/api/warranties", w),
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
   deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
-  confirmWarranty: (id: number) => request<Warranty>("POST", `/api/warranties/${id}/confirm`),
+  /** Confirms a draft; with wherehouse, also adds its product to Wherehouse. */
+  confirmWarranty: (id: number, wherehouse = false) =>
+    request<Warranty>("POST", `/api/warranties/${id}/confirm`, { wherehouse }),
   /** Moves pieces to a new warranty; with homebox, a linked item is split too. */
   splitWarranty: (id: number, input: { pieces: number; serialNumbers: string[]; homebox: boolean }) =>
     request<{ warranty: Warranty; homeboxError?: string }>("POST", `/api/warranties/${id}/split`, input),
@@ -384,6 +409,18 @@ export const api = {
   linkHomeboxItem: (warrantyId: number, itemId: string) =>
     request<Warranty>("PUT", `/api/warranties/${warrantyId}/homebox`, { itemId }),
   unlinkHomebox: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/homebox`),
+
+  /** Where to send the browser to connect Wherehouse. */
+  connectWherehouse: () => request<{ url: string }>("POST", "/api/settings/wherehouse/connect"),
+  disconnectWherehouse: () => request<undefined>("DELETE", "/api/settings/wherehouse"),
+  wherehousePlaces: () => request<WherehouseThing[]>("GET", "/api/wherehouse/places"),
+  searchWherehouse: (q: string) =>
+    request<WherehouseThing[]>("GET", `/api/wherehouse/search?q=${encodeURIComponent(q)}`),
+  addToWherehouse: (warrantyId: number, parentId: number | null) =>
+    request<Warranty>("POST", `/api/warranties/${warrantyId}/wherehouse`, { parentId }),
+  linkWherehouse: (warrantyId: number, thingId: number) =>
+    request<Warranty>("PUT", `/api/warranties/${warrantyId}/wherehouse`, { thingId }),
+  unlinkWherehouse: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/wherehouse`),
 
   spaces: () => request<Space[]>("GET", "/api/spaces"),
   moveAllToSpace: (spaceId: number) => request<{ moved: number }>("POST", `/api/spaces/${spaceId}/move-all`),

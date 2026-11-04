@@ -568,14 +568,47 @@ func (s *Server) confirmWarranty(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.ConfirmWarranty(r.Context(), userID(r), id); err != nil {
+	// Older clients send no body.
+	var in struct {
+		// Wherehouse adds the product to Wherehouse, not put anywhere yet.
+		Wherehouse bool `json:"wherehouse"`
+	}
+	if r.ContentLength > 0 && !decode(w, r, &in) {
+		return
+	}
+	uid := userID(r)
+	if err := s.store.ConfirmWarranty(r.Context(), uid, id); err != nil {
 		fail(w, err)
 		return
 	}
-	wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
+	wr, err := s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if in.Wherehouse && wr.Wherehouse == nil {
+		st, err := s.store.Settings(r.Context(), uid)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		if wh := s.wherehouseFor(st); wh != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+			defer cancel()
+			// The warranty is confirmed either way; the person can add it
+			// to Wherehouse again from its page.
+			t, err := wh.Create(ctx, newThing(wr, nil))
+			if err == nil {
+				err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID)
+			}
+			if err != nil {
+				slog.Warn("add confirmed draft to wherehouse", "warranty", id, "err", err)
+			}
+			if wr, err = s.store.GetWarranty(r.Context(), uid, id); err != nil {
+				fail(w, err)
+				return
+			}
+		}
 	}
 	writeJSON(w, 200, wr)
 }

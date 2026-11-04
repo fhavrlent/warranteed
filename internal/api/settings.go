@@ -36,6 +36,10 @@ type settingsResponse struct {
 	HomeBoxServerURL string `json:"homeboxServerUrl"`
 	HasHomeBoxToken  bool   `json:"hasHomeboxToken"`
 	HomeBoxEnabled   bool   `json:"homeboxEnabled"`
+	// WherehouseServerURL is where browsers open the server's Wherehouse,
+	// empty if none; WherehouseConnected says this person connected to it.
+	WherehouseServerURL string `json:"wherehouseServerUrl"`
+	WherehouseConnected bool   `json:"wherehouseConnected"`
 	// Names of the custom fields links are written to in Paperless.
 	PaperlessWarrantyField string `json:"paperlessWarrantyField"`
 	PaperlessHomeBoxField  string `json:"paperlessHomeboxField"`
@@ -77,6 +81,8 @@ func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsRespon
 		HomeBoxServerURL:       s.cfg.HomeBox.PublicURL,
 		HasHomeBoxToken:        st.HomeBoxToken != "",
 		HomeBoxEnabled:         s.homeboxFor(st) != nil,
+		WherehouseServerURL:    s.cfg.Wherehouse.PublicURL,
+		WherehouseConnected:    s.wherehouseFor(st) != nil,
 		PaperlessWarrantyField: s.cfg.Paperless.WarrantyField,
 		PaperlessHomeBoxField:  s.cfg.Paperless.HomeBoxField,
 		DraftSources:           s.draftSources(),

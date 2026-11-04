@@ -76,6 +76,7 @@ func (s *Server) updateWarranty(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.pushWherehouseLater(userID(r), id)
 	wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
 	if err != nil {
 		fail(w, err)
@@ -142,6 +143,7 @@ func (s *Server) voidWarranty(void bool) http.HandlerFunc {
 			fail(w, err)
 			return
 		}
+		s.pushWherehouseLater(userID(r), id)
 		wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
 		if err != nil {
 			fail(w, err)

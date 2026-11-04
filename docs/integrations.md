@@ -9,6 +9,7 @@ Step-by-step setup of what Warranteed connects to: Paperless-ngx for documents, 
   - [Drafts from new documents](#drafts-from-new-documents)
   - [Draft details from paperless-gpt](#draft-details-from-paperless-gpt)
   - [Draft details from Claude](#draft-details-from-claude)
+- [Wherehouse](#wherehouse)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
 - [Troubleshooting](#troubleshooting)
@@ -134,6 +135,22 @@ What to know:
 - **Cost:** the API key's account pays for each document read. Only users who choose Claude cause reads, and only for documents the workflow sends.
 - **Failures:** if Claude can't be reached or declines, the draft is made from the document's own details instead.
 - **Size:** documents over 24 MB aren't sent.
+
+## Wherehouse
+
+[Wherehouse](https://github.com/fhavrlent/wherehouse) is a household inventory made to go with Warranteed.
+
+1. Set `WHEREHOUSE_URL` to where Warranteed reaches Wherehouse, and `WHEREHOUSE_PUBLIC_URL` if browsers use another address. Restart.
+2. Each person opens **Settings → Wherehouse → Connect to Wherehouse**, picks a household there and allows it. Wherehouse sends them back connected. To disconnect for good, delete the "Warranteed" token in Wherehouse under **Settings → API tokens**.
+
+Linked warranties and things share their details by who owns what:
+
+| Detail | Kept in |
+| --- | --- |
+| Purchase date, price, seller, warranty end and details, claims | Warranteed: Wherehouse shows them read-only |
+| Where the thing is, its photos, kind, tags, label, insurance and sale | Wherehouse: the warranty shows where it is and its label code |
+
+Warranteed sends changes as they happen and reads Wherehouse's changes every 10 minutes: a thing sold or archived there archives its warranty, a deleted one is unlinked. With Paperless, turn on Wherehouse's own links back (in its settings) for receipts to lead to their things as well; Warranteed's HomeBox field isn't used.
 
 ## HomeBox
 
