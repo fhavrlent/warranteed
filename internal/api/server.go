@@ -30,6 +30,9 @@ type Server struct {
 	files    *Files
 	assets   fs.FS
 	version  string
+	// wherehouseSyncing marks people whose Wherehouse changes are being
+	// read; true means read again when done.
+	wherehouseSyncing sync.Map
 	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
 	homeboxBusy sync.Map
 	// photoLocks has a mutex per warranty whose photos are being sent to HomeBox.
@@ -143,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/export.csv", s.exportCSV)
 	api.HandleFunc("POST /api/import", s.importCSV)
 
+	mux.HandleFunc("POST /hooks/wherehouse", s.wherehousePing)
 	mux.Handle("GET /wherehouse/callback", s.auth.Middleware(http.HandlerFunc(s.wherehouseCallback)))
 	mux.Handle("/api/", s.auth.Middleware(api))
 	mux.Handle("/", s.spa())

@@ -150,7 +150,7 @@ Linked warranties and things share their details by who owns what:
 | Purchase date, price, seller, warranty end and details, claims | Warranteed: Wherehouse shows them read-only |
 | Where the thing is, its photos, kind, tags, label, insurance and sale | Wherehouse: the warranty shows where it is and its label code |
 
-Warranteed sends changes as they happen and reads Wherehouse's changes every 10 minutes: a thing sold or archived there archives its warranty, a deleted one is unlinked. With Paperless, turn on Wherehouse's own links back (in its settings) for receipts to lead to their things as well; Warranteed's HomeBox field isn't used.
+Warranteed sends changes as they happen. When connecting, it asks Wherehouse to ping `/hooks/wherehouse` whenever something changes there; the ping is signed and carries no data, and Warranteed then reads Wherehouse's changes straight away. It also reads them every 10 minutes, in case a ping got lost or Warranteed's address can't be reached from Wherehouse (connections made before pings existed get them after reconnecting). A thing sold or archived there archives its warranty, a deleted one is unlinked. With Paperless, turn on Wherehouse's own links back (in its settings) for receipts to lead to their things as well; Warranteed's HomeBox field isn't used.
 
 ## HomeBox
 

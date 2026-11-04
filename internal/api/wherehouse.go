@@ -2,10 +2,13 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -108,12 +111,30 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Pings make changes there show here at once; without them, the
+	// regular reads still catch everything.
+	hook := strings.TrimSuffix(s.cfg.AppURL.String(), "/") + "/hooks/wherehouse"
+	if secret, err := wherehouse.New(s.cfg.Wherehouse.URL, got.Token).SetHook(ctx, hook); err != nil {
+		slog.Warn("wherehouse pings", "err", err)
+	} else if err := s.store.SetWherehouseHookSecret(r.Context(), userID(r), secret); err != nil {
+		fail(w, err)
+		return
+	}
 	done("connected")
 }
 
 // disconnectWherehouse forgets the person's connection. Links to things stay,
 // for whenever someone connects again.
 func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
+	// Stop the pings first; if Wherehouse can't be reached they're refused
+	// here anyway, as the secret goes with the connection.
+	if st, err := s.store.Settings(r.Context(), userID(r)); err == nil {
+		if wh := s.wherehouseFor(st); wh != nil {
+			if err := wh.RemoveHook(r.Context()); err != nil {
+				slog.Warn("wherehouse pings", "err", err)
+			}
+		}
+	}
 	if err := s.store.SetWherehouseConnection(r.Context(), userID(r), "", ""); err != nil {
 		fail(w, err)
 		return
@@ -479,6 +500,55 @@ func (s *Server) claimMaintenance(c *store.Claim, st *store.Settings) wherehouse
 }
 
 // ---- keeping in step ----
+
+// wherehousePing is where Wherehouse pings when something changed: the
+// signature says whose connection it is, and that person's changes are read
+// at once.
+func (s *Server) wherehousePing(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sig := r.Header.Get("X-Wherehouse-Signature")
+	hooks, err := s.store.WherehouseHooks(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	for _, h := range hooks {
+		m := hmac.New(sha256.New, []byte(h.Secret))
+		m.Write(body)
+		if hmac.Equal([]byte(sig), []byte("sha256="+hex.EncodeToString(m.Sum(nil)))) {
+			s.syncWherehouseSoon(h.UserID)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusUnauthorized)
+}
+
+// syncWherehouseSoon reads a person's Wherehouse changes now, once at a
+// time: a ping while reading reads again after.
+func (s *Server) syncWherehouseSoon(uid int64) {
+	if _, running := s.wherehouseSyncing.LoadOrStore(uid, false); running {
+		s.wherehouseSyncing.Store(uid, true) // read again once done
+		return
+	}
+	s.inBackground("wherehouse sync", func(ctx context.Context) error {
+		for {
+			if err := s.syncWherehouseUser(ctx, uid); err != nil {
+				s.wherehouseSyncing.Delete(uid)
+				return err
+			}
+			if again, _ := s.wherehouseSyncing.Load(uid); again != true {
+				s.wherehouseSyncing.Delete(uid)
+				return nil
+			}
+			s.wherehouseSyncing.Store(uid, false)
+		}
+	})
+}
 
 // SyncWherehouse reads each connected person's Wherehouse changes every few
 // minutes: where linked things are now, and which were sold, archived or

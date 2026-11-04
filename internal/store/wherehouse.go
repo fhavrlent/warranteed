@@ -57,8 +57,8 @@ func (s *Store) SetWherehouseSeen(ctx context.Context, warrantyID int64, label, 
 // SetWherehouseConnection saves or (with an empty token) forgets a person's
 // Wherehouse connection.
 func (s *Store) SetWherehouseConnection(ctx context.Context, userID int64, token, household string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_token = ?, wherehouse_household = ?, wherehouse_since = ''
-		WHERE user_id = ?`, token, household, userID)
+	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_token = ?, wherehouse_household = ?, wherehouse_since = '',
+		wherehouse_hook_secret = '' WHERE user_id = ?`, token, household, userID)
 	return err
 }
 
@@ -128,4 +128,36 @@ func (s *Store) SetClaimWherehouseEntry(ctx context.Context, claimID, thing, ent
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
+}
+
+// SetWherehouseHookSecret saves the secret a person's Wherehouse pings are
+// signed with.
+func (s *Store) SetWherehouseHookSecret(ctx context.Context, userID int64, secret string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_hook_secret = ? WHERE user_id = ?`, secret, userID)
+	return err
+}
+
+// WherehouseHook is a person's ping secret.
+type WherehouseHook struct {
+	UserID int64
+	Secret string
+}
+
+// WherehouseHooks lists the ping secrets of everyone connected.
+func (s *Store) WherehouseHooks(ctx context.Context) ([]WherehouseHook, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, wherehouse_hook_secret FROM user_settings
+		WHERE wherehouse_token != '' AND wherehouse_hook_secret != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WherehouseHook
+	for rows.Next() {
+		var h WherehouseHook
+		if err := rows.Scan(&h.UserID, &h.Secret); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }

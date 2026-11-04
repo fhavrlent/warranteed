@@ -291,3 +291,18 @@ func (c *Client) FromHomeBox(ctx context.Context, homeboxID string) (*Thing, err
 	var out Thing
 	return &out, c.do(ctx, http.MethodGet, "/api/homebox/"+url.PathEscape(homeboxID), nil, &out)
 }
+
+// SetHook asks Wherehouse to ping url when something changes, and returns
+// the secret the pings are signed with.
+func (c *Client) SetHook(ctx context.Context, url string) (string, error) {
+	var out struct {
+		Secret string `json:"secret"`
+	}
+	err := c.do(ctx, http.MethodPut, "/api/hook", map[string]string{"url": url}, &out)
+	return out.Secret, err
+}
+
+// RemoveHook stops the pings.
+func (c *Client) RemoveHook(ctx context.Context) error {
+	return c.do(ctx, http.MethodDelete, "/api/hook", nil, nil)
+}
