@@ -849,9 +849,19 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 			if !all {
 				continue
 			}
-			stale, err := s.wherehouseLinkStale(ctx, uid, ws.ID, *ws.Thing)
+			stale, moved, err := s.wherehouseLinkStale(ctx, uid, ws.ID, *ws.Thing)
 			if err != nil {
 				slog.Warn("check wherehouse link", "warranty", ws.ID, "err", err)
+				continue
+			}
+			if moved != nil {
+				// Wherehouse has the warranty on another thing, e.g. after
+				// restoring a backup there: the link follows it.
+				if err := s.followMovedThing(ctx, uid, ws.ID, *ws.Thing, moved); err != nil {
+					slog.Warn("wherehouse: follow a moved link", "warranty", ws.ID, "err", err)
+				} else {
+					slog.Info("wherehouse link moved to the thing linked there", "warranty", ws.ID, "thing", moved.ID)
+				}
 				continue
 			}
 			if stale {
@@ -890,24 +900,61 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 // to it there. People sharing a warranty may be connected to different
 // Wherehouse households, so one of them not finding it isn't enough. A
 // connection that can't be asked leaves it undecided, as an error.
-func (s *Server) wherehouseLinkStale(ctx context.Context, uid, warrantyID, thing int64) (bool, error) {
+// If a connection finds the warranty linked to another thing, that thing
+// is returned as moved.
+func (s *Server) wherehouseLinkStale(ctx context.Context, uid, warrantyID, thing int64) (stale bool, moved *wherehouse.Thing, err error) {
 	clients, _, err := s.wherehouseClients(ctx, uid, warrantyID)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	for _, wh := range clients {
 		t, err := wh.LinkedThing(ctx, warrantyID)
 		var we *wherehouse.Error
 		switch {
 		case err == nil && t.ID == thing:
-			return false, nil
-		case err == nil, errors.As(err, &we) && (we.NotFound() || we.Unauthorized()):
+			return false, nil, nil
+		case err == nil:
+			if moved == nil {
+				moved = t
+			}
+		case errors.As(err, &we) && (we.NotFound() || we.Unauthorized()):
 			// Not there, or a token that Wherehouse no longer takes.
 		default:
-			return false, err
+			return false, nil, err
 		}
 	}
-	return true, nil
+	if moved != nil {
+		return false, moved, nil
+	}
+	return true, nil, nil
+}
+
+// followMovedThing links a warranty to the thing Wherehouse has it on now
+// instead of old. Its photos kept on old are found on that thing by size,
+// as a restored thing has the same photos under new IDs.
+func (s *Server) followMovedThing(ctx context.Context, uid, wid, old int64, t *wherehouse.Thing) error {
+	defer s.lockPhotos(wherehousePushKey(wid))()
+	defer s.lockPhotos(wherehousePhotosKey(wid))()
+	wr, err := s.store.GetWarranty(ctx, uid, wid)
+	if err != nil {
+		return err
+	}
+	claimed := map[int64]bool{}
+	for _, a := range wr.Attachments {
+		if a.Storage != store.StorageWherehouse || a.WherehouseThing == nil || *a.WherehouseThing != old {
+			continue
+		}
+		for _, p := range t.Photos {
+			if p.Size == a.Size && !claimed[p.ID] {
+				claimed[p.ID] = true
+				if err := s.store.StoredInWherehouse(ctx, a.ID, t.ID, p.ID); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+	return s.store.SetWherehouse(ctx, uid, wid, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()})
 }
 
 // moveFromHomeBox links a warranty to the thing its HomeBox item was copied

@@ -78,7 +78,8 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 			continue
 		}
 		switch {
-		case a.Storage == store.StorageWherehouse && (!there || a.WherehouseThing == nil || *a.WherehouseThing != thing):
+		case a.Storage == store.StorageWherehouse && a.WherehouseThing != nil && a.WherehousePhoto != nil &&
+			(!there || *a.WherehouseThing != thing):
 			if readers == nil {
 				clients, _, err := s.wherehouseClients(ctx, uid, wr.ID)
 				if err != nil {
@@ -88,6 +89,17 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 				if wh != nil {
 					readers = append([]*wherehouse.Client{wh}, readers...)
 				}
+			}
+			// A thing deleted, or a Wherehouse set up afresh, took the photo
+			// with it; an ID there may even be another photo's now.
+			if on, err := photoOnThing(ctx, readers, *a.WherehouseThing, *a.WherehousePhoto); err != nil {
+				return err
+			} else if !on {
+				slog.Info("wherehouse: a photo kept there is gone", "warranty", wr.ID, "attachment", a.ID)
+				if err := s.store.DeleteAttachment(ctx, a.ID); err != nil {
+					return err
+				}
+				continue
 			}
 			data, err := readWherehousePhoto(ctx, readers, *a.WherehousePhoto)
 			if err != nil {
@@ -307,4 +319,29 @@ func (s *Server) settleAllWherehousePhotos(ctx context.Context, uid int64, leavi
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// photoOnThing reports whether a photo is still on the thing that held it,
+// through any connection that can see the thing.
+func photoOnThing(ctx context.Context, clients []*wherehouse.Client, thing, photo int64) (bool, error) {
+	var failed error
+	for _, c := range clients {
+		t, err := c.Get(ctx, thing)
+		var we *wherehouse.Error
+		switch {
+		case err == nil:
+			for _, p := range t.Photos {
+				if p.ID == photo {
+					return true, nil
+				}
+			}
+			return false, nil
+		case errors.As(err, &we) && we.NotFound():
+			// Not this one's, or gone.
+		default:
+			// A refused token or no answer says nothing about the photo.
+			failed = err
+		}
+	}
+	return false, failed
 }

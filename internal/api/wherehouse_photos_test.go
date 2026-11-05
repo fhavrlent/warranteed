@@ -255,3 +255,78 @@ func TestWherehousePhotosSplit(t *testing.T) {
 		})
 	}
 }
+
+// A photo kept on a thing deleted in Wherehouse, or in a Wherehouse set up
+// afresh, is gone: it isn't read under an ID that may be another's now.
+// One that Wherehouse only won't hand over stays.
+func TestWherehousePhotosGoneThere(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.photosOnly(t, true)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	photo := *f.photos(t, f.warrantyID)[0].WherehousePhoto
+
+	// The token is refused: nothing is decided.
+	f.wh.mu.Lock()
+	f.wh.rejectToken = true
+	f.wh.mu.Unlock()
+	if err := f.srv.settleWherehousePhotos(context.Background(), f.alice.ID, f.warrantyID, true); err == nil {
+		t.Error("settled without Wherehouse")
+	}
+	if ps := f.photos(t, f.warrantyID); len(ps) != 1 || ps[0].Storage != store.StorageWherehouse {
+		t.Fatalf("photos after a refused token = %+v", ps)
+	}
+
+	// The thing there no longer has it, and its ID is another photo's.
+	f.wh.mu.Lock()
+	f.wh.rejectToken = false
+	f.wh.things[thing].Photos = nil
+	other := f.wh.add("Someone else's", nil)
+	other.Photos = []map[string]int64{{"id": photo, "size": 3}}
+	f.wh.photos[photo] = []byte("not")
+	f.wh.mu.Unlock()
+	if err := f.srv.settleWherehousePhotos(context.Background(), f.alice.ID, f.warrantyID, true); err != nil {
+		t.Fatal(err)
+	}
+	if ps := f.photos(t, f.warrantyID); len(ps) != 0 {
+		t.Errorf("photos after it went = %+v", ps)
+	}
+}
+
+// After a backup is restored in Wherehouse, the warranty is on a new thing
+// with the same photos under new IDs; the link and the photos follow it.
+func TestWherehouseLinkFollowsRestoredThing(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.photosOnly(t, true)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	old := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.wh.mu.Lock()
+	restored := f.wh.add("Lamp", nil)
+	restored.app = f.wh.things[old].app
+	f.wh.last++
+	f.wh.photos[f.wh.last] = []byte(photoBytes)
+	restored.Photos = []map[string]int64{{"id": f.wh.last, "size": int64(len(photoBytes))}}
+	delete(f.wh.things, old)
+	f.wh.mu.Unlock()
+
+	if err := f.srv.adoptWherehouse(context.Background(), f.alice.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.background.Wait()
+	if wr := f.warranty(t, f.warrantyID); wr.Wherehouse == nil || wr.Wherehouse.Thing != restored.ID {
+		t.Fatalf("link = %+v, want thing %d", wr.Wherehouse, restored.ID)
+	}
+	ps := f.photos(t, f.warrantyID)
+	if len(ps) != 1 || *ps[0].WherehouseThing != restored.ID || *ps[0].WherehousePhoto != restored.Photos[0]["id"] {
+		t.Fatalf("photos = %+v", ps)
+	}
+	if code, body := f.photoFile(t, ps[0].ID, false); code != 200 || body != photoBytes {
+		t.Errorf("photo = %d %q", code, body)
+	}
+}
