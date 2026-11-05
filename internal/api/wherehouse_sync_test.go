@@ -1,13 +1,17 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/store"
 	"github.com/fhavrlent/warranteed/internal/wherehouse"
 )
@@ -292,5 +296,126 @@ func TestWherehouseNewThingHasEveryDetail(t *testing.T) {
 	}
 	if wr := f.warranty(t, f.warrantyID); len(wr.SerialNumbers) != 2 || wr.Notes != "Support: 123" {
 		t.Errorf("warranty = %v %q", wr.SerialNumbers, wr.Notes)
+	}
+}
+
+// A photo stored in HomeBox on a warranty whose photos are kept only in
+// Wherehouse goes to the thing straight away, like any other photo.
+func TestWherehouseHomeBoxUploadGoesThere(t *testing.T) {
+	f := newWherehouseFixture(t)
+	hb := &fakeHomeBox{}
+	hbServer := httptest.NewServer(hb)
+	t.Cleanup(hbServer.Close)
+	f.srv.cfg.HomeBox.URL, f.srv.cfg.HomeBox.PublicURL = hbServer.URL, hbServer.URL
+	ctx := context.Background()
+	st, _ := f.srv.store.Settings(ctx, f.alice.ID)
+	st.HomeBoxToken = "bob-key" // the key the fake HomeBox hands photos to
+	if err := f.srv.store.SaveSettings(ctx, f.alice.ID, st); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.srv.store.SetHomeBox(ctx, f.alice.ID, f.warrantyID, &store.HomeBoxLink{ID: "item-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	f.photosOnly(t, true)
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	mw.WriteField("kind", "photo")
+	mw.WriteField("storage", store.StorageHomeBox)
+	part, _ := mw.CreateFormFile("file", "front.jpg")
+	part.Write([]byte(photoBytes))
+	mw.Close()
+	r := httptest.NewRequest(http.MethodPost, "/", &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	r.SetPathValue("id", fmt.Sprint(f.warrantyID))
+	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+	w := httptest.NewRecorder()
+	f.srv.uploadAttachment(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload = %d %s", w.Code, w.Body)
+	}
+	var a store.Attachment
+	json.Unmarshal(w.Body.Bytes(), &a)
+	f.srv.background.Wait()
+	if th := f.wh.get(thing); len(th.Photos) != 1 {
+		t.Errorf("thing photos = %+v", th.Photos)
+	}
+	for _, p := range f.photos(t, f.warrantyID) {
+		if p.ID == a.ID && p.Storage != store.StorageWherehouse {
+			t.Errorf("photo kept in %s", p.Storage)
+		}
+	}
+}
+
+// A claim changed here while its entry's change there was being taken
+// keeps the change made here, which then goes there.
+func TestWherehouseClaimChangedMeanwhile(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	ctx := context.Background()
+	c, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Broken lid", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, c.ID)
+	f.srv.background.Wait()
+	stale, _, err := f.srv.store.ClaimSync(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Saved here after the claim was read.
+	if _, err := f.srv.store.UpdateClaim(ctx, f.alice.ID, c.ID, &store.ClaimInput{Title: "Broken hinge", ReportedOn: "2026-03-01"}); err != nil {
+		t.Fatal(err)
+	}
+	in := store.ClaimInput{Title: "Cracked lid", ReportedOn: "2026-03-01"}
+	if ok, err := f.srv.store.UpdateClaimIfUnchanged(ctx, f.alice.ID, c.ID, stale, &in); err != nil || ok {
+		t.Errorf("update of a claim changed meanwhile = %v, %v", ok, err)
+	}
+	if got, _ := f.srv.store.GetClaim(ctx, f.alice.ID, c.ID); got.Title != "Broken hinge" {
+		t.Errorf("claim = %q", got.Title)
+	}
+	// Unchanged, it's changed.
+	now, _, _ := f.srv.store.ClaimSync(ctx, c.ID)
+	if ok, err := f.srv.store.UpdateClaimIfUnchanged(ctx, f.alice.ID, c.ID, now, &in); err != nil || !ok {
+		t.Errorf("update of an unchanged claim = %v, %v", ok, err)
+	}
+}
+
+// A split-off warranty's copy of a photo kept in Wherehouse is the same
+// photo there until it's settled: deleting the copy leaves the original's.
+func TestWherehouseSplitCopyDeletedLeavesOriginal(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.photosOnly(t, true)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	// Settling the copy fails: Wherehouse doesn't answer.
+	f.whServer.Close()
+	w := f.call(t, f.srv.splitWarranty, http.MethodPost, `{"pieces":1,"serialNumbers":[],"wherehouse":false}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("split = %d %s", w.Code, w.Body)
+	}
+	var out struct {
+		Warranty store.Warranty `json:"warranty"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &out)
+	ps := f.photos(t, out.Warranty.ID)
+	if len(ps) != 1 || ps[0].Storage != store.StorageWherehouse {
+		t.Fatalf("split-off photos = %+v", ps)
+	}
+	f.deleteHere(t, ps[0].ID)
+	if th := f.wh.get(thing); len(th.Photos) != 1 {
+		t.Errorf("original's thing photos = %+v", th.Photos)
+	}
+	if o := f.photos(t, f.warrantyID); len(o) != 1 {
+		t.Errorf("original's photos = %+v", o)
 	}
 }

@@ -444,6 +444,17 @@ func (s *Store) SetClaimWherehouseSeen(ctx context.Context, claimID int64, v str
 	return err
 }
 
+// WherehouseShared reports whether another attachment than id is the same
+// Wherehouse photo or document as it, e.g. a split-off warranty's copy not
+// yet settled.
+func (s *Store) WherehouseShared(ctx context.Context, id int64) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM attachments a JOIN attachments b ON b.id = ?
+		WHERE a.id != b.id AND ((b.wherehouse_photo IS NOT NULL AND a.wherehouse_photo = b.wherehouse_photo)
+			OR (b.wherehouse_attachment IS NOT NULL AND a.wherehouse_attachment = b.wherehouse_attachment))`, id).Scan(&n)
+	return n > 0, err
+}
+
 // NotOnWherehouseThing forgets that a document is on a Wherehouse thing,
 // e.g. as the warranty is no longer linked to it.
 func (s *Store) NotOnWherehouseThing(ctx context.Context, id int64) error {

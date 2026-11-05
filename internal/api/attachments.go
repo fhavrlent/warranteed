@@ -342,6 +342,10 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 			homeboxFail(w, err)
 			return
 		}
+		if wr.Wherehouse != nil {
+			// On the thing too, or kept only there.
+			s.sendToWherehouseLater(uid, wid)
+		}
 		writeJSON(w, http.StatusCreated, a)
 		return
 	}

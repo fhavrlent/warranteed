@@ -316,6 +316,11 @@ func (s *Server) deleteOnThing(ctx context.Context, uid int64, a *store.Attachme
 			return nil
 		}
 	}
+	// Another here is the same one there, e.g. a split-off warranty's
+	// copy: it stays for that one.
+	if shared, err := s.store.WherehouseShared(ctx, a.ID); err != nil || shared {
+		return err
+	}
 	clients, _, err := s.wherehouseClients(ctx, uid, a.WarrantyID)
 	if err != nil || len(clients) == 0 {
 		return err // nothing connected to delete it with
@@ -629,9 +634,13 @@ func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings,
 		if changed := in.Title != c.Title || in.Status != c.Status || in.ReportedOn != c.ReportedOn ||
 			!sameDate(in.ResolvedOn, c.ResolvedOn) || in.CaseNumber != c.CaseNumber || !sameCost(in.Cost, c.Cost) ||
 			in.Notes != c.Notes; changed {
-			if _, err := s.store.UpdateClaim(ctx, uid, cid, &in); err != nil {
+			if ok, err := s.store.UpdateClaimIfUnchanged(ctx, uid, cid, c, &in); err != nil {
 				// Something it can't be, e.g. no title: it's left as it is.
 				slog.Warn("wherehouse: a claim's entry changed there", "claim", cid, "err", err)
+			} else if !ok {
+				// Changed here meanwhile: that change is sent there once
+				// this is done, and wins.
+				return nil
 			} else {
 				slog.Info("wherehouse: a claim's entry was changed there", "claim", cid)
 				// Written back as entries read, and to HomeBox.
