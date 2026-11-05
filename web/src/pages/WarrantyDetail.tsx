@@ -72,9 +72,11 @@ export const WarrantyDetail = () => {
 
   const confirm = async () => {
     try {
-      await api.confirmWarranty(w.id, toWherehouse && !!settings?.wherehouseConnected);
+      const add = toWherehouse && !!settings?.wherehouseConnected;
+      const confirmed = await api.confirmWarranty(w.id, add);
       invalidate();
       toast.success(t("detail.confirmed"));
+      if (add && confirmed.wherehouse === null) toast.error(t("detail.confirmedNotInWherehouse"));
     } catch (e) {
       toast.error(errorMessage(e));
     }

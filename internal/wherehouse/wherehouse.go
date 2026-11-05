@@ -143,6 +143,7 @@ type Thing struct {
 	ArchivedAt *string `json:"archivedAt"`
 	SoldDate   *string `json:"soldDate"`
 	Contains   int     `json:"contains"`
+	Quantity   int     `json:"quantity"`
 	Kind       struct {
 		IsPlace bool `json:"isPlace"`
 	} `json:"kind"`
@@ -150,6 +151,12 @@ type Thing struct {
 		ID int64 `json:"id"`
 	} `json:"photos"`
 	Maintenance []Maintenance `json:"maintenance"`
+	Attachments []struct {
+		PaperlessDocID *int64 `json:"paperlessDocId"`
+	} `json:"attachments"`
+	Links []struct {
+		URL string `json:"url"`
+	} `json:"links"`
 }
 
 // PathText is where the thing is, e.g. "House › Garage".
@@ -209,6 +216,41 @@ type Link struct {
 	URL        string    `json:"url"`
 	Title      string    `json:"title"`
 	Purchase   *Purchase `json:"purchase"`
+}
+
+// LinkPaperless adds Paperless documents to a thing, as kind (e.g.
+// "receipt"). It needs a Paperless connection in Wherehouse.
+func (c *Client) LinkPaperless(ctx context.Context, thing int64, docs []int64, kind string) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/things/%d/attachments/paperless", thing),
+		map[string]any{"documentIds": docs, "kind": kind}, nil)
+}
+
+// AddLink adds a link to a web page to a thing.
+func (c *Client) AddLink(ctx context.Context, thing int64, url, title string) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/things/%d/links", thing), map[string]string{"url": url, "title": title}, nil)
+}
+
+// SetQuantity changes how many of a thing there are, keeping everything
+// else as it is.
+func (c *Client) SetQuantity(ctx context.Context, id int64, quantity int) error {
+	var t map[string]any
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/things/%d", id), nil, &t); err != nil {
+		return err
+	}
+	// Written back as they were read, apart from what the edit form sends
+	// differently: tags and fields left out stay as they are.
+	delete(t, "tags")
+	delete(t, "fields")
+	if k, ok := t["kind"].(map[string]any); ok {
+		t["kindId"] = k["id"]
+	}
+	t["quantity"] = quantity
+	return c.do(ctx, http.MethodPut, fmt.Sprintf("/api/things/%d", id), t, nil)
+}
+
+// Delete deletes a thing and everything about it.
+func (c *Client) Delete(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/api/things/%d", id), nil, nil)
 }
 
 // SetLink links a thing to its warranty here, and gives Warranteed its
@@ -276,6 +318,8 @@ type Changes struct {
 	Until   string  `json:"until"`
 	Things  []Thing `json:"things"`
 	Deleted []int64 `json:"deleted"`
+	// More says there are more changes: ask again from Until.
+	More bool `json:"more"`
 }
 
 func (c *Client) Changes(ctx context.Context, since string) (*Changes, error) {

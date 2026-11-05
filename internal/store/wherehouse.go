@@ -58,7 +58,11 @@ func (s *Store) SetWherehouseSeen(ctx context.Context, warrantyID int64, label, 
 // SetWherehouseConnection saves or (with an empty token) forgets a person's
 // Wherehouse connection.
 func (s *Store) SetWherehouseConnection(ctx context.Context, userID int64, token, household string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_token = ?, wherehouse_household = ?, wherehouse_since = '',
+	token, err := s.seal(token)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_token = ?, wherehouse_household = ?, wherehouse_since = '',
 		wherehouse_hook_secret = '' WHERE user_id = ?`, token, household, userID)
 	return err
 }
@@ -134,7 +138,11 @@ func (s *Store) SetClaimWherehouseEntry(ctx context.Context, claimID, thing, ent
 // SetWherehouseHookSecret saves the secret a person's Wherehouse pings are
 // signed with.
 func (s *Store) SetWherehouseHookSecret(ctx context.Context, userID int64, secret string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_hook_secret = ? WHERE user_id = ?`, secret, userID)
+	secret, err := s.seal(secret)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_hook_secret = ? WHERE user_id = ?`, secret, userID)
 	return err
 }
 
@@ -156,6 +164,9 @@ func (s *Store) WherehouseHooks(ctx context.Context) ([]WherehouseHook, error) {
 	for rows.Next() {
 		var h WherehouseHook
 		if err := rows.Scan(&h.UserID, &h.Secret); err != nil {
+			return nil, err
+		}
+		if h.Secret, err = s.open(h.Secret); err != nil {
 			return nil, err
 		}
 		out = append(out, h)
@@ -197,4 +208,66 @@ func (s *Store) WherehouseStates(ctx context.Context, userID int64) ([]Wherehous
 		out = append(out, st)
 	}
 	return out, rows.Err()
+}
+
+// SetWherehouseArchived archives a warranty because its thing was sold or
+// archived in Wherehouse, or brings back one archived that way. It reports
+// whether anything changed: a warranty archived by hand stays as it is.
+func (s *Store) SetWherehouseArchived(ctx context.Context, id int64, archived bool) (bool, error) {
+	var res sql.Result
+	var err error
+	if archived {
+		res, err = s.db.ExecContext(ctx, `UPDATE warranties SET archived_at = ?, wherehouse_archived = 1, updated_at = ?
+			WHERE id = ? AND archived_at IS NULL AND NOT draft`, now(), now(), id)
+	} else {
+		res, err = s.db.ExecContext(ctx, `UPDATE warranties SET archived_at = NULL, wherehouse_archived = 0, updated_at = ?
+			WHERE id = ? AND wherehouse_archived`, now(), id)
+	}
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// WherehousePhotosToSend lists a warranty's photos stored here that haven't
+// been sent to thing yet.
+func (s *Store) WherehousePhotosToSend(ctx context.Context, warrantyID, thing int64) ([]Attachment, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+attachmentCols+` FROM attachments a
+		WHERE a.warranty_id = ? AND a.kind = 'photo' AND a.storage = ? AND a.wherehouse_thing IS NOT ?
+		ORDER BY a.id`, warrantyID, StorageLocal, thing)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Attachment
+	for rows.Next() {
+		a, err := scanAttachment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *a)
+	}
+	return out, rows.Err()
+}
+
+// SentToWherehouse records that photos were sent to a Wherehouse thing, or
+// that it has them already.
+func (s *Store) SentToWherehouse(ctx context.Context, thing int64, ids ...int64) error {
+	for _, id := range ids {
+		if _, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_thing = ? WHERE id = ?`, thing, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AttachmentWarranty returns the warranty an attachment belongs to.
+func (s *Store) AttachmentWarranty(ctx context.Context, id int64) (int64, error) {
+	var wid int64
+	err := s.db.QueryRowContext(ctx, `SELECT warranty_id FROM attachments WHERE id = ?`, id).Scan(&wid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return wid, err
 }

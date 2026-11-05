@@ -364,9 +364,16 @@ export const api = {
   /** Confirms a draft; with wherehouse, also adds its product to Wherehouse. */
   confirmWarranty: (id: number, wherehouse = false) =>
     request<Warranty>("POST", `/api/warranties/${id}/confirm`, { wherehouse }),
-  /** Moves pieces to a new warranty; with homebox, a linked item is split too. */
-  splitWarranty: (id: number, input: { pieces: number; serialNumbers: string[]; homebox: boolean }) =>
-    request<{ warranty: Warranty; homeboxError?: string }>("POST", `/api/warranties/${id}/split`, input),
+  /** Moves pieces to a new warranty; with homebox or wherehouse, a linked item or thing is split too. */
+  splitWarranty: (
+    id: number,
+    input: { pieces: number; serialNumbers: string[]; homebox: boolean; wherehouse: boolean },
+  ) =>
+    request<{ warranty: Warranty; homeboxError?: string; wherehouseError?: string }>(
+      "POST",
+      `/api/warranties/${id}/split`,
+      input,
+    ),
   setVoid: (id: number, isVoid: boolean, reason = "") =>
     request<Warranty>("POST", `/api/warranties/${id}/${isVoid ? "void" : "unvoid"}`, isVoid ? { reason } : undefined),
   archive: (id: number, archived: boolean) =>

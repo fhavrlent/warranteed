@@ -70,6 +70,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Tokens for other apps are kept encrypted with the same key.
+	if err := st.SetKey(key); err != nil {
+		return err
+	}
+	if err := st.SealTokens(context.Background()); err != nil {
+		return fmt.Errorf("encrypt stored tokens: %w", err)
+	}
 	srv := api.New(cfg, st, auth.New(cfg, st, key), notifier, files, web.Assets(), version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

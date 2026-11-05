@@ -95,11 +95,18 @@ func (s *Server) deleteWarranty(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Who can reach its inventory is known only while it exists.
+	cleanUp, err := s.forgetInventory(r.Context(), userID(r), id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	files, err := s.store.DeleteWarranty(r.Context(), userID(r), id)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	s.inBackground("remove deleted warranty from inventory", cleanUp)
 	s.syncBacklinksLater(docs...)
 	for _, a := range files {
 		s.removeFiles(&a)

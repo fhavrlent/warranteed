@@ -620,7 +620,9 @@ func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id int64) (*stor
 	defer cancel()
 	t, err := wh.Create(ctx, newThing(wr, nil))
 	if err == nil {
-		err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID)
+		if err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID); err != nil {
+			s.dropUnlinkedThing(uid, id, wh, t.ID)
+		}
 	}
 	if err != nil {
 		slog.Warn("add confirmed draft to wherehouse", "warranty", id, "err", err)

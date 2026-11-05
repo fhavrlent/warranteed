@@ -197,6 +197,7 @@
     "draftText": "Made from a new document in Paperless. Check the details, then confirm it.",
     "confirm": "Confirm",
     "confirmed": "Warranty confirmed",
+    "confirmedNotInWherehouse": "The product wasn’t added to Wherehouse. Add it from this page.",
     "twoDates": "The document gives two dates. Count the warranty from:",
     "dateSold": "Sold {{date}}",
     "dateReceived": "Received {{date}}"
@@ -736,7 +737,10 @@
     "confirm": "Split off",
     "done_one": "{{count}} piece moved to a new warranty",
     "done_other": "{{count}} pieces moved to a new warranty",
-    "homeboxFailed": "The warranty was split, but not the HomeBox item: {{error}}"
+    "homeboxFailed": "The warranty was split, but not the HomeBox item: {{error}}",
+    "wherehouse": "Split the Wherehouse thing too",
+    "wherehouseHint": "Adds a thing for the new warranty next to this one, and lowers this thing’s quantity.",
+    "wherehouseFailed": "The warranty was split, but not the Wherehouse thing: {{error}}"
   },
   "wherehouse": {
     "where": "Where",

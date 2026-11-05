@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"crypto/cipher"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -14,6 +15,8 @@ var ErrNotFound = errors.New("not found")
 
 type Store struct {
 	db *sql.DB
+	// aead encrypts tokens for other apps; see SetKey.
+	aead cipher.AEAD
 }
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
@@ -302,7 +305,15 @@ func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &st, err
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range []*string{&st.PaperlessToken, &st.HomeBoxToken, &st.WherehouseToken} {
+		if *t, err = s.open(*t); err != nil {
+			return nil, err
+		}
+	}
+	return &st, nil
 }
 
 // EffectiveLanguage is the language to write to the user in when there is no
@@ -323,14 +334,22 @@ func (s *Store) SetBrowserLanguage(ctx context.Context, userID int64, lang strin
 }
 
 func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) error {
-	_, err := s.db.ExecContext(ctx, `
+	paperlessToken, err := s.seal(st.PaperlessToken)
+	if err != nil {
+		return err
+	}
+	homeboxToken, err := s.seal(st.HomeBoxToken)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
 			date_format = ?, currency = ?, theme = ?, language = ?, expiring_soon_days = ?, notify_urls = ?,
 			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?,
 			paperless_backlinks = ?, homebox_token = ?, homebox_photos_default = ?, draft_source = ?, warranty_start = ?, draft_items = ?
 		WHERE user_id = ?`,
 		st.DateFormat, st.Currency, st.Theme, st.Language, st.ExpiringSoonDays, st.NotifyURLs,
-		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, st.HomeBoxPhotosDefault, st.DraftSource, st.WarrantyStart, st.DraftItems, userID)
+		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, paperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, homeboxToken, st.HomeBoxPhotosDefault, st.DraftSource, st.WarrantyStart, st.DraftItems, userID)
 	return err
 }
 

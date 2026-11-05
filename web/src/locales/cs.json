@@ -219,6 +219,7 @@
     "draftText": "Vznikl z nového dokumentu v Paperless. Zkontrolujte údaje a potvrďte ho.",
     "confirm": "Potvrdit",
     "confirmed": "Záruka potvrzena",
+    "confirmedNotInWherehouse": "Produkt se do Wherehouse nepřidal. Přidejte ho z této stránky.",
     "twoDates": "Doklad uvádí dvě data. Záruku počítat od:",
     "dateSold": "Prodáno {{date}}",
     "dateReceived": "Převzato {{date}}"
@@ -800,7 +801,10 @@
     "done_few": "{{count}} kusy přesunuty do nové záruky",
     "done_many": "{{count}} kusu přesunuto do nové záruky",
     "done_other": "{{count}} kusů přesunuto do nové záruky",
-    "homeboxFailed": "Záruka je rozdělená, ale položka v HomeBoxu ne: {{error}}"
+    "homeboxFailed": "Záruka je rozdělená, ale položka v HomeBoxu ne: {{error}}",
+    "wherehouse": "Rozdělit i věc ve Wherehouse",
+    "wherehouseHint": "Vedle této věci přidá věc pro novou záruku a téhle sníží počet kusů.",
+    "wherehouseFailed": "Záruka je rozdělená, ale věc ve Wherehouse ne: {{error}}"
   },
   "wherehouse": {
     "where": "Kde",

@@ -624,7 +624,7 @@ func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool
 		at = now()
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE warranties AS w SET archived_at = ?, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
+		`UPDATE warranties AS w SET archived_at = ?, wherehouse_archived = 0, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
 		at, now(), userID, id)
 	if err != nil {
 		return err
