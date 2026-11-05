@@ -238,11 +238,11 @@ func (s *Server) linkWherehouse(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	if _, busy := s.homeboxBusy.LoadOrStore("wh:"+strconv.FormatInt(id, 10), true); busy {
+	if _, busy := s.homeboxBusy.LoadOrStore(wherehouseKey(id), true); busy {
 		writeMsg(w, http.StatusConflict, "server.homeboxBusy", nil)
 		return
 	}
-	defer s.homeboxBusy.Delete("wh:" + strconv.FormatInt(id, 10))
+	defer s.homeboxBusy.Delete(wherehouseKey(id))
 	uid := userID(r)
 	st, wh := s.userWherehouse(w, r)
 	if wh == nil {
@@ -385,9 +385,15 @@ func (s *Server) wherehouseClients(ctx context.Context, uid, warrantyID int64) (
 	return out, first, nil
 }
 
+// wherehouseKey marks a warranty being added to or linked with Wherehouse.
+func wherehouseKey(id int64) string { return "wh:" + strconv.FormatInt(id, 10) }
+
 // pushWherehouseLater sends a linked warranty's changed details to its thing.
+// Pushes take turns and each reads the warranty once it's its turn, so an
+// older one can't land after a newer one.
 func (s *Server) pushWherehouseLater(uid, warrantyID int64) {
 	s.inBackground("update wherehouse", func(ctx context.Context) error {
+		defer s.lockPhotos("wh-push:" + strconv.FormatInt(warrantyID, 10))()
 		wr, err := s.store.GetWarranty(ctx, uid, warrantyID)
 		if err != nil || wr.Wherehouse == nil {
 			return err
@@ -420,14 +426,24 @@ func (s *Server) unlinkWherehouse(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, wr)
 		return
 	}
-	// The thing there keeps its details, which become Wherehouse's own.
-	if clients, _, err := s.wherehouseClients(r.Context(), uid, id); err == nil {
-		for _, wh := range clients {
-			var we *wherehouse.Error
-			if err := wh.RemoveLink(r.Context(), wr.Wherehouse.Thing); err == nil || (errors.As(err, &we) && we.NotFound()) {
-				break
-			}
+	// The thing there keeps its details, which become Wherehouse's own. If
+	// Wherehouse can't be told, the link stays so unlinking can be tried
+	// again; with no connection left at all, there's no one to tell.
+	clients, _, err := s.wherehouseClients(r.Context(), uid, id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	for _, wh := range clients {
+		var we *wherehouse.Error
+		if err = wh.RemoveLink(r.Context(), wr.Wherehouse.Thing); err == nil || (errors.As(err, &we) && we.NotFound()) {
+			err = nil
+			break
 		}
+	}
+	if err != nil {
+		wherehouseFail(w, err)
+		return
 	}
 	if err := s.store.SetWherehouse(r.Context(), uid, id, nil); err != nil {
 		fail(w, err)

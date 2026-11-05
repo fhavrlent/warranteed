@@ -63,10 +63,14 @@ func (s *Server) deleteClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := userID(r)
+	// Holding the Wherehouse lock, a copy finishing meanwhile can't save an
+	// entry after it's read here.
+	unlockWh := s.lockPhotos(claimKey(id) + ":wh")
 	whEntry, _, _ := s.store.ClaimWherehouse(r.Context(), id)
 	unlock := s.lockPhotos(claimKey(id))
 	c, err := s.store.DeleteClaim(r.Context(), uid, id)
 	unlock()
+	unlockWh()
 	if err != nil {
 		fail(w, err)
 		return

@@ -586,29 +586,44 @@ func (s *Server) confirmWarranty(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if in.Wherehouse && wr.Wherehouse == nil {
-		st, err := s.store.Settings(r.Context(), uid)
-		if err != nil {
-			fail(w, err)
-			return
-		}
-		if wh := s.wherehouseFor(st); wh != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
-			defer cancel()
-			// The warranty is confirmed either way; the person can add it
-			// to Wherehouse again from its page.
-			t, err := wh.Create(ctx, newThing(wr, nil))
-			if err == nil {
-				err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID)
-			}
-			if err != nil {
-				slog.Warn("add confirmed draft to wherehouse", "warranty", id, "err", err)
-			}
-			if wr, err = s.store.GetWarranty(r.Context(), uid, id); err != nil {
+	// A second confirm, or linking from the warranty's page, while this one
+	// is adding the product leaves it to that one.
+	if in.Wherehouse {
+		if _, busy := s.homeboxBusy.LoadOrStore(wherehouseKey(id), true); !busy {
+			defer s.homeboxBusy.Delete(wherehouseKey(id))
+			if wr, err = s.addDraftToWherehouse(r.Context(), uid, id); err != nil {
 				fail(w, err)
 				return
 			}
 		}
 	}
 	writeJSON(w, 200, wr)
+}
+
+// addDraftToWherehouse makes a thing for a confirmed draft, with no place
+// yet, unless it's linked already. The warranty is confirmed either way; the
+// person can add it to Wherehouse again from its page.
+func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id int64) (*store.Warranty, error) {
+	wr, err := s.store.GetWarranty(ctx, uid, id)
+	if err != nil || wr.Wherehouse != nil {
+		return wr, err
+	}
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		return wr, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	t, err := wh.Create(ctx, newThing(wr, nil))
+	if err == nil {
+		err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID)
+	}
+	if err != nil {
+		slog.Warn("add confirmed draft to wherehouse", "warranty", id, "err", err)
+	}
+	return s.store.GetWarranty(ctx, uid, id)
 }
