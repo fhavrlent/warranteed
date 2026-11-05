@@ -8,7 +8,8 @@ import (
 )
 
 // SetWherehouse links a warranty to a Wherehouse thing; nil removes the
-// link, and the claims' entries there with it.
+// link, and the claims' entries there with it. What was last seen of the
+// thing before is forgotten too, so another thing starts afresh.
 func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *WherehouseLink) error {
 	var thing any
 	label, path := "", ""
@@ -17,7 +18,7 @@ func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *Where
 	}
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE warranties AS w SET wherehouse_thing = ?, wherehouse_label = ?, wherehouse_path = ?,
-			wherehouse_unlinked = wherehouse_unlinked AND ? IS NULL, updated_at = ?
+			wherehouse_unlinked = wherehouse_unlinked AND ? IS NULL, wherehouse_fields = '', updated_at = ?
 		WHERE `+visibleTo+` AND w.id = ?`, thing, label, path, thing, now(), userID, id)
 	if err != nil {
 		return err
@@ -25,7 +26,7 @@ func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *Where
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE claims SET wherehouse_entry = NULL WHERE warranty_id = ?`, id)
+	_, err = s.db.ExecContext(ctx, `UPDATE claims SET wherehouse_entry = NULL, wherehouse_seen = '' WHERE warranty_id = ?`, id)
 	return err
 }
 
@@ -414,6 +415,6 @@ func (s *Store) SetClaimWherehouseSeen(ctx context.Context, claimID int64, v str
 // NotOnWherehouseThing forgets that a document is on a Wherehouse thing,
 // e.g. as the warranty is no longer linked to it.
 func (s *Store) NotOnWherehouseThing(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_attachment = NULL WHERE id = ?`, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_attachment = NULL, wherehouse_seen = '' WHERE id = ?`, id)
 	return err
 }

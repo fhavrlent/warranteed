@@ -514,6 +514,10 @@ func photoOnThing(ctx context.Context, clients []*wherehouse.Client, thing, phot
 // onThingThere reports whether has holds for the thing, through any
 // connection that can see it; false if it's gone.
 func onThingThere(ctx context.Context, clients []*wherehouse.Client, thing int64, has func(*wherehouse.Thing) bool) (bool, error) {
+	if len(clients) == 0 {
+		// Nobody can look, which isn't it being gone: it stays undecided.
+		return false, errNoWherehouse
+	}
 	var failed error
 	for _, c := range clients {
 		t, err := c.Get(ctx, thing)

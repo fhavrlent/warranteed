@@ -320,18 +320,14 @@ func (s *Server) deleteOnThing(ctx context.Context, uid int64, a *store.Attachme
 	if err != nil || len(clients) == 0 {
 		return err // nothing connected to delete it with
 	}
-	return firstWherehouse(clients, func(wh *wherehouse.Client) error {
-		var err error
+	// Not found by any: gone there already.
+	_, err = foundOnWherehouse(clients, func(wh *wherehouse.Client) error {
 		if photo {
-			err = wh.DeletePhoto(ctx, *a.WherehousePhoto)
-		} else {
-			err = wh.DeleteAttachment(ctx, *a.WherehouseAttachment)
+			return wh.DeletePhoto(ctx, *a.WherehousePhoto)
 		}
-		if wherehouseNotFound(err) {
-			return nil
-		}
-		return err
+		return wh.DeleteAttachment(ctx, *a.WherehouseAttachment)
 	})
+	return err
 }
 
 // updateOnThing changes a document's type and name on its thing too, before
@@ -353,14 +349,11 @@ func (s *Server) updateOnThing(ctx context.Context, uid int64, a *store.Attachme
 		return "", err
 	}
 	ta := &wherehouse.Attachment{ID: *a.WherehouseAttachment, Kind: whKind(kind), Filename: filename}
-	err = firstWherehouse(clients, func(wh *wherehouse.Client) error {
+	found, err := foundOnWherehouse(clients, func(wh *wherehouse.Client) error {
 		return wh.UpdateAttachment(ctx, ta.ID, ta.Kind, ta.Filename)
 	})
-	if wherehouseNotFound(err) {
-		return "", nil // gone there: the next sync drops it here
-	}
-	if err != nil {
-		return "", err
+	if err != nil || !found {
+		return "", err // not found: gone there, and the next sync drops it here
 	}
 	return seenAs(ta), nil
 }
@@ -485,20 +478,21 @@ func entrySeen(m wherehouse.Maintenance) string {
 // the thing t's maintenance log: an entry changed there since last seen
 // changes its claim, and one deleted there deletes its claim. Claims changed
 // here are sent there as they change. Called under the photos' lock.
-func (s *Server) mirrorClaims(ctx context.Context, uid int64, st *store.Settings, wr *store.Warranty, t *wherehouse.Thing) error {
+func (s *Server) mirrorClaims(ctx context.Context, uid int64, st *store.Settings, wh *wherehouse.Client, wr *store.Warranty, t *wherehouse.Thing) error {
 	ids, err := s.store.ClaimIDs(ctx, wr.ID)
 	if err != nil {
 		return err
 	}
 	for _, cid := range ids {
-		if err := s.mirrorClaim(ctx, uid, st, t, cid); err != nil {
+		if err := s.mirrorClaim(ctx, uid, st, wh, t, cid); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings, t *wherehouse.Thing, cid int64) error {
+func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings, wh *wherehouse.Client,
+	t *wherehouse.Thing, cid int64) error {
 	// No copy there can be under way meanwhile.
 	defer s.lockPhotos(claimKey(cid) + ":wh")()
 	entry, thing, err := s.store.ClaimWherehouse(ctx, cid)
@@ -508,15 +502,22 @@ func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings,
 	if err != nil || entry == nil || thing == nil || *thing != t.ID {
 		return err
 	}
-	var m *wherehouse.Maintenance
-	for i := range t.Maintenance {
-		if t.Maintenance[i].ID == *entry {
-			m = &t.Maintenance[i]
-		}
-	}
 	seen, err := s.store.ClaimWherehouseSeen(ctx, cid)
 	if err != nil {
 		return err
+	}
+	m := entryOn(t, *entry)
+	if m == nil || entrySeen(*m) != seen {
+		// t was read before this lock was taken, and a copy sent since
+		// may have added or changed the entry: what's there now decides.
+		now, err := wh.Get(ctx, t.ID)
+		if wherehouseNotFound(err) {
+			return nil // the thing is gone, which is seen to elsewhere
+		}
+		if err != nil {
+			return err
+		}
+		m = entryOn(now, *entry)
 	}
 	if m == nil && seen == "" {
 		// Never seen there: it went missing some other way, e.g. with a
@@ -566,6 +567,16 @@ func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings,
 		}
 	}
 	return s.store.SetClaimWherehouseSeen(ctx, cid, now)
+}
+
+// entryOn is the entry with the ID on t, nil if it isn't there.
+func entryOn(t *wherehouse.Thing, id int64) *wherehouse.Maintenance {
+	for i := range t.Maintenance {
+		if t.Maintenance[i].ID == id {
+			return &t.Maintenance[i]
+		}
+	}
+	return nil
 }
 
 func sameDate(a, b *string) bool  { return (a == nil) == (b == nil) && (a == nil || *a == *b) }

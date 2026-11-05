@@ -958,7 +958,8 @@ func (s *Server) wherehouseLinkStale(ctx context.Context, uid, warrantyID, thing
 
 // followMovedThing links a warranty to the thing Wherehouse has it on now
 // instead of old. Its photos kept on old are found on that thing by size,
-// as a restored thing has the same photos under new IDs.
+// and its claims' entries by title, as a restored thing has the same photos
+// and maintenance log under new IDs.
 func (s *Server) followMovedThing(ctx context.Context, uid, wid, old int64, t *wherehouse.Thing) error {
 	defer s.lockPhotos(wherehousePushKey(wid))()
 	defer s.lockPhotos(wherehousePhotosKey(wid))()
@@ -981,7 +982,19 @@ func (s *Server) followMovedThing(ctx context.Context, uid, wid, old int64, t *w
 			}
 		}
 	}
-	return s.store.SetWherehouse(ctx, uid, wid, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()})
+	if err := s.store.SetWherehouse(ctx, uid, wid, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()}); err != nil {
+		return err
+	}
+	// Its claims' entries came with it, under new IDs too.
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		return err
+	}
+	ids, err := s.store.ClaimIDs(ctx, wid)
+	if err != nil {
+		return err
+	}
+	return s.matchClaimEntries(ctx, st, t, ids)
 }
 
 // moveFromHomeBox links a warranty to the thing its HomeBox item was copied
@@ -1127,7 +1140,7 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 	if err := s.mirrorDetails(ctx, wh, wr, t); err != nil {
 		return err
 	}
-	if err := s.mirrorClaims(ctx, uid, st, wr, t); err != nil {
+	if err := s.mirrorClaims(ctx, uid, st, wh, wr, t); err != nil {
 		return err
 	}
 	if st.WherehousePhotosOnly {
@@ -1229,6 +1242,31 @@ func firstWherehouse(clients []*wherehouse.Client, fn func(*wherehouse.Client) e
 		}
 	}
 	return err
+}
+
+// errNoWherehouse is when nobody's connection can do something in Wherehouse.
+var errNoWherehouse = errors.New("no wherehouse connection")
+
+// foundOnWherehouse is firstWherehouse for something that may be gone: a
+// connection that doesn't find it may just be to another household, so the
+// others are asked too. It reports false only if none found it and none
+// failed otherwise.
+func foundOnWherehouse(clients []*wherehouse.Client, fn func(*wherehouse.Client) error) (bool, error) {
+	if len(clients) == 0 {
+		return false, errNoWherehouse
+	}
+	var failed error
+	for _, wh := range clients {
+		err := fn(wh)
+		switch {
+		case err == nil:
+			return true, nil
+		case wherehouseNotFound(err):
+		default:
+			failed = err
+		}
+	}
+	return false, failed
 }
 
 func wherehouseNotFound(err error) bool {

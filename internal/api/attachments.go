@@ -498,8 +498,13 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 		}
 		filename = cleanFilename(name)
 	}
-	// Changed on the thing it's on too, first.
+	// Changed on the thing it's on too, first. Read again once nothing
+	// else can be sending it there, so it's changed where it is now.
 	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	if a, err = s.store.GetAttachment(r.Context(), userID(r), id); err != nil {
+		fail(w, err)
+		return
+	}
 	seen, err := s.updateOnThing(r.Context(), userID(r), a, kind, filename)
 	if err != nil {
 		wherehouseFail(w, err)
@@ -531,8 +536,14 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	// It goes from the thing it's on too, or it would come back.
+	// It goes from the thing it's on too, or it would come back. Read again
+	// once nothing else can be sending it there, so it's deleted where it is
+	// now.
 	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	if a, err = s.store.GetAttachment(r.Context(), userID(r), id); err != nil {
+		fail(w, err)
+		return
+	}
 	if err := s.deleteOnThing(r.Context(), userID(r), a); err != nil {
 		wherehouseFail(w, err)
 		return
