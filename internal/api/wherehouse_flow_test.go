@@ -376,6 +376,28 @@ func TestWherehouseAddLeavesNoThingBehind(t *testing.T) {
 	}
 }
 
+// A warranty deleted while its thing was being made never saw the thing, so
+// the cleanup deletes it rather than leaving it behind.
+func TestWherehouseDropThingOfDeletedWarranty(t *testing.T) {
+	f := newWherehouseFixture(t)
+	ctx := context.Background()
+	f.wh.mu.Lock()
+	thing := f.wh.add("Lamp", nil)
+	f.wh.mu.Unlock()
+	if _, err := f.srv.store.DeleteWarranty(ctx, f.alice.ID, f.warrantyID); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.srv.store.Settings(ctx, f.alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.dropUnlinkedThing(f.alice.ID, f.warrantyID, f.srv.wherehouseFor(st), thing.ID)
+	f.srv.background.Wait()
+	if th := f.wh.get(thing.ID); th != nil {
+		t.Errorf("thing left behind: %+v", th)
+	}
+}
+
 func TestWherehouseDeletedWarrantyLeaves(t *testing.T) {
 	f := newWherehouseFixture(t)
 	ctx := context.Background()

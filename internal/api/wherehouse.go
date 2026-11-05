@@ -367,8 +367,13 @@ func (s *Server) linkWherehouse(w http.ResponseWriter, r *http.Request, created 
 // linked to it after all, so trying again doesn't leave one more behind.
 func (s *Server) dropUnlinkedThing(uid, id int64, wh *wherehouse.Client, thing int64) {
 	s.inBackground("wherehouse: delete a thing that wasn't linked", func(ctx context.Context) error {
-		if wr, err := s.store.GetWarranty(ctx, uid, id); err != nil || wr.Wherehouse != nil {
+		// A warranty deleted meanwhile never saw the thing, so it goes too.
+		wr, err := s.store.GetWarranty(ctx, uid, id)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
+		}
+		if err == nil && wr.Wherehouse != nil {
+			return nil
 		}
 		if err := wh.Delete(ctx, thing); err != nil && !wherehouseNotFound(err) {
 			return err
