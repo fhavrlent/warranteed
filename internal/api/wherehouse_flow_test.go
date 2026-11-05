@@ -57,6 +57,9 @@ type fakeWherehouse struct {
 	paperless string
 	// photos are the photos' contents by ID.
 	photos map[int64][]byte
+	// rejectToken refuses every request, as a Wherehouse set up afresh
+	// refuses an old token.
+	rejectToken bool
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -69,6 +72,10 @@ func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
 func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.rejectToken {
+		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		return
+	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
 	id, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 	thing := func(i int) *fakeThing {
@@ -249,9 +256,11 @@ func (f *fakeWherehouse) get(id int64) *fakeThing {
 }
 
 type wherehouseFixture struct {
-	srv   *Server
-	wh    *fakeWherehouse
-	alice *store.User
+	srv *Server
+	wh  *fakeWherehouse
+	// whServer serves wh; closing it makes Wherehouse unreachable.
+	whServer *httptest.Server
+	alice    *store.User
 	// warrantyID has 2 pieces and a Paperless receipt Alice added.
 	warrantyID int64
 }
@@ -298,7 +307,7 @@ func newWherehouseFixture(t *testing.T) *wherehouseFixture {
 	t.Cleanup(whServer.Close)
 	appURL, _ := url.Parse("https://warranty.example.test")
 	cfg := &config.Config{AppURL: appURL, MaxUploadMB: 10, Wherehouse: config.Wherehouse{URL: whServer.URL, PublicURL: whServer.URL}}
-	return &wherehouseFixture{srv: New(cfg, st, nil, nil, files, nil, "test"), wh: wh, alice: alice, warrantyID: wid}
+	return &wherehouseFixture{srv: New(cfg, st, nil, nil, files, nil, "test"), wh: wh, whServer: whServer, alice: alice, warrantyID: wid}
 }
 
 // call runs a handler as Alice, with the warranty as its {id}.
@@ -609,6 +618,52 @@ func TestWherehouseDisconnect(t *testing.T) {
 		}
 		if !unlink && (wr.Wherehouse == nil || th.app == "") {
 			t.Errorf("unlinked though only disconnected: %+v, thing %+v", wr.Wherehouse, th)
+		}
+	}
+}
+
+// Disconnecting works with a Wherehouse that refuses the token, e.g. one
+// set up afresh, or that can't be reached: what it can't be told is done
+// here only.
+func TestWherehouseDisconnectFromGone(t *testing.T) {
+	for _, how := range []string{"token refused", "unreachable"} {
+		for _, unlink := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s unlink=%v", how, unlink), func(t *testing.T) {
+				f := newWherehouseFixture(t)
+				f.photosOnly(t, true)
+				f.addPhoto(t)
+				if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+					t.Fatalf("add = %d %s", w.Code, w.Body)
+				}
+				if how == "token refused" {
+					f.wh.mu.Lock()
+					f.wh.rejectToken = true
+					f.wh.mu.Unlock()
+				} else {
+					f.whServer.Close()
+				}
+				target := "/api/settings/wherehouse"
+				if unlink {
+					target += "?unlink=1"
+				}
+				r := httptest.NewRequest(http.MethodDelete, target, nil)
+				r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+				w := httptest.NewRecorder()
+				f.srv.disconnectWherehouse(w, r)
+				if w.Code != http.StatusNoContent {
+					t.Fatalf("disconnect = %d %s", w.Code, w.Body)
+				}
+				st, err := f.srv.store.Settings(context.Background(), f.alice.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if st.WherehouseToken != "" {
+					t.Error("still connected")
+				}
+				if wr := f.warranty(t, f.warrantyID); (wr.Wherehouse == nil) != unlink {
+					t.Errorf("linked = %v, unlink = %v", wr.Wherehouse != nil, unlink)
+				}
+			})
 		}
 	}
 }

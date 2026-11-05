@@ -132,6 +132,11 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 		if err := s.adoptWherehouse(ctx, uid, true); err != nil {
 			slog.Warn("wherehouse: put warranties in step", "err", err)
 		}
+		// Photos left in Wherehouse by an earlier disconnect come back,
+		// or stay there, as the setting says.
+		if err := s.settleAllWherehousePhotos(ctx, uid, false); err != nil {
+			slog.Warn("wherehouse: settle photos", "err", err)
+		}
 	}()
 	done("connected")
 }
@@ -150,16 +155,18 @@ func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 	}
 	if wh := s.wherehouseFor(st); wh != nil {
 		// Photos kept only in Wherehouse come back here while the
-		// connection still reads them; if that fails, it stays connected.
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
-		defer cancel()
-		if err := s.settleAllWherehousePhotos(ctx, uid, true); err != nil {
-			wherehouseFail(w, err)
-			return
+		// connection still reads them. Ones Wherehouse can't hand over
+		// stay as they are, shown through anyone else's connection, and
+		// come back after connecting again.
+		photoCtx, cancelPhotos := context.WithTimeout(r.Context(), 5*time.Minute)
+		if err := s.settleAllWherehousePhotos(photoCtx, uid, true); err != nil {
+			slog.Warn("wherehouse: photos back on disconnecting", "err", err)
 		}
+		cancelPhotos()
+		ctx := r.Context()
 		if unlink {
-			if err := s.unlinkAllWherehouse(r.Context(), uid, wh); err != nil {
-				wherehouseFail(w, err)
+			if err := s.unlinkAllWherehouse(ctx, uid, wh); err != nil {
+				fail(w, err)
 				return
 			}
 		}
@@ -190,42 +197,53 @@ func (s *Server) unlinkAllWherehouse(ctx context.Context, uid int64, wh *whereho
 			continue
 		}
 		unlock := s.lockPhotos(wherehousePushKey(ws.ID))
-		err := s.unlinkForDisconnect(ctx, uid, wh, ws.ID, *ws.Thing)
+		gone, err := s.unlinkForDisconnect(ctx, uid, wh, ws.ID, *ws.Thing)
 		unlock()
 		if err != nil {
 			return err
+		}
+		// A Wherehouse that refuses the token or can't be reached isn't
+		// asked again for every warranty.
+		if gone {
+			wh = nil
 		}
 	}
 	return nil
 }
 
-func (s *Server) unlinkForDisconnect(ctx context.Context, uid int64, wh *wherehouse.Client, id, thing int64) error {
+// unlinkForDisconnect unlinks one warranty, there through wh if it's not
+// nil, and here. gone reports that wh refused the token or couldn't be reached.
+func (s *Server) unlinkForDisconnect(ctx context.Context, uid int64, wh *wherehouse.Client, id, thing int64) (gone bool, err error) {
 	clients, _, err := s.wherehouseClients(ctx, uid, id)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, other := range clients {
-		if other == wh || other.Token == wh.Token {
+		if wh == nil || other == wh || other.Token == wh.Token {
 			continue
 		}
 		if t, err := other.LinkedThing(ctx, id); err == nil && t.ID == thing {
-			return nil // someone else still uses it
+			return false, nil // someone else still uses it
 		}
 	}
 	// Only a thing that really is linked to this warranty is unlinked there.
-	t, err := wh.LinkedThing(ctx, id)
-	switch {
-	case err == nil && t.ID == thing:
-		if err := wh.RemoveLink(ctx, thing); err != nil && !wherehouseNotFound(err) {
-			return err
+	// If Wherehouse can't be told (it's gone, set up afresh or out of
+	// reach), it's unlinked here anyway: disconnecting never gets stuck.
+	if wh != nil {
+		t, err := wh.LinkedThing(ctx, id)
+		if err == nil && t.ID == thing {
+			err = wh.RemoveLink(ctx, thing)
 		}
-	case err != nil && !wherehouseNotFound(err):
-		return err
+		if err != nil && !wherehouseNotFound(err) {
+			slog.Warn("wherehouse: unlink there on disconnecting", "warranty", id, "err", err)
+			var we *wherehouse.Error
+			gone = !errors.As(err, &we) || we.Unauthorized()
+		}
 	}
 	if err := s.store.SetWherehouse(ctx, uid, id, nil); err != nil {
-		return err
+		return gone, err
 	}
-	return s.store.SetWherehouseUnlinked(ctx, id)
+	return gone, s.store.SetWherehouseUnlinked(ctx, id)
 }
 
 // ---- finding things ----
