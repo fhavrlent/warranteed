@@ -419,7 +419,9 @@ export const api = {
 
   /** Where to send the browser to connect Wherehouse. */
   connectWherehouse: () => request<{ url: string }>("POST", "/api/settings/wherehouse/connect"),
-  disconnectWherehouse: () => request<undefined>("DELETE", "/api/settings/wherehouse"),
+  /** Disconnects Wherehouse; with unlink, every warranty is unlinked from its thing too. */
+  disconnectWherehouse: (unlink: boolean) =>
+    request<undefined>("DELETE", `/api/settings/wherehouse${unlink ? "?unlink=1" : ""}`),
   wherehousePlaces: () => request<WherehouseThing[]>("GET", "/api/wherehouse/places"),
   searchWherehouse: (q: string) =>
     request<WherehouseThing[]>("GET", `/api/wherehouse/search?q=${encodeURIComponent(q)}`),

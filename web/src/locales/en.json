@@ -522,7 +522,11 @@
       "connected": "Connected to the household “{{household}}”",
       "connect": "Connect to Wherehouse",
       "connectedToast": "Connected to Wherehouse",
-      "failed": "Couldn’t connect to Wherehouse. Try again."
+      "failed": "Couldn’t connect to Wherehouse. Try again.",
+      "disconnectTitle": "Disconnect Wherehouse?",
+      "disconnectText": "Warranteed stops sending changes to Wherehouse and reading them from it. Without the option below, warranties stay linked, and connecting again carries on from there.",
+      "unlinkAll": "Also unlink all warranties",
+      "unlinkAllHint": "Their things in Wherehouse keep the purchase details as their own. A warranty someone else still uses through their own connection stays linked."
     }
   },
   "errors": {

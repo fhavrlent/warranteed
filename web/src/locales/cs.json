@@ -572,7 +572,11 @@
       "connected": "Připojeno k domácnosti „{{household}}“",
       "connect": "Připojit Wherehouse",
       "connectedToast": "Wherehouse připojen",
-      "failed": "Wherehouse se nepodařilo připojit. Zkuste to znovu."
+      "failed": "Wherehouse se nepodařilo připojit. Zkuste to znovu.",
+      "disconnectTitle": "Odpojit Wherehouse?",
+      "disconnectText": "Warranteed přestane posílat změny do Wherehouse a číst je z něj. Bez volby níže zůstanou záruky propojené a po novém připojení se naváže tam, kde to skončilo.",
+      "unlinkAll": "Zrušit i propojení všech záruk",
+      "unlinkAllHint": "Věci ve Wherehouse si údaje o nákupu nechají jako vlastní. Záruka, kterou někdo jiný používá přes své vlastní připojení, zůstane propojená."
     }
   },
   "errors": {

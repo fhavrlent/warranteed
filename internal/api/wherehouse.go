@@ -139,20 +139,85 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 // disconnectWherehouse forgets the person's connection. Links to things stay,
 // for whenever someone connects again.
 func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
-	// Stop the pings first; if Wherehouse can't be reached they're refused
-	// here anyway, as the secret goes with the connection.
-	if st, err := s.store.Settings(r.Context(), userID(r)); err == nil {
-		if wh := s.wherehouseFor(st); wh != nil {
-			if err := wh.RemoveHook(r.Context()); err != nil {
-				slog.Warn("wherehouse pings", "err", err)
+	// With ?unlink=1, warranties are unlinked too, both here and there,
+	// while the token still works.
+	unlink := r.URL.Query().Get("unlink") == "1"
+	uid := userID(r)
+	st, err := s.store.Settings(r.Context(), uid)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if wh := s.wherehouseFor(st); wh != nil {
+		if unlink {
+			if err := s.unlinkAllWherehouse(r.Context(), uid, wh); err != nil {
+				wherehouseFail(w, err)
+				return
 			}
 		}
+		// Stop the pings; if Wherehouse can't be reached they're refused
+		// here anyway, as the secret goes with the connection.
+		if err := wh.RemoveHook(r.Context()); err != nil {
+			slog.Warn("wherehouse pings", "err", err)
+		}
 	}
-	if err := s.store.SetWherehouseConnection(r.Context(), userID(r), "", ""); err != nil {
+	if err := s.store.SetWherehouseConnection(r.Context(), uid, "", ""); err != nil {
 		fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// unlinkAllWherehouse unlinks the warranties someone can see from their
+// things in Wherehouse, which keep their details as their own. A warranty
+// someone else still reaches through their own connection stays linked.
+// Unlinked warranties aren't linked again by themselves.
+func (s *Server) unlinkAllWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client) error {
+	states, err := s.store.WherehouseStates(ctx, uid)
+	if err != nil {
+		return err
+	}
+	for _, ws := range states {
+		if ws.Thing == nil {
+			continue
+		}
+		unlock := s.lockPhotos(wherehousePushKey(ws.ID))
+		err := s.unlinkForDisconnect(ctx, uid, wh, ws.ID, *ws.Thing)
+		unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) unlinkForDisconnect(ctx context.Context, uid int64, wh *wherehouse.Client, id, thing int64) error {
+	clients, _, err := s.wherehouseClients(ctx, uid, id)
+	if err != nil {
+		return err
+	}
+	for _, other := range clients {
+		if other == wh || other.Token == wh.Token {
+			continue
+		}
+		if t, err := other.LinkedThing(ctx, id); err == nil && t.ID == thing {
+			return nil // someone else still uses it
+		}
+	}
+	// Only a thing that really is linked to this warranty is unlinked there.
+	t, err := wh.LinkedThing(ctx, id)
+	switch {
+	case err == nil && t.ID == thing:
+		if err := wh.RemoveLink(ctx, thing); err != nil && !wherehouseNotFound(err) {
+			return err
+		}
+	case err != nil && !wherehouseNotFound(err):
+		return err
+	}
+	if err := s.store.SetWherehouse(ctx, uid, id, nil); err != nil {
+		return err
+	}
+	return s.store.SetWherehouseUnlinked(ctx, id)
 }
 
 // ---- finding things ----

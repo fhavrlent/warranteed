@@ -196,6 +196,8 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t := thing(1)
 		t.Links = append(t.Links, map[string]string{"url": in["url"]})
 		w.WriteHeader(http.StatusCreated)
+	case r.URL.Path == "/api/hook":
+		w.WriteHeader(http.StatusNoContent)
 	case r.URL.Path == "/api/paperless":
 		if f.paperless == "" {
 			http.NotFound(w, r)
@@ -537,5 +539,34 @@ func TestWherehousePing(t *testing.T) {
 	}
 	if code := ping("sha256=00"); code != http.StatusUnauthorized {
 		t.Errorf("badly signed ping = %d", code)
+	}
+}
+
+func TestWherehouseDisconnect(t *testing.T) {
+	for _, unlink := range []bool{false, true} {
+		f := newWherehouseFixture(t)
+		if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+			t.Fatalf("add = %d %s", w.Code, w.Body)
+		}
+		thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+		target := "/api/settings/wherehouse"
+		if unlink {
+			target += "?unlink=1"
+		}
+		r := httptest.NewRequest(http.MethodDelete, target, nil)
+		r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+		w := httptest.NewRecorder()
+		f.srv.disconnectWherehouse(w, r)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("disconnect = %d %s", w.Code, w.Body)
+		}
+		wr := f.warranty(t, f.warrantyID)
+		th := f.wh.get(thing)
+		if unlink && (wr.Wherehouse != nil || th.app != "") {
+			t.Errorf("still linked after unlinking all: %+v, thing %+v", wr.Wherehouse, th)
+		}
+		if !unlink && (wr.Wherehouse == nil || th.app == "") {
+			t.Errorf("unlinked though only disconnected: %+v, thing %+v", wr.Wherehouse, th)
+		}
 	}
 }
