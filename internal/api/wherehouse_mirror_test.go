@@ -301,3 +301,24 @@ func TestWherehouseHomeBoxPhotoMoves(t *testing.T) {
 		t.Errorf("thing photos = %+v", th.Photos)
 	}
 }
+
+// Documents added before the two were kept in step are brought in step once
+// at start.
+func TestWherehouseAllInStepAtStart(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.wh.paperless = "http://paperless:8000/"
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	doc := int64(170)
+	if err := f.srv.store.CreateAttachment(context.Background(), &store.Attachment{WarrantyID: f.warrantyID, Kind: "other",
+		Storage: store.StoragePaperless, Filename: "dummy.pdf", MimeType: "application/pdf", PaperlessDocID: &doc,
+		Status: store.StatusReady, AddedBy: &f.alice.ID}); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.sendAllToWherehouse(context.Background(), f.alice.ID)
+	if th := f.wh.get(thing); len(th.Attachments) != 2 || th.Attachments[1]["kind"] != "other" {
+		t.Errorf("thing documents = %+v", th.Attachments)
+	}
+}

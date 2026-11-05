@@ -728,6 +728,7 @@ func (s *Server) SyncWherehouse(ctx context.Context) {
 	}
 	tick := time.NewTicker(10 * time.Minute)
 	defer tick.Stop()
+	first := true
 	for {
 		users, err := s.store.WherehouseConnected(ctx)
 		if err != nil {
@@ -737,7 +738,13 @@ func (s *Server) SyncWherehouse(ctx context.Context) {
 			if err := s.syncWherehouseUser(ctx, uid); err != nil {
 				slog.Warn("wherehouse sync", "user", uid, "err", err)
 			}
+			if first {
+				// What changed while this was stopped, or before it kept
+				// documents and photos in step, is brought in step once.
+				s.sendAllToWherehouse(ctx, uid)
+			}
 		}
+		first = false
 		select {
 		case <-ctx.Done():
 			return
@@ -1013,6 +1020,36 @@ func (s *Server) matchClaimEntries(ctx context.Context, st *store.Settings, t *w
 }
 
 // ---- photos and receipts ----
+
+// sendAllToWherehouse brings every warranty uid has linked in step with its
+// thing, one after another.
+func (s *Server) sendAllToWherehouse(ctx context.Context, uid int64) {
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		slog.Warn("wherehouse: photos and documents", "user", uid, "err", err)
+		return
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		return
+	}
+	states, err := s.store.WherehouseStates(ctx, uid)
+	if err != nil {
+		slog.Warn("wherehouse: photos and documents", "user", uid, "err", err)
+		return
+	}
+	for _, ws := range states {
+		if ws.Thing == nil || ctx.Err() != nil {
+			continue
+		}
+		wctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		err := s.sendToWherehouse(wctx, uid, wh, ws.ID)
+		cancel()
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			slog.Warn("wherehouse: photos and documents", "warranty", ws.ID, "err", err)
+		}
+	}
+}
 
 // sendToWherehouseLater sends a linked warranty's new photos and receipts
 // to its thing in the background.
