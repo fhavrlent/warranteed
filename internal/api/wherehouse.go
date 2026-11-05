@@ -388,12 +388,16 @@ func (s *Server) wherehouseClients(ctx context.Context, uid, warrantyID int64) (
 // wherehouseKey marks a warranty being added to or linked with Wherehouse.
 func wherehouseKey(id int64) string { return "wh:" + strconv.FormatInt(id, 10) }
 
+// wherehousePushKey locks a warranty while its details are sent to its thing
+// or it's unlinked.
+func wherehousePushKey(id int64) string { return "wh-push:" + strconv.FormatInt(id, 10) }
+
 // pushWherehouseLater sends a linked warranty's changed details to its thing.
 // Pushes take turns and each reads the warranty once it's its turn, so an
 // older one can't land after a newer one.
 func (s *Server) pushWherehouseLater(uid, warrantyID int64) {
 	s.inBackground("update wherehouse", func(ctx context.Context) error {
-		defer s.lockPhotos("wh-push:" + strconv.FormatInt(warrantyID, 10))()
+		defer s.lockPhotos(wherehousePushKey(warrantyID))()
 		wr, err := s.store.GetWarranty(ctx, uid, warrantyID)
 		if err != nil || wr.Wherehouse == nil {
 			return err
@@ -416,6 +420,8 @@ func (s *Server) unlinkWherehouse(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A push waiting meanwhile would link the thing again after it's removed.
+	defer s.lockPhotos(wherehousePushKey(id))()
 	uid := userID(r)
 	wr, err := s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {
