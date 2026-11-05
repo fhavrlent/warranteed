@@ -385,76 +385,149 @@ func thingDetails(t *wherehouse.Thing) map[string]string {
 // and when both changed, the warranty's wins. Details that differed when
 // first seen stay as they are until one side changes. Called under the
 // photos' lock.
-func (s *Server) mirrorDetails(ctx context.Context, wh *wherehouse.Client, wr *store.Warranty, t *wherehouse.Thing) error {
-	here, there := sharedDetails(wr), thingDetails(t)
+func (s *Server) mirrorDetails(ctx context.Context, uid int64, wh *wherehouse.Client, wr *store.Warranty, t *wherehouse.Thing) error {
+	there := thingDetails(t)
 	raw, err := s.store.WherehouseFields(ctx, wr.ID)
 	if err != nil {
 		return err
 	}
 	var seen detailsSeen
 	if raw == "" || json.Unmarshal([]byte(raw), &seen) != nil || seen.Here == nil || seen.There == nil {
-		return s.saveDetailsSeen(ctx, wr.ID, here, there)
-	}
-	toThing := map[string]any{}
-	toHere := map[string]string{}
-	for _, k := range detailKeys {
-		switch {
-		case here[k] == there[k]:
-		case here[k] != seen.Here[k]:
-			toThing[k] = here[k]
-		case there[k] != seen.There[k]:
-			toHere[k] = there[k]
-		}
-	}
-	if len(toThing) > 0 {
-		if q, ok := toThing["quantity"].(string); ok {
-			toThing["quantity"], _ = strconv.Atoi(q)
-		}
-		if err := wh.SetDetails(ctx, t.ID, toThing); err != nil {
-			return err
-		}
-		for k := range toThing {
-			there[k] = here[k]
-		}
-		slog.Info("wherehouse: details sent to the thing", "warranty", wr.ID, "details", len(toThing))
-	}
-	if len(toHere) > 0 {
-		d := store.ThingDetails{ProductName: wr.ProductName, Brand: wr.Brand, Model: wr.Model, Notes: wr.Notes,
-			SerialNumbers: wr.SerialNumbers, Quantity: max(wr.Quantity, 1)}
-		for k, v := range toHere {
-			switch k {
-			case "name":
-				if strings.TrimSpace(v) != "" {
-					d.ProductName = v
-				}
-			case "manufacturer":
-				d.Brand = v
-			case "model":
-				d.Model = v
-			case "serial":
-				d.SerialNumbers = nil
-				for _, sn := range strings.Split(v, ",") {
-					if sn = strings.TrimSpace(sn); sn != "" {
-						d.SerialNumbers = append(d.SerialNumbers, sn)
-					}
-				}
-			case "notes":
-				d.Notes = v
-			case "quantity":
-				if q, err := strconv.Atoi(v); err == nil && q >= 1 && q <= store.MaxQuantity {
-					d.Quantity = q
-				}
+		// First seen: what each has stays, but what the thing lacks is filled
+		// in, as on things made before they had every detail.
+		here := sharedDetails(wr)
+		fill := map[string]any{}
+		for _, k := range detailKeys {
+			lacks := there[k] == "" && here[k] != ""
+			if k == "serial" && len(wr.SerialNumbers) > 1 && there[k] == wr.SerialNumbers[0] {
+				lacks = true // only the first was sent
+			}
+			if lacks && k != "quantity" {
+				fill[k] = fitDetail(k, here[k])
 			}
 		}
-		if err := s.store.SetThingDetails(ctx, wr.ID, d); err != nil {
-			return err
+		if len(fill) > 0 {
+			if err := wh.SetDetails(ctx, t.ID, fill); err != nil {
+				return err
+			}
+			for k, v := range fill {
+				there[k] = v.(string)
+			}
+			slog.Info("wherehouse: details filled in on the thing", "warranty", wr.ID, "details", len(fill))
 		}
-		slog.Info("wherehouse: details changed on the thing", "warranty", wr.ID, "details", len(toHere))
-		wr.ProductName, wr.Brand, wr.Model, wr.Notes, wr.SerialNumbers, wr.Quantity =
-			d.ProductName, d.Brand, d.Model, d.Notes, d.SerialNumbers, d.Quantity
-		here = sharedDetails(wr)
+		return s.saveDetailsSeen(ctx, wr.ID, here, there)
 	}
-	return s.saveDetailsSeen(ctx, wr.ID, here, there)
+	// Changed here while the thing was read, they're read again: what's
+	// changed there is only taken over what was here a moment ago.
+	for try := 0; ; try++ {
+		here := sharedDetails(wr)
+		toThing := map[string]any{}
+		toHere := map[string]string{}
+		for _, k := range detailKeys {
+			switch {
+			case here[k] == there[k]:
+			case here[k] != seen.Here[k]:
+				toThing[k] = here[k]
+			case there[k] != seen.There[k]:
+				toHere[k] = there[k]
+			}
+		}
+		if len(toHere) > 0 {
+			ok, err := s.takeDetails(ctx, wr, toHere)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				if try == 2 {
+					return errors.New("the warranty keeps changing")
+				}
+				if wr, err = s.store.GetWarranty(ctx, uid, wr.ID); err != nil {
+					return err
+				}
+				continue
+			}
+			slog.Info("wherehouse: details changed on the thing", "warranty", wr.ID, "details", len(toHere))
+			here = sharedDetails(wr)
+		}
+		if len(toThing) > 0 {
+			sent := map[string]string{}
+			for k := range toThing {
+				sent[k] = fitDetail(k, here[k])
+				toThing[k] = sent[k]
+			}
+			if q, ok := toThing["quantity"].(string); ok {
+				toThing["quantity"], _ = strconv.Atoi(q)
+			}
+			if err := wh.SetDetails(ctx, t.ID, toThing); err != nil {
+				return err
+			}
+			// Seen there as sent, so a detail too long for Wherehouse isn't
+			// taken for one shortened there.
+			for k, v := range sent {
+				there[k] = v
+			}
+			slog.Info("wherehouse: details sent to the thing", "warranty", wr.ID, "details", len(toThing))
+		}
+		return s.saveDetailsSeen(ctx, wr.ID, here, there)
+	}
+}
+
+// takeDetails changes wr's details to those changed on its thing, unless
+// wr was changed here since it was read; then it reports false. wr is
+// changed to match.
+func (s *Server) takeDetails(ctx context.Context, wr *store.Warranty, toHere map[string]string) (bool, error) {
+	was := store.ThingDetails{ProductName: wr.ProductName, Brand: wr.Brand, Model: wr.Model, Notes: wr.Notes,
+		SerialNumbers: wr.SerialNumbers, Quantity: wr.Quantity}
+	d := was
+	d.Quantity = max(d.Quantity, 1)
+	for k, v := range toHere {
+		switch k {
+		case "name":
+			if strings.TrimSpace(v) != "" {
+				d.ProductName = v
+			}
+		case "manufacturer":
+			d.Brand = v
+		case "model":
+			d.Model = v
+		case "serial":
+			d.SerialNumbers = nil
+			for _, sn := range strings.Split(v, ",") {
+				if sn = strings.TrimSpace(sn); sn != "" {
+					d.SerialNumbers = append(d.SerialNumbers, sn)
+				}
+			}
+		case "notes":
+			d.Notes = v
+		case "quantity":
+			if q, err := strconv.Atoi(v); err == nil && q >= 1 && q <= store.MaxQuantity {
+				d.Quantity = q
+			}
+		}
+	}
+	ok, err := s.store.SetThingDetails(ctx, wr.ID, was, d)
+	if err != nil || !ok {
+		return false, err
+	}
+	wr.ProductName, wr.Brand, wr.Model, wr.Notes, wr.SerialNumbers, wr.Quantity =
+		strings.TrimSpace(d.ProductName), strings.TrimSpace(d.Brand), strings.TrimSpace(d.Model),
+		strings.TrimRight(d.Notes, " \n\t"), d.SerialNumbers, d.Quantity
+	return true, nil
+}
+
+// fitDetail is a detail as long as Wherehouse takes it.
+func fitDetail(key, v string) string {
+	limit := 200
+	switch key {
+	case "notes":
+		limit = 10_000
+	case "quantity":
+		return v
+	}
+	if r := []rune(v); len(r) > limit {
+		return strings.TrimSpace(string(r[:limit]))
+	}
+	return v
 }
 
 func (s *Server) saveDetailsSeen(ctx context.Context, id int64, here, there map[string]string) error {

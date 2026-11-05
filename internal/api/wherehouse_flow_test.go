@@ -66,6 +66,9 @@ type fakeWherehouse struct {
 	// rejectToken refuses every request, as a Wherehouse set up afresh
 	// refuses an old token.
 	rejectToken bool
+	// failGets fails that many reads of a thing, as when Wherehouse doesn't
+	// answer in time.
+	failGets int
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -110,6 +113,11 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.Method {
 		case http.MethodGet:
+			if f.failGets > 0 {
+				f.failGets--
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
 			send(t)
 		case http.MethodPut:
 			var in map[string]any

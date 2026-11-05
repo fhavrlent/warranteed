@@ -198,6 +198,7 @@ type NewThing struct {
 	Manufacturer string `json:"manufacturer"`
 	Model        string `json:"model"`
 	Serial       string `json:"serial"`
+	Notes        string `json:"notes"`
 }
 
 func (c *Client) Create(ctx context.Context, t NewThing) (*Thing, error) {

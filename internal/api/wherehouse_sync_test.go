@@ -187,3 +187,110 @@ func TestWherehouseRelinkedStartsAfresh(t *testing.T) {
 		t.Errorf("warranty = %+v", wr)
 	}
 }
+
+// A thing whose change was read but whose warranty couldn't be brought in
+// step with it is tried again, though Wherehouse's changes are read past it.
+func TestWherehouseFailedSyncTriedAgain(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.changedThere(t, thing)
+	f.wh.mu.Lock()
+	f.wh.things[thing].Notes = "On the desk"
+	f.wh.failGets = 1
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	if wr := f.warranty(t, f.warrantyID); wr.Notes != "" {
+		t.Fatalf("notes taken although the thing couldn't be read: %q", wr.Notes)
+	}
+	// Nothing changed there since.
+	f.wh.mu.Lock()
+	f.wh.changes = nil
+	f.wh.mu.Unlock()
+	if err := f.srv.syncWherehouseUser(context.Background(), f.alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.background.Wait()
+	if wr := f.warranty(t, f.warrantyID); wr.Notes != "On the desk" {
+		t.Errorf("notes after another sync = %q", wr.Notes)
+	}
+}
+
+// A warranty changed here while its thing was read keeps that change, and
+// still takes what changed there.
+func TestWherehouseDetailsChangedMeanwhile(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	ctx := context.Background()
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.changedThere(t, thing)
+	f.wh.mu.Lock()
+	f.wh.things[thing].Notes = "On the desk"
+	f.wh.mu.Unlock()
+	stale := f.warranty(t, f.warrantyID)
+	st, err := f.srv.store.Settings(ctx, f.alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wh := f.srv.wherehouseFor(st)
+	th, err := wh.Get(ctx, thing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Saved here meanwhile.
+	months := 24
+	if err := f.srv.store.UpdateWarranty(ctx, f.alice.ID, f.warrantyID, &store.WarrantyInput{ProductName: "Desk lamp",
+		PurchaseDate: stale.PurchaseDate, WarrantyMonths: &months, Quantity: 1, SerialNumbers: []string{"S9"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.srv.mirrorDetails(ctx, f.alice.ID, wh, stale, th); err != nil {
+		t.Fatal(err)
+	}
+	wr := f.warranty(t, f.warrantyID)
+	if wr.ProductName != "Desk lamp" || len(wr.SerialNumbers) != 1 || wr.SerialNumbers[0] != "S9" || wr.Notes != "On the desk" {
+		t.Errorf("warranty = %q %v %q", wr.ProductName, wr.SerialNumbers, wr.Notes)
+	}
+	if got := f.wh.get(thing); got.Name != "Desk lamp" || got.Serial != "S9" || got.Notes != "On the desk" {
+		t.Errorf("thing = %+v", got)
+	}
+}
+
+// A thing made for a warranty has all the details they share, and one made
+// before that has what it lacks filled in.
+func TestWherehouseNewThingHasEveryDetail(t *testing.T) {
+	f := newWherehouseFixture(t)
+	ctx := context.Background()
+	wr := f.warranty(t, f.warrantyID)
+	months := 24
+	if err := f.srv.store.UpdateWarranty(ctx, f.alice.ID, f.warrantyID, &store.WarrantyInput{ProductName: wr.ProductName,
+		PurchaseDate: wr.PurchaseDate, WarrantyMonths: &months, Quantity: 1, Notes: "Support: 123",
+		SerialNumbers: []string{"A1", "B2"}}); err != nil {
+		t.Fatal(err)
+	}
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	if got := f.wh.get(thing); got.Serial != "A1, B2" || got.Notes != "Support: 123" {
+		t.Fatalf("new thing = %+v", got)
+	}
+
+	// Made before, with the first serial number only and no notes.
+	if err := f.srv.store.SetWherehouseFields(ctx, f.warrantyID, ""); err != nil {
+		t.Fatal(err)
+	}
+	f.wh.mu.Lock()
+	f.wh.things[thing].Serial, f.wh.things[thing].Notes = "A1", ""
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	if got := f.wh.get(thing); got.Serial != "A1, B2" || got.Notes != "Support: 123" {
+		t.Errorf("thing made before = %+v", got)
+	}
+	if wr := f.warranty(t, f.warrantyID); len(wr.SerialNumbers) != 2 || wr.Notes != "Support: 123" {
+		t.Errorf("warranty = %v %q", wr.SerialNumbers, wr.Notes)
+	}
+}

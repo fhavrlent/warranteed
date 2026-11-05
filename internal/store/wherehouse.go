@@ -371,14 +371,45 @@ type ThingDetails struct {
 	Quantity                         int
 }
 
-// SetThingDetails changes a warranty's details as they were changed on its
-// thing.
-func (s *Store) SetThingDetails(ctx context.Context, id int64, d ThingDetails) error {
+// SetThingDetails changes a warranty's details from what they were, was, to
+// d, as they were changed on its thing. It reports false, changing nothing,
+// if they aren't was any more: they were changed here meanwhile.
+func (s *Store) SetThingDetails(ctx context.Context, id int64, was, d ThingDetails) (bool, error) {
 	d.ProductName = strings.TrimSpace(d.ProductName)
 	if d.ProductName == "" || d.Quantity < 1 || d.Quantity > MaxQuantity {
-		return invalid("productName", nil)
+		return false, invalid("productName", nil)
 	}
-	return s.withTx(ctx, func(tx *sql.Tx) error {
+	same := true
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		var cur ThingDetails
+		if err := tx.QueryRowContext(ctx, `SELECT product_name, brand, model, notes, quantity FROM warranties WHERE id = ?`, id).
+			Scan(&cur.ProductName, &cur.Brand, &cur.Model, &cur.Notes, &cur.Quantity); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT value FROM serial_numbers WHERE warranty_id = ? ORDER BY position`, id)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var sn string
+			if err := rows.Scan(&sn); err != nil {
+				rows.Close()
+				return err
+			}
+			cur.SerialNumbers = append(cur.SerialNumbers, sn)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if same = cur.ProductName == was.ProductName && cur.Brand == was.Brand && cur.Model == was.Model &&
+			cur.Notes == was.Notes && cur.Quantity == was.Quantity &&
+			strings.Join(cur.SerialNumbers, "\x00") == strings.Join(was.SerialNumbers, "\x00"); !same {
+			return nil
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE warranties SET product_name = ?, brand = ?, model = ?, notes = ?, quantity = ?,
 			updated_at = ? WHERE id = ?`, d.ProductName, strings.TrimSpace(d.Brand), strings.TrimSpace(d.Model),
 			strings.TrimRight(d.Notes, " \n\t"), d.Quantity, now(), id); err != nil {
@@ -395,6 +426,7 @@ func (s *Store) SetThingDetails(ctx context.Context, id int64, d ThingDetails) e
 		}
 		return nil
 	})
+	return same && err == nil, err
 }
 
 // ClaimWherehouseSeen is a claim's maintenance entry as last seen (JSON).

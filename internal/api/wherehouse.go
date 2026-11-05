@@ -327,13 +327,13 @@ func (s *Server) linkWherehouseThing(w http.ResponseWriter, r *http.Request) {
 	s.linkWherehouse(w, r, false, func(context.Context, *wherehouse.Client, *store.Warranty) (int64, error) { return in.ThingID, nil })
 }
 
+// newThing is the thing made for a warranty, with all the details they
+// share.
 func newThing(wr *store.Warranty, parent *int64) wherehouse.NewThing {
-	t := wherehouse.NewThing{ParentID: parent, Name: displayName(wr), Quantity: max(wr.Quantity, 1),
-		Manufacturer: wr.Brand, Model: wr.Model}
-	if len(wr.SerialNumbers) > 0 {
-		t.Serial = wr.SerialNumbers[0]
-	}
-	return t
+	d := sharedDetails(wr)
+	return wherehouse.NewThing{ParentID: parent, Name: fitDetail("name", d["name"]), Quantity: max(wr.Quantity, 1),
+		Manufacturer: fitDetail("manufacturer", d["manufacturer"]), Model: fitDetail("model", d["model"]),
+		Serial: fitDetail("serial", d["serial"]), Notes: fitDetail("notes", d["notes"])}
 }
 
 // linkWherehouse links the warranty to the thing pick finds, or makes when
@@ -772,6 +772,14 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 	// Many changes come a page at a time.
 	since := st.WherehouseSince
 	changed := map[int64]bool{}
+	// Those that couldn't be brought in step last time are tried again.
+	s.wherehouseRetry.Range(func(k, _ any) bool {
+		if key := k.([2]int64); key[0] == uid {
+			changed[key[1]] = true
+			s.wherehouseRetry.Delete(k)
+		}
+		return true
+	})
 	defer func() {
 		// Their photos and documents, one warranty at a time.
 		for wid := range changed {
@@ -780,6 +788,7 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 			cancel()
 			if err != nil && !errors.Is(err, store.ErrNotFound) {
 				slog.Warn("wherehouse: photos and documents", "warranty", wid, "err", err)
+				s.wherehouseRetry.Store([2]int64{uid, wid}, true)
 			}
 		}
 	}()
@@ -1137,7 +1146,7 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 	if err != nil {
 		return err
 	}
-	if err := s.mirrorDetails(ctx, wh, wr, t); err != nil {
+	if err := s.mirrorDetails(ctx, uid, wh, wr, t); err != nil {
 		return err
 	}
 	if err := s.mirrorClaims(ctx, uid, st, wh, wr, t); err != nil {
