@@ -304,6 +304,9 @@ func (s *Server) joinWherehouse(ctx context.Context, uid int64, st *store.Settin
 	if err := s.store.SetWherehouse(ctx, uid, wr.ID, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()}); err != nil {
 		return err
 	}
+	// An edit made meanwhile found the warranty not linked yet and sent
+	// nothing; this sends the warranty as it is now.
+	s.pushWherehouseLater(uid, wr.ID)
 	if len(t.Photos) == 0 {
 		for _, a := range wr.Attachments {
 			if a.Kind != "photo" || a.Storage != store.StorageLocal {
@@ -700,17 +703,17 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 			if !all {
 				continue
 			}
-			t, err := wh.LinkedThing(ctx, ws.ID)
-			var we *wherehouse.Error
-			switch {
-			case errors.As(err, &we) && we.NotFound(), err == nil && t.ID != *ws.Thing:
+			stale, err := s.wherehouseLinkStale(ctx, uid, ws.ID, *ws.Thing)
+			if err != nil {
+				slog.Warn("check wherehouse link", "warranty", ws.ID, "err", err)
+				continue
+			}
+			if stale {
 				slog.Info("wherehouse link dropped: the thing there isn't linked to the warranty", "warranty", ws.ID)
 				if err := s.store.SetWherehouse(ctx, uid, ws.ID, nil); err != nil {
 					return err
 				}
 				ws.Thing = nil
-			case err != nil:
-				return err
 			}
 		}
 		if ws.Thing != nil || ws.HomeBoxID == "" {
@@ -731,6 +734,31 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 		slog.Info("warranty linked to the wherehouse thing its homebox item became", "warranty", ws.ID, "thing", t.ID)
 	}
 	return nil
+}
+
+// wherehouseLinkStale reports whether a warranty's link is gone from
+// Wherehouse: no connection of those who can see it finds the thing linked
+// to it there. People sharing a warranty may be connected to different
+// Wherehouse households, so one of them not finding it isn't enough. A
+// connection that can't be asked leaves it undecided, as an error.
+func (s *Server) wherehouseLinkStale(ctx context.Context, uid, warrantyID, thing int64) (bool, error) {
+	clients, _, err := s.wherehouseClients(ctx, uid, warrantyID)
+	if err != nil {
+		return false, err
+	}
+	for _, wh := range clients {
+		t, err := wh.LinkedThing(ctx, warrantyID)
+		var we *wherehouse.Error
+		switch {
+		case err == nil && t.ID == thing:
+			return false, nil
+		case err == nil, errors.As(err, &we) && (we.NotFound() || we.Unauthorized()):
+			// Not there, or a token that Wherehouse no longer takes.
+		default:
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // moveFromHomeBox links a warranty to the thing its HomeBox item was copied
