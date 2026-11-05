@@ -149,7 +149,8 @@ type Thing struct {
 		IsPlace bool `json:"isPlace"`
 	} `json:"kind"`
 	Photos []struct {
-		ID int64 `json:"id"`
+		ID   int64 `json:"id"`
+		Size int64 `json:"size"`
 	} `json:"photos"`
 	Maintenance []Maintenance `json:"maintenance"`
 	Attachments []struct {
@@ -307,7 +308,8 @@ func (c *Client) DeleteMaintenance(ctx context.Context, id int64) error {
 }
 
 // UploadPhoto adds a photo to a thing.
-func (c *Client) UploadPhoto(ctx context.Context, thing int64, name, mimeType string, photo io.Reader) error {
+// UploadPhoto adds a photo to a thing and returns its ID there.
+func (c *Client) UploadPhoto(ctx context.Context, thing int64, name, mimeType string, photo io.Reader) (int64, error) {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	h := textproto.MIMEHeader{}
@@ -315,20 +317,52 @@ func (c *Client) UploadPhoto(ctx context.Context, thing int64, name, mimeType st
 	h.Set("Content-Type", mimeType)
 	part, err := mw.CreatePart(h)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if _, err := io.Copy(part, photo); err != nil {
-		return err
+		return 0, err
 	}
 	if err := mw.Close(); err != nil {
-		return err
+		return 0, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("%s/api/things/%d/photos", c.BaseURL, thing), &body)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	return c.send(req, nil)
+	var out []struct {
+		ID int64 `json:"id"`
+	}
+	if err := c.send(req, &out); err != nil {
+		return 0, err
+	}
+	if len(out) != 1 {
+		return 0, fmt.Errorf("wherehouse added %d photos, not 1", len(out))
+	}
+	return out[0].ID, nil
+}
+
+// OpenPhoto opens a photo, or with thumb its preview; the caller closes it.
+func (c *Client) OpenPhoto(ctx context.Context, id int64, thumb bool) (*http.Response, error) {
+	path := fmt.Sprintf("%s/api/photos/%d", c.BaseURL, id)
+	if thumb {
+		path += "?size=thumb"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("could not reach Wherehouse: %w", err)
+	}
+	if res.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		res.Body.Close()
+		return nil, &Error{Status: res.StatusCode, Body: string(b)}
+	}
+	return res, nil
 }
 
 // Changes are what changed in Wherehouse since a time.

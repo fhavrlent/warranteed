@@ -604,6 +604,11 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors 'self'")
 	}
 
+	if a.Storage == store.StorageWherehouse {
+		s.proxyWherehousePhoto(w, r, a, thumb, download)
+		return
+	}
+
 	if thumb && a.Storage != store.StoragePaperless && thumbnail.Supported(a.MimeType) {
 		name := a.LocalPath
 		open := func(ctx context.Context) (io.ReadCloser, error) { return s.files.Open(a.LocalPath) }

@@ -296,10 +296,13 @@
     "fileName": "File name",
     "openInTab": "Open in new tab",
     "inHomebox": "Stored on the HomeBox item",
+    "inWherehouse": "Stored on the Wherehouse thing",
     "remove": "Remove",
     "removeTitle": "Remove photo?",
     "removeText": "It will be removed from this warranty but stays on the item in HomeBox.",
-    "renameHomebox": "Changes the name shown here; the photo in HomeBox keeps its name."
+    "removeTextWherehouse": "It will be removed from this warranty but stays on the thing in Wherehouse.",
+    "renameHomebox": "Changes the name shown here; the photo in HomeBox keeps its name.",
+    "renameWherehouse": "Changes the name shown here; the photo in Wherehouse is untouched."
   },
   "picker": {
     "title": "Link documents from Paperless",
@@ -428,7 +431,7 @@
       "connected_other": "Connected to Paperless-ngx {{version}} (API v{{api}}) · {{count}} documents",
       "saved": "Paperless connection saved",
       "default": "Upload documents to Paperless by default",
-      "defaultHint": "Product photos always stay here.",
+      "defaultHint": "Product photos never go to Paperless.",
       "backlinks": "Link documents back to their warranty",
       "backlinksHint": "Fills a “{{warranty}}” link field on your documents in Paperless. Your token must be allowed to edit documents.",
       "backlinksHintHomebox": "Fills the “{{warranty}}” and “{{homebox}}” link fields on your documents in Paperless. Your token must be allowed to edit documents.",
@@ -524,9 +527,11 @@
       "connectedToast": "Connected to Wherehouse",
       "failed": "Couldn’t connect to Wherehouse. Try again.",
       "disconnectTitle": "Disconnect Wherehouse?",
-      "disconnectText": "Warranteed stops sending changes to Wherehouse and reading them from it. Without the option below, warranties stay linked, and connecting again carries on from there.",
+      "disconnectText": "Warranteed stops sending changes to Wherehouse and reading them from it. Without the option below, warranties stay linked, and connecting again carries on from there. Photos kept only in Wherehouse come back here.",
       "unlinkAll": "Also unlink all warranties",
-      "unlinkAllHint": "Their things in Wherehouse keep the purchase details as their own. A warranty someone else still uses through their own connection stays linked."
+      "unlinkAllHint": "Their things in Wherehouse keep the purchase details as their own. A warranty someone else still uses through their own connection stays linked.",
+      "photosOnly": "Keep product photos only in Wherehouse",
+      "photosOnlyHint": "For warranties linked to a thing: their photos are kept on the thing and not here as well, so there's one copy. If a warranty is unlinked, you disconnect or turn this off, its photos come back here."
     }
   },
   "errors": {
@@ -622,6 +627,7 @@
     "homeboxItemGone": "That item no longer exists in HomeBox",
     "homeboxNotLinked": "Link this warranty to a HomeBox item first",
     "homeboxPhotoNoKey": "This photo is in HomeBox, but whoever added it has no HomeBox key saved",
+    "wherehousePhotoNoConnection": "This photo is kept in Wherehouse, but no one who can see this warranty is connected to Wherehouse",
     "homeboxNeedsItem": "Choose a HomeBox item",
     "homeboxAlreadyLinked": "This warranty is already linked to a HomeBox item",
     "homeboxBusy": "This warranty is being linked to HomeBox right now. Try again in a moment.",

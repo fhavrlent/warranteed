@@ -320,10 +320,13 @@
     "fileName": "Název souboru",
     "openInTab": "Otevřít v nové kartě",
     "inHomebox": "Uloženo u položky v HomeBoxu",
+    "inWherehouse": "Uloženo u věci ve Wherehouse",
     "remove": "Odebrat",
     "removeTitle": "Odebrat fotku?",
     "removeText": "Ze záruky zmizí, ale u položky v HomeBoxu zůstane.",
-    "renameHomebox": "Změní název zobrazený tady; fotka v HomeBoxu si ponechá svůj."
+    "removeTextWherehouse": "Ze záruky zmizí, ale u věci ve Wherehouse zůstane.",
+    "renameHomebox": "Změní název zobrazený tady; fotka v HomeBoxu si ponechá svůj.",
+    "renameWherehouse": "Změní název zobrazený tady; fotky ve Wherehouse se to netýká."
   },
   "picker": {
     "title": "Připojit dokumenty z Paperless",
@@ -460,7 +463,7 @@
       "connected_other": "Připojeno k Paperless-ngx {{version}} (API v{{api}}) · {{count}} dokumentů",
       "saved": "Připojení k Paperless uloženo",
       "default": "Ukládat dokumenty do Paperless",
-      "defaultHint": "Fotky produktů zůstávají vždy tady.",
+      "defaultHint": "Fotky produktů do Paperless nejdou nikdy.",
       "backlinks": "Odkazovat z dokumentů zpět na záruku",
       "backlinksHint": "Vyplní u vašich dokumentů v Paperless pole s odkazem „{{warranty}}“. Token musí smět upravovat dokumenty.",
       "backlinksHintHomebox": "Vyplní u vašich dokumentů v Paperless pole s odkazy „{{warranty}}“ a „{{homebox}}“. Token musí smět upravovat dokumenty.",
@@ -574,9 +577,11 @@
       "connectedToast": "Wherehouse připojen",
       "failed": "Wherehouse se nepodařilo připojit. Zkuste to znovu.",
       "disconnectTitle": "Odpojit Wherehouse?",
-      "disconnectText": "Warranteed přestane posílat změny do Wherehouse a číst je z něj. Bez volby níže zůstanou záruky propojené a po novém připojení se naváže tam, kde to skončilo.",
+      "disconnectText": "Warranteed přestane posílat změny do Wherehouse a číst je z něj. Bez volby níže zůstanou záruky propojené a po novém připojení se naváže tam, kde to skončilo. Fotky uložené jen ve Wherehouse se vrátí sem.",
       "unlinkAll": "Zrušit i propojení všech záruk",
-      "unlinkAllHint": "Věci ve Wherehouse si údaje o nákupu nechají jako vlastní. Záruka, kterou někdo jiný používá přes své vlastní připojení, zůstane propojená."
+      "unlinkAllHint": "Věci ve Wherehouse si údaje o nákupu nechají jako vlastní. Záruka, kterou někdo jiný používá přes své vlastní připojení, zůstane propojená.",
+      "photosOnly": "Ukládat fotky produktu jen do Wherehouse",
+      "photosOnlyHint": "U záruk propojených s věcí: fotky jsou uložené u věci a ne ještě tady, takže existují jen jednou. Když záruku odpojíte, odpojíte Wherehouse nebo tohle vypnete, fotky se vrátí sem."
     }
   },
   "errors": {
@@ -672,6 +677,7 @@
     "homeboxItemGone": "Tato položka už v HomeBoxu neexistuje",
     "homeboxNotLinked": "Nejdřív propojte záruku s položkou v HomeBoxu",
     "homeboxPhotoNoKey": "Fotka je v HomeBoxu, ale kdo ji přidal, nemá uložený klíč k HomeBoxu",
+    "wherehousePhotoNoConnection": "Fotka je uložená ve Wherehouse, ale nikdo, kdo tuto záruku vidí, není k Wherehouse připojený",
     "homeboxNeedsItem": "Vyberte položku v HomeBoxu",
     "homeboxAlreadyLinked": "Tato záruka už je propojená s položkou v HomeBoxu",
     "homeboxBusy": "Tato záruka se právě propojuje s HomeBoxem. Zkuste to za chvíli znovu.",

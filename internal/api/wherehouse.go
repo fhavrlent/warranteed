@@ -149,6 +149,14 @@ func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wh := s.wherehouseFor(st); wh != nil {
+		// Photos kept only in Wherehouse come back here while the
+		// connection still reads them; if that fails, it stays connected.
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		defer cancel()
+		if err := s.settleAllWherehousePhotos(ctx, uid, true); err != nil {
+			wherehouseFail(w, err)
+			return
+		}
 		if unlink {
 			if err := s.unlinkAllWherehouse(r.Context(), uid, wh); err != nil {
 				wherehouseFail(w, err)
@@ -573,6 +581,8 @@ func (s *Server) unlinkWherehouse(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Photos kept on the thing come back here; the thing keeps them too.
+	s.settleWherehousePhotosLater(uid, id)
 	if wr, err = s.store.GetWarranty(r.Context(), uid, id); err != nil {
 		fail(w, err)
 		return
@@ -784,6 +794,10 @@ func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, ch *wher
 			if err := s.store.SetWherehouse(ctx, uid, wid, nil); err != nil {
 				return err
 			}
+			// Photos kept on it went with it.
+			if err := s.store.ForgetWherehousePhotos(ctx, wid, thing); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -828,6 +842,9 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 					return err
 				}
 				ws.Thing = nil
+				if err := s.settleWherehousePhotos(ctx, uid, ws.ID, false); err != nil {
+					slog.Warn("wherehouse: photos of a dropped link", "warranty", ws.ID, "err", err)
+				}
 			}
 		}
 		if ws.Thing != nil || ws.HomeBoxID == "" {
@@ -941,10 +958,21 @@ func (s *Server) sendToWherehouseLater(uid, wid int64) {
 // them, else as links to them.
 func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client, wid int64) error {
 	// One at a time per warranty, so a photo isn't sent twice.
-	defer s.lockPhotos("wh-files:" + strconv.FormatInt(wid, 10))()
+	defer s.lockPhotos(wherehousePhotosKey(wid))()
 	wr, err := s.store.GetWarranty(ctx, uid, wid)
-	if err != nil || wr.Wherehouse == nil {
+	if err != nil {
 		return err
+	}
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		return err
+	}
+	// Photos kept only there go there first; what stays here is copied.
+	if err := s.settlePhotos(ctx, uid, st, wh, wr); err != nil {
+		return err
+	}
+	if wr.Wherehouse == nil {
+		return nil
 	}
 	thing := wr.Wherehouse.Thing
 	photos, err := s.store.WherehousePhotosToSend(ctx, wid, thing)
@@ -956,7 +984,7 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 		if err != nil {
 			return err
 		}
-		err = wh.UploadPhoto(ctx, thing, a.Filename, a.MimeType, f)
+		_, err = wh.UploadPhoto(ctx, thing, a.Filename, a.MimeType, f)
 		f.Close()
 		if err != nil {
 			return err
@@ -981,10 +1009,6 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 	}
 	// A document ID means the same document only in the same Paperless.
 	theirs, err := wh.Paperless(ctx)
-	if err != nil {
-		return err
-	}
-	st, err := s.store.Settings(ctx, uid)
 	if err != nil {
 		return err
 	}

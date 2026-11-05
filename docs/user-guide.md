@@ -43,7 +43,7 @@ Each warranty can hold its receipt, warranty terms and card, extended warranty, 
 
 With Paperless-ngx connected:
 
-- Documents can be **stored in Paperless** instead of in Warranteed. The upload dialog asks where to store them. **Upload documents to Paperless by default** in Settings makes Paperless the default. Product photos are stored in Warranteed or in [HomeBox](#homebox), never in Paperless, and file types Paperless can't take stay in Warranteed.
+- Documents can be **stored in Paperless** instead of in Warranteed. The upload dialog asks where to store them. **Upload documents to Paperless by default** in Settings makes Paperless the default. Product photos are stored in Warranteed, in [HomeBox](#homebox) or on the Wherehouse thing, never in Paperless, and file types Paperless can't take stay in Warranteed.
 - **Link from Paperless** attaches documents that are already there. Search by text, title or document ID.
 - A document stored in Paperless shows *Paperless is processing…* until Paperless has finished with it. If an upload fails, **Check again** retries it.
 - **Unlinking** a Paperless document only removes it from the warranty. The document stays in Paperless.
@@ -163,6 +163,7 @@ Documents aren't part of the CSV.
 - **Reminders**: see [Reminders](#reminders).
 - **Paperless-ngx**: your API token (Paperless: *Profile → API Auth Token*), whether uploads go to Paperless by default, links back from Paperless, and drafts.
 - **HomeBox**: your API key, and whether product photos are stored in HomeBox by default.
+- **Wherehouse**: connecting, and whether product photos of linked warranties are kept only in Wherehouse.
 - **Household**: who you share with, and sharing everything at once.
 - **Tags**, and **Import & export**.
 

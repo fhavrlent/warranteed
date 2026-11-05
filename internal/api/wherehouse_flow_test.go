@@ -55,6 +55,8 @@ type fakeWherehouse struct {
 	failLink bool
 	// paperless is the Paperless it links documents from, or "".
 	paperless string
+	// photos are the photos' contents by ID.
+	photos map[int64][]byte
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -171,11 +173,29 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.NotFound(w, r)
 	case len(parts) == 3 && parts[2] == "photos":
-		io.Copy(io.Discard, r.Body)
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		data, _ := io.ReadAll(file)
 		f.last++
+		if f.photos == nil {
+			f.photos = map[int64][]byte{}
+		}
+		f.photos[f.last] = data
 		t := thing(1)
-		t.Photos = append(t.Photos, map[string]int64{"id": f.last})
+		t.Photos = append(t.Photos, map[string]int64{"id": f.last, "size": int64(len(data))})
 		w.WriteHeader(http.StatusCreated)
+		send([]map[string]int64{{"id": f.last}})
+	case len(parts) == 2 && parts[0] == "photos" && r.Method == http.MethodGet:
+		data, ok := f.photos[id]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write(data)
 	case len(parts) == 4 && parts[3] == "paperless":
 		if f.noPaperless {
 			http.Error(w, `{"error":"Paperless isn't set up"}`, http.StatusBadRequest)

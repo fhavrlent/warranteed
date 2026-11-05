@@ -271,3 +271,54 @@ func (s *Store) AttachmentWarranty(ctx context.Context, id int64) (int64, error)
 	}
 	return wid, err
 }
+
+// StoredInWherehouse records that a photo is now kept only on a Wherehouse
+// thing, as photo there; its file here can go.
+func (s *Store) StoredInWherehouse(ctx context.Context, id, thing, photo int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET storage = ?, local_path = '', wherehouse_thing = ?, wherehouse_photo = ?
+		WHERE id = ?`, StorageWherehouse, thing, photo, id)
+	return err
+}
+
+// BackFromWherehouse records that a photo kept in Wherehouse is stored here
+// again, as file name. sentTo is the thing that still has it, if any.
+func (s *Store) BackFromWherehouse(ctx context.Context, id int64, name string, size int64, sentTo *int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET storage = ?, local_path = ?, size = ?, wherehouse_thing = ?, wherehouse_photo = NULL
+		WHERE id = ?`, StorageLocal, name, size, sentTo, id)
+	return err
+}
+
+// FileInUse reports whether any attachment still keeps its file as name.
+func (s *Store) FileInUse(ctx context.Context, name string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM attachments WHERE storage = ? AND local_path = ?`, StorageLocal, name).Scan(&n)
+	return n > 0, err
+}
+
+// WherehousePhotoWarranties lists the warranties the user can see that have
+// photos kept in Wherehouse.
+func (s *Store) WherehousePhotoWarranties(ctx context.Context, userID int64) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT w.id FROM warranties w JOIN attachments a ON a.warranty_id = w.id
+		WHERE `+visibleTo+` AND a.storage = ? ORDER BY w.id`, userID, StorageWherehouse)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// ForgetWherehousePhotos drops the warranty's photos that were kept on a
+// thing deleted in Wherehouse, as they went with it.
+func (s *Store) ForgetWherehousePhotos(ctx context.Context, warrantyID, thing int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE warranty_id = ? AND storage = ? AND wherehouse_thing = ?`,
+		warrantyID, StorageWherehouse, thing)
+	return err
+}

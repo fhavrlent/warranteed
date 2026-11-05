@@ -675,6 +675,7 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
 const Wherehouse = ({ s }: { s: SettingsT }) => {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const update = useAutoSave(s);
   // Coming back from connecting: say how it went, once.
   const [result] = useState(() => new URLSearchParams(location.search).get("wherehouse"));
   useEffect(() => {
@@ -754,6 +755,22 @@ const Wherehouse = ({ s }: { s: SettingsT }) => {
           {t("settings.wherehouse.connect")}
         </Button>
       )}
+      <label
+        className={cn(
+          "flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-3",
+          !s.wherehouseConnected && "opacity-50",
+        )}
+      >
+        <span>
+          <span className="block text-sm font-medium">{t("settings.wherehouse.photosOnly")}</span>
+          <span className="block text-xs text-fg-subtle">{t("settings.wherehouse.photosOnlyHint")}</span>
+        </span>
+        <Switch
+          checked={s.wherehousePhotosOnly}
+          disabled={!s.wherehouseConnected}
+          onCheckedChange={(v) => update({ wherehousePhotosOnly: v })}
+        />
+      </label>
     </Section>
   );
 };

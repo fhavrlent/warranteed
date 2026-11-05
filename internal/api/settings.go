@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -165,6 +166,7 @@ type settingsInput struct {
 	HomeBoxToken       *string `json:"homeboxToken"` // nil keeps the stored token
 	PaperlessBacklinks bool    `json:"paperlessBacklinks"`
 	HomeBoxPhotos      *bool   `json:"homeboxPhotosDefault"` // nil keeps the setting
+	WherehousePhotos   *bool   `json:"wherehousePhotosOnly"` // nil keeps the setting
 	DraftSource        string  `json:"draftSource"`
 	WarrantyStart      string  `json:"warrantyStart"`
 	DraftItems         string  `json:"draftItems"`
@@ -218,6 +220,9 @@ func (in *settingsInput) apply(st *store.Settings, admin bool, policy notify.Pol
 	if in.HomeBoxPhotos != nil {
 		st.HomeBoxPhotosDefault = *in.HomeBoxPhotos
 	}
+	if in.WherehousePhotos != nil {
+		st.WherehousePhotosOnly = *in.WherehousePhotos
+	}
 	switch in.DraftSource {
 	case "": // older clients
 	case sourceOff, sourcePaperless, sourceFields, sourceClaude:
@@ -258,6 +263,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	photosOnly := st.WherehousePhotosOnly
 	if err := in.apply(st, isAdmin(r), s.notifyPolicy()); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -265,6 +271,19 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.SaveSettings(r.Context(), userID(r), st); err != nil {
 		fail(w, err)
 		return
+	}
+	if st.WherehousePhotosOnly != photosOnly {
+		// Photos move to Wherehouse, or come back here.
+		uid := userID(r)
+		s.background.Add(1)
+		go func() {
+			defer s.background.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			if err := s.settleAllWherehousePhotos(ctx, uid, false); err != nil {
+				slog.Warn("wherehouse: move photos", "err", err)
+			}
+		}()
 	}
 	writeJSON(w, 200, s.settingsResponse(st, isAdmin(r)))
 }

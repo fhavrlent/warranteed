@@ -8,8 +8,8 @@ export interface Tag {
   count?: number;
 }
 
-/** Where a file is kept: here, in Paperless-ngx, or (photos only) on the linked HomeBox item. */
-export type Storage = "local" | "paperless" | "homebox";
+/** Where a file is kept: here, in Paperless-ngx, or (photos only) on the linked HomeBox item or Wherehouse thing. */
+export type Storage = "local" | "paperless" | "homebox" | "wherehouse";
 
 export interface Attachment {
   id: number;
@@ -176,6 +176,8 @@ export interface Settings {
   paperlessDefault: boolean;
   /** Store product photos in HomeBox by default, on warranties linked to an item. */
   homeboxPhotosDefault: boolean;
+  /** Keep product photos only in Wherehouse, on warranties linked to a thing. */
+  wherehousePhotosOnly: boolean;
   /** Write links to the warranty and HomeBox item into the user's Paperless documents. */
   paperlessBacklinks: boolean;
   /** Names of the custom fields those links go in. */
