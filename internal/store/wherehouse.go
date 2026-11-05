@@ -410,8 +410,9 @@ func (s *Store) SetThingDetails(ctx context.Context, id int64, was, d ThingDetai
 			strings.Join(cur.SerialNumbers, "\x00") == strings.Join(was.SerialNumbers, "\x00"); !same {
 			return nil
 		}
+		// Changed by someone, so a draft's details aren't filled in over it.
 		if _, err := tx.ExecContext(ctx, `UPDATE warranties SET product_name = ?, brand = ?, model = ?, notes = ?, quantity = ?,
-			updated_at = ? WHERE id = ?`, d.ProductName, strings.TrimSpace(d.Brand), strings.TrimSpace(d.Model),
+			updated_at = ?, edited = 1 WHERE id = ?`, d.ProductName, strings.TrimSpace(d.Brand), strings.TrimSpace(d.Model),
 			strings.TrimRight(d.Notes, " \n\t"), d.Quantity, now(), id); err != nil {
 			return err
 		}

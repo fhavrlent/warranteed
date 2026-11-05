@@ -978,7 +978,8 @@ func (s *Server) followMovedThing(ctx context.Context, uid, wid, old int64, t *w
 	}
 	claimed := map[int64]bool{}
 	for _, a := range wr.Attachments {
-		if a.Storage != store.StorageWherehouse || a.WherehouseThing == nil || *a.WherehouseThing != old {
+		// Photos only: a document kept there isn't one of the thing's photos.
+		if a.Storage != store.StorageWherehouse || a.WherehousePhoto == nil || a.WherehouseThing == nil || *a.WherehouseThing != old {
 			continue
 		}
 		for _, p := range t.Photos {

@@ -419,3 +419,65 @@ func TestWherehouseSplitCopyDeletedLeavesOriginal(t *testing.T) {
 		t.Errorf("original's photos = %+v", o)
 	}
 }
+
+// Following a restored thing, a document kept there isn't taken for one of
+// its photos, even of the same size.
+func TestWherehouseRestoredThingDocumentStaysADocument(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	ctx := context.Background()
+	old := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	thingID, attID := old, int64(900)
+	if err := f.srv.store.CreateAttachment(ctx, &store.Attachment{WarrantyID: f.warrantyID, Kind: "manual",
+		Storage: store.StorageWherehouse, Filename: "manual.pdf", MimeType: "application/pdf", Size: int64(len(photoBytes)),
+		Status: store.StatusReady, AddedBy: &f.alice.ID, WherehouseThing: &thingID, WherehouseAttachment: &attID}); err != nil {
+		t.Fatal(err)
+	}
+	f.wh.mu.Lock()
+	restored := f.wh.add("Lamp", nil)
+	restored.app = f.wh.things[old].app
+	f.wh.last++
+	restored.Photos = []map[string]int64{{"id": f.wh.last, "size": int64(len(photoBytes))}}
+	delete(f.wh.things, old)
+	f.wh.mu.Unlock()
+	st, _ := f.srv.store.Settings(ctx, f.alice.ID)
+	th, err := f.srv.wherehouseFor(st).Get(ctx, restored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.srv.followMovedThing(ctx, f.alice.ID, f.warrantyID, old, th); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range f.documents(t) {
+		if d.Filename == "manual.pdf" && (d.WherehousePhoto != nil || d.WherehouseAttachment == nil) {
+			t.Errorf("document = photo %v, attachment %v", d.WherehousePhoto, d.WherehouseAttachment)
+		}
+	}
+}
+
+// A draft's details changed in Wherehouse count as edited, so filling the
+// draft in later doesn't undo them.
+func TestWherehouseDetailsTakenAreAnEdit(t *testing.T) {
+	f := newWherehouseFixture(t)
+	ctx := context.Background()
+	months := 24
+	id, err := f.srv.store.CreateWarranty(ctx, f.alice.ID, &store.WarrantyInput{ProductName: "Lamp", PurchaseDate: "2025-03-01",
+		WarrantyMonths: &months, Quantity: 1, Draft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unedited, err := f.srv.store.UneditedDraft(ctx, id); err != nil || !unedited {
+		t.Fatalf("new draft unedited = %v, %v", unedited, err)
+	}
+	was := store.ThingDetails{ProductName: "Lamp", Quantity: 1}
+	d := was
+	d.ProductName = "Desk lamp"
+	if ok, err := f.srv.store.SetThingDetails(ctx, id, was, d); err != nil || !ok {
+		t.Fatalf("set = %v, %v", ok, err)
+	}
+	if unedited, err := f.srv.store.UneditedDraft(ctx, id); err != nil || unedited {
+		t.Errorf("draft unedited after a change there = %v, %v", unedited, err)
+	}
+}
