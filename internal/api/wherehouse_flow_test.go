@@ -53,6 +53,8 @@ type fakeWherehouse struct {
 	noPaperless bool
 	// failLink makes linking a thing to a warranty fail.
 	failLink bool
+	// paperless is the Paperless it links documents from, or "".
+	paperless string
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -194,6 +196,12 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t := thing(1)
 		t.Links = append(t.Links, map[string]string{"url": in["url"]})
 		w.WriteHeader(http.StatusCreated)
+	case r.URL.Path == "/api/paperless":
+		if f.paperless == "" {
+			http.NotFound(w, r)
+			return
+		}
+		send(map[string]string{"url": f.paperless, "publicUrl": f.paperless})
 	case r.URL.Path == "/api/changes":
 		out := wherehouse.Changes{Until: "2026-01-01T00:00:00Z", Things: []wherehouse.Thing{}, Deleted: []int64{}}
 		for _, cid := range f.changes {
@@ -330,6 +338,28 @@ func TestWherehouseAddSendsReceiptsAndPhotos(t *testing.T) {
 	f.srv.background.Wait()
 	if th := f.wh.get(wr.Wherehouse.Thing); len(th.Photos) != 2 || len(th.Links) != 1 {
 		t.Errorf("after sending again: photos %d, links %+v", len(th.Photos), th.Links)
+	}
+}
+
+func TestWherehouseReceiptsFromAnotherPaperless(t *testing.T) {
+	for _, tc := range []struct {
+		paperless   string
+		docs, links int
+	}{
+		// The same Paperless: the receipt is a document there too.
+		{"http://paperless:8000/", 1, 0},
+		// Another one: its document 7 is something else, so a link.
+		{"http://other-paperless:8000", 0, 1},
+	} {
+		f := newWherehouseFixture(t)
+		f.wh.paperless = tc.paperless
+		if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+			t.Fatalf("add = %d %s", w.Code, w.Body)
+		}
+		th := f.wh.get(f.warranty(t, f.warrantyID).Wherehouse.Thing)
+		if len(th.Attachments) != tc.docs || len(th.Links) != tc.links {
+			t.Errorf("%s: documents %+v, links %+v", tc.paperless, th.Attachments, th.Links)
+		}
 	}
 }
 

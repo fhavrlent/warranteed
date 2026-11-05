@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -216,6 +217,23 @@ type Link struct {
 	URL        string    `json:"url"`
 	Title      string    `json:"title"`
 	Purchase   *Purchase `json:"purchase"`
+}
+
+// Paperless is the Paperless that Wherehouse links documents from.
+type Paperless struct {
+	URL       string `json:"url"`
+	PublicURL string `json:"publicUrl"`
+}
+
+// Paperless returns the Paperless Wherehouse uses, or nil without one.
+func (c *Client) Paperless(ctx context.Context) (*Paperless, error) {
+	var out Paperless
+	err := c.do(ctx, http.MethodGet, "/api/paperless", nil, &out)
+	var we *Error
+	if errors.As(err, &we) && we.NotFound() {
+		return nil, nil
+	}
+	return &out, err
 }
 
 // LinkPaperless adds Paperless documents to a thing, as kind (e.g.

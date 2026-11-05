@@ -867,7 +867,8 @@ func (s *Server) sendToWherehouseLater(uid, wid int64) {
 
 // sendToWherehouse sends the warranty's photos stored here that its thing
 // hasn't got, and adds its Paperless receipts to the thing: as Paperless
-// documents if Wherehouse can read them, else as links to them.
+// documents if Wherehouse links them from the same Paperless and can read
+// them, else as links to them.
 func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client, wid int64) error {
 	// One at a time per warranty, so a photo isn't sent twice.
 	defer s.lockPhotos("wh-files:" + strconv.FormatInt(wid, 10))()
@@ -898,14 +899,20 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 	if err != nil {
 		return err
 	}
-	have := map[string]bool{}
+	haveDoc := map[int64]bool{}
 	for _, a := range t.Attachments {
 		if a.PaperlessDocID != nil {
-			have[strconv.FormatInt(*a.PaperlessDocID, 10)] = true
+			haveDoc[*a.PaperlessDocID] = true
 		}
 	}
+	haveLink := map[string]bool{}
 	for _, l := range t.Links {
-		have[l.URL] = true
+		haveLink[l.URL] = true
+	}
+	// A document ID means the same document only in the same Paperless.
+	theirs, err := wh.Paperless(ctx)
+	if err != nil {
+		return err
 	}
 	st, err := s.store.Settings(ctx, uid)
 	if err != nil {
@@ -925,12 +932,19 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 		if err != nil {
 			return err
 		}
+		pc, err := s.userPaperless(ctx, owner)
+		if err != nil {
+			return err
+		}
+		same := theirs != nil && pc != nil && (sameURL(pc.BaseURL, theirs.URL) || sameURL(web, theirs.PublicURL))
 		link := fmt.Sprintf("%s/documents/%d/details", web, doc)
-		if have[strconv.FormatInt(doc, 10)] || (web != "" && have[link]) {
+		if (same && haveDoc[doc]) || (web != "" && haveLink[link]) {
 			continue
 		}
-		if err := wh.LinkPaperless(ctx, thing, []int64{doc}, "receipt"); err == nil {
-			continue
+		if same {
+			if err := wh.LinkPaperless(ctx, thing, []int64{doc}, "receipt"); err == nil {
+				continue
+			}
 		}
 		if web == "" {
 			continue
@@ -940,6 +954,13 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 		}
 	}
 	return nil
+}
+
+// sameURL reports whether two addresses are the same, but for case and a
+// trailing slash.
+func sameURL(a, b string) bool {
+	a, b = strings.TrimSuffix(a, "/"), strings.TrimSuffix(b, "/")
+	return a != "" && strings.EqualFold(a, b)
 }
 
 // ---- deleting ----
