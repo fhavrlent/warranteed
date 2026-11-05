@@ -306,6 +306,7 @@
     "unlinkTitle": "Odpojit dokument?",
     "unlink": "Odpojit",
     "unlinkText": "Zmizí z této záruky, ale v Paperless-ngx zůstane.",
+    "unlinkTextWherehouse": "Zmizí z této záruky i z její věci ve Wherehouse, ale v Paperless-ngx zůstane.",
     "deleteTitle": "Smazat soubor?",
     "deleteText": "„{{name}}“ bude trvale smazán.",
     "added": "Přidáno {{date}}",
@@ -324,9 +325,9 @@
     "remove": "Odebrat",
     "removeTitle": "Odebrat fotku?",
     "removeText": "Ze záruky zmizí, ale u položky v HomeBoxu zůstane.",
-    "removeTextWherehouse": "Ze záruky zmizí, ale u věci ve Wherehouse zůstane.",
+    "removeTextWherehouse": "Smaže se tady i u věci ve Wherehouse.",
     "renameHomebox": "Změní název zobrazený tady; fotka v HomeBoxu si ponechá svůj.",
-    "renameWherehouse": "Změní název zobrazený tady; fotky ve Wherehouse se to netýká."
+    "renameWherehouse": "Změní název zobrazený tady; souboru ve Wherehouse se to netýká."
   },
   "picker": {
     "title": "Připojit dokumenty z Paperless",
@@ -577,11 +578,11 @@
       "connectedToast": "Wherehouse připojen",
       "failed": "Wherehouse se nepodařilo připojit. Zkuste to znovu.",
       "disconnectTitle": "Odpojit Wherehouse?",
-      "disconnectText": "Warranteed přestane posílat změny do Wherehouse a číst je z něj. Bez volby níže zůstanou záruky propojené a po novém připojení se naváže tam, kde to skončilo. Fotky uložené jen ve Wherehouse se vrátí sem.",
+      "disconnectText": "Warranteed přestane posílat změny do Wherehouse a číst je z něj. Bez volby níže zůstanou záruky propojené a po novém připojení se naváže tam, kde to skončilo. Fotky a dokumenty uložené jen ve Wherehouse se vrátí sem.",
       "unlinkAll": "Zrušit i propojení všech záruk",
       "unlinkAllHint": "Věci ve Wherehouse si údaje o nákupu nechají jako vlastní. Záruka, kterou někdo jiný používá přes své vlastní připojení, zůstane propojená.",
       "photosOnly": "Ukládat fotky produktu jen do Wherehouse",
-      "photosOnlyHint": "U záruk propojených s věcí: fotky jsou uložené u věci a ne ještě tady, takže existují jen jednou. Když záruku odpojíte, odpojíte Wherehouse nebo tohle vypnete, fotky se vrátí sem."
+      "photosOnlyHint": "U záruk propojených s věcí: fotky záruky jsou fotky věci, uložené u ní a ne ještě tady, takže existují jen jednou. Fotky přidané nebo smazané na jedné straně se projeví na obou. Když záruku odpojíte, odpojíte Wherehouse nebo tohle vypnete, fotky se vrátí sem."
     }
   },
   "errors": {
@@ -677,7 +678,7 @@
     "homeboxItemGone": "Tato položka už v HomeBoxu neexistuje",
     "homeboxNotLinked": "Nejdřív propojte záruku s položkou v HomeBoxu",
     "homeboxPhotoNoKey": "Fotka je v HomeBoxu, ale kdo ji přidal, nemá uložený klíč k HomeBoxu",
-    "wherehousePhotoNoConnection": "Fotka je uložená ve Wherehouse, ale nikdo, kdo tuto záruku vidí, není k Wherehouse připojený",
+    "wherehousePhotoNoConnection": "Soubor je uložený ve Wherehouse, ale nikdo, kdo tuto záruku vidí, není k Wherehouse připojený",
     "homeboxNeedsItem": "Vyberte položku v HomeBoxu",
     "homeboxAlreadyLinked": "Tato záruka už je propojená s položkou v HomeBoxu",
     "homeboxBusy": "Tato záruka se právě propojuje s HomeBoxem. Zkuste to za chvíli znovu.",

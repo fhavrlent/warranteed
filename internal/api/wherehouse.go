@@ -759,12 +759,24 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 	defer cancel()
 	// Many changes come a page at a time.
 	since := st.WherehouseSince
+	changed := map[int64]bool{}
+	defer func() {
+		// Their photos and documents, one warranty at a time.
+		for wid := range changed {
+			wctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			err := s.sendToWherehouse(wctx, uid, wh, wid)
+			cancel()
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				slog.Warn("wherehouse: photos and documents", "warranty", wid, "err", err)
+			}
+		}
+	}()
 	for range 50 {
 		ch, err := wh.Changes(cctx, since)
 		if err != nil {
 			return err
 		}
-		if err := s.applyWherehouseChanges(ctx, uid, ch); err != nil {
+		if err := s.applyWherehouseChanges(ctx, uid, ch, changed); err != nil {
 			return err
 		}
 		if err := s.store.SetWherehouseSince(ctx, uid, ch.Until); err != nil {
@@ -780,7 +792,8 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 
 // applyWherehouseChanges brings the warranties linked to things that changed
 // in Wherehouse in step with them.
-func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, ch *wherehouse.Changes) error {
+// The warranties linked to changed things are added to changed.
+func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, ch *wherehouse.Changes, changed map[int64]bool) error {
 	for _, t := range ch.Things {
 		ids, err := s.store.LinkedToThing(ctx, uid, t.ID)
 		if err != nil {
@@ -790,15 +803,17 @@ func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, ch *wher
 			if err := s.store.SetWherehouseSeen(ctx, wid, t.Label, t.PathText()); err != nil {
 				return err
 			}
+			// Its photos or documents may have changed.
+			changed[wid] = true
 			gone := t.SoldDate != nil || t.ArchivedAt != nil
-			changed, err := s.store.SetWherehouseArchived(ctx, wid, gone)
+			moved, err := s.store.SetWherehouseArchived(ctx, wid, gone)
 			if err != nil {
 				return err
 			}
 			switch {
-			case changed && gone:
+			case moved && gone:
 				slog.Info("warranty archived: its thing was sold or archived in Wherehouse", "warranty", wid)
-			case changed:
+			case moved:
 				slog.Info("warranty back from the archive: its thing is back in Wherehouse", "warranty", wid)
 			}
 		}
@@ -1017,10 +1032,9 @@ func (s *Server) sendToWherehouseLater(uid, wid int64) {
 	}()
 }
 
-// sendToWherehouse sends the warranty's photos stored here that its thing
-// hasn't got, and adds its Paperless receipts to the thing: as Paperless
-// documents if Wherehouse links them from the same Paperless and can read
-// them, else as links to them.
+// sendToWherehouse brings a linked warranty and its thing in step: photos
+// stored here go there (kept only there, or copied), and the photos kept
+// there and the documents are mirrored both ways; see wherehouse_mirror.go.
 func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client, wid int64) error {
 	// One at a time per warranty, so a photo isn't sent twice.
 	defer s.lockPhotos(wherehousePhotosKey(wid))()
@@ -1058,61 +1072,22 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 			return err
 		}
 	}
+	if wr, err = s.store.GetWarranty(ctx, uid, wid); err != nil {
+		return err
+	}
+	if wr.Wherehouse == nil || wr.Wherehouse.Thing != thing {
+		return nil // unlinked meanwhile
+	}
 	t, err := wh.Get(ctx, thing)
 	if err != nil {
 		return err
 	}
-	haveDoc := map[int64]bool{}
-	for _, a := range t.Attachments {
-		if a.PaperlessDocID != nil {
-			haveDoc[*a.PaperlessDocID] = true
-		}
-	}
-	haveLink := map[string]bool{}
-	for _, l := range t.Links {
-		haveLink[l.URL] = true
-	}
-	// A document ID means the same document only in the same Paperless.
-	theirs, err := wh.Paperless(ctx)
-	if err != nil {
-		return err
-	}
-	lang := st.EffectiveLanguage()
-	for _, a := range wr.Attachments {
-		if a.Kind != "purchase" || a.Storage != store.StoragePaperless || a.PaperlessDocID == nil || a.Status != store.StatusReady {
-			continue
-		}
-		doc := *a.PaperlessDocID
-		owner := uid
-		if a.AddedBy != nil {
-			owner = *a.AddedBy
-		}
-		web, err := s.userPaperlessWebURL(ctx, owner)
-		if err != nil {
-			return err
-		}
-		pc, err := s.userPaperless(ctx, owner)
-		if err != nil {
-			return err
-		}
-		same := theirs != nil && pc != nil && (sameURL(pc.BaseURL, theirs.URL) || sameURL(web, theirs.PublicURL))
-		link := fmt.Sprintf("%s/documents/%d/details", web, doc)
-		if (same && haveDoc[doc]) || (web != "" && haveLink[link]) {
-			continue
-		}
-		if same {
-			if err := wh.LinkPaperless(ctx, thing, []int64{doc}, "receipt"); err == nil {
-				continue
-			}
-		}
-		if web == "" {
-			continue
-		}
-		if err := wh.AddLink(ctx, thing, link, i18n.T(lang, "server.homeboxLinkReceipt", i18n.Args{"name": a.Filename})); err != nil {
+	if st.WherehousePhotosOnly {
+		if err := s.mirrorPhotos(ctx, uid, wr, t); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.mirrorDocuments(ctx, uid, st, wh, wr, t)
 }
 
 // sameURL reports whether two addresses are the same, but for case and a

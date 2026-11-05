@@ -163,7 +163,7 @@ Documents aren't part of the CSV.
 - **Reminders**: see [Reminders](#reminders).
 - **Paperless-ngx**: your API token (Paperless: *Profile → API Auth Token*), whether uploads go to Paperless by default, links back from Paperless, and drafts.
 - **HomeBox**: your API key, and whether product photos are stored in HomeBox by default.
-- **Wherehouse**: connecting, and whether product photos of linked warranties are kept only in Wherehouse.
+- **Wherehouse**: connecting, and whether product photos of linked warranties are kept only in Wherehouse, as the thing's photos.
 - **Household**: who you share with, and sharing everything at once.
 - **Tags**, and **Import & export**.
 

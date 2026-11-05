@@ -149,14 +149,13 @@ type Thing struct {
 		IsPlace bool `json:"isPlace"`
 	} `json:"kind"`
 	Photos []struct {
-		ID   int64 `json:"id"`
-		Size int64 `json:"size"`
+		ID       int64  `json:"id"`
+		Size     int64  `json:"size"`
+		MimeType string `json:"mimeType"`
 	} `json:"photos"`
 	Maintenance []Maintenance `json:"maintenance"`
-	Attachments []struct {
-		PaperlessDocID *int64 `json:"paperlessDocId"`
-	} `json:"attachments"`
-	Links []struct {
+	Attachments []Attachment  `json:"attachments"`
+	Links       []struct {
 		URL string `json:"url"`
 	} `json:"links"`
 }
@@ -237,11 +236,45 @@ func (c *Client) Paperless(ctx context.Context) (*Paperless, error) {
 	return &out, err
 }
 
+// Attachment is a document on a thing.
+type Attachment struct {
+	ID       int64  `json:"id"`
+	Kind     string `json:"kind"` // receipt, warranty, manual or other
+	Storage  string `json:"storage"`
+	Filename string `json:"filename"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+	// PaperlessDocID is set for a document in Wherehouse's Paperless.
+	PaperlessDocID *int64 `json:"paperlessDocId"`
+}
+
 // LinkPaperless adds Paperless documents to a thing, as kind (e.g.
-// "receipt"). It needs a Paperless connection in Wherehouse.
-func (c *Client) LinkPaperless(ctx context.Context, thing int64, docs []int64, kind string) error {
-	return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/things/%d/attachments/paperless", thing),
-		map[string]any{"documentIds": docs, "kind": kind}, nil)
+// "receipt"), and returns them as they are there. It needs a Paperless
+// connection in Wherehouse.
+func (c *Client) LinkPaperless(ctx context.Context, thing int64, docs []int64, kind string) ([]Attachment, error) {
+	var out []Attachment
+	return out, c.do(ctx, http.MethodPost, fmt.Sprintf("/api/things/%d/attachments/paperless", thing),
+		map[string]any{"documentIds": docs, "kind": kind}, &out)
+}
+
+// DeleteAttachment removes a document from its thing; one in Paperless
+// stays there.
+func (c *Client) DeleteAttachment(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/api/attachments/%d", id), nil, nil)
+}
+
+// DeletePhoto deletes a photo of a thing.
+func (c *Client) DeletePhoto(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/api/photos/%d", id), nil, nil)
+}
+
+// OpenAttachment opens a document's file; the caller closes it.
+func (c *Client) OpenAttachment(ctx context.Context, id int64, download bool) (*http.Response, error) {
+	path := fmt.Sprintf("%s/api/attachments/%d/file", c.BaseURL, id)
+	if download {
+		path += "?download=1"
+	}
+	return c.open(ctx, path)
 }
 
 // AddLink adds a link to a web page to a thing.
@@ -307,7 +340,6 @@ func (c *Client) DeleteMaintenance(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/api/maintenance/%d", id), nil, nil)
 }
 
-// UploadPhoto adds a photo to a thing.
 // UploadPhoto adds a photo to a thing and returns its ID there.
 func (c *Client) UploadPhoto(ctx context.Context, thing int64, name, mimeType string, photo io.Reader) (int64, error) {
 	var body bytes.Buffer
@@ -348,6 +380,11 @@ func (c *Client) OpenPhoto(ctx context.Context, id int64, thumb bool) (*http.Res
 	if thumb {
 		path += "?size=thumb"
 	}
+	return c.open(ctx, path)
+}
+
+// open GETs a file at path; the caller closes it.
+func (c *Client) open(ctx context.Context, path string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err

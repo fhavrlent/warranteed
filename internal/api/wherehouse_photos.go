@@ -73,22 +73,56 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 		have    []photoThere // the thing's photos, read once
 		haveOK  bool
 	)
+	getReaders := func() ([]*wherehouse.Client, error) {
+		if readers == nil {
+			clients, _, err := s.wherehouseClients(ctx, uid, wr.ID)
+			if err != nil {
+				return nil, err
+			}
+			readers = clients
+			if wh != nil {
+				readers = append([]*wherehouse.Client{wh}, readers...)
+			}
+		}
+		return readers, nil
+	}
+	getHave := func() ([]photoThere, error) {
+		if !haveOK {
+			var err error
+			if have, err = freePhotos(ctx, wh, wr, thing); err != nil {
+				return nil, err
+			}
+			haveOK = true
+		}
+		return have, nil
+	}
 	for _, a := range wr.Attachments {
 		if a.Kind != "photo" {
+			// A document kept on a thing it's no longer linked to comes here.
+			if a.Storage == store.StorageWherehouse && a.WherehouseThing != nil && a.WherehouseAttachment != nil &&
+				(wh == nil || *a.WherehouseThing != thing) {
+				readers, err := getReaders()
+				if err != nil {
+					return err
+				}
+				if err := s.documentBack(ctx, readers, wr, &a, thing); err != nil {
+					return err
+				}
+			} else if a.Storage != store.StorageWherehouse && a.WherehouseAttachment != nil &&
+				(a.WherehouseThing == nil || *a.WherehouseThing != thing) {
+				// The thing it's on is no longer this warranty's.
+				if err := s.store.NotOnWherehouseThing(ctx, a.ID); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		switch {
 		case a.Storage == store.StorageWherehouse && a.WherehouseThing != nil && a.WherehousePhoto != nil &&
 			(!there || *a.WherehouseThing != thing):
-			if readers == nil {
-				clients, _, err := s.wherehouseClients(ctx, uid, wr.ID)
-				if err != nil {
-					return err
-				}
-				readers = clients
-				if wh != nil {
-					readers = append([]*wherehouse.Client{wh}, readers...)
-				}
+			readers, err := getReaders()
+			if err != nil {
+				return err
 			}
 			// A thing deleted, or a Wherehouse set up afresh, took the photo
 			// with it; an ID there may even be another photo's now.
@@ -133,12 +167,8 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 			var id int64
 			if a.WherehouseThing != nil && *a.WherehouseThing == thing {
 				// Sent there before: the one there is it.
-				if !haveOK {
-					var err error
-					if have, err = thingPhotos(ctx, wh, thing); err != nil {
-						return err
-					}
-					haveOK = true
+				if _, err := getHave(); err != nil {
+					return err
 				}
 				var err error
 				if id, have, err = s.matchPhoto(ctx, wh, &a, have); err != nil {
@@ -165,9 +195,138 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 			} else if !used {
 				s.files.Remove(a.LocalPath)
 			}
+		case a.Storage == store.StorageHomeBox && there:
+			// Copied from HomeBox into Wherehouse, or not yet: it's kept
+			// there from now on, and HomeBox keeps its copy.
+			data, err := s.readHomeBoxPhoto(ctx, uid, &a)
+			if err != nil {
+				slog.Warn("wherehouse: read a photo kept in HomeBox", "warranty", wr.ID, "attachment", a.ID, "err", err)
+				continue
+			}
+			if _, err := getHave(); err != nil {
+				return err
+			}
+			var id int64
+			if id, have, err = matchContents(ctx, wh, int64(len(data)), func() (*[32]byte, error) {
+				sum := sha256.Sum256(data)
+				return &sum, nil
+			}, have); err != nil {
+				return err
+			}
+			if id == 0 {
+				if id, err = wh.UploadPhoto(ctx, thing, a.Filename, a.MimeType, bytes.NewReader(data)); err != nil {
+					return err
+				}
+			}
+			if err := s.store.StoredInWherehouse(ctx, a.ID, thing, id); err != nil {
+				return err
+			}
+			if name := homeboxThumbName(a.HomeBoxAttachment); name != "" {
+				s.files.Remove(name)
+			}
 		}
 	}
 	return nil
+}
+
+// readHomeBoxPhoto reads a photo kept in HomeBox.
+func (s *Server) readHomeBoxPhoto(ctx context.Context, uid int64, a *store.Attachment) ([]byte, error) {
+	hb, err := s.attachmentHomeBox(ctx, a, uid)
+	if err != nil {
+		return nil, err
+	}
+	if hb == nil {
+		return nil, errors.New("no HomeBox key")
+	}
+	res, err := hb.OpenAttachment(ctx, a.HomeBoxItem, a.HomeBoxAttachment)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(res.Body, maxWherehousePhoto+1))
+	if err == nil && len(data) > maxWherehousePhoto {
+		err = errors.New("photo in HomeBox is too large")
+	}
+	return data, err
+}
+
+// documentBack brings a document kept on a thing back here, as the warranty
+// is no longer linked to it, or drops it if it was deleted there. Still
+// linked to it, it stays the same document as the one there.
+func (s *Server) documentBack(ctx context.Context, readers []*wherehouse.Client, wr *store.Warranty, a *store.Attachment, thing int64) error {
+	from, att := *a.WherehouseThing, *a.WherehouseAttachment
+	on, err := onThingThere(ctx, readers, from, func(t *wherehouse.Thing) bool {
+		for _, ta := range t.Attachments {
+			if ta.ID == att {
+				return true
+			}
+		}
+		return false
+	})
+	if err != nil {
+		return err
+	}
+	if !on {
+		slog.Info("wherehouse: a document kept there is gone", "warranty", wr.ID, "attachment", a.ID)
+		return s.dropAttachment(ctx, a)
+	}
+	limit := max(s.cfg.MaxUploadMB<<20, maxWherehousePhoto)
+	var data []byte
+	err = errors.New("not connected to Wherehouse")
+	for _, c := range readers {
+		var res *http.Response
+		if res, err = c.OpenAttachment(ctx, att, true); err != nil {
+			continue
+		}
+		data, err = io.ReadAll(io.LimitReader(res.Body, limit+1))
+		res.Body.Close()
+		if err == nil && int64(len(data)) > limit {
+			err = errors.New("document in Wherehouse is too large")
+		}
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return err
+	}
+	name, size, err := s.files.Save(bytes.NewReader(data), strings.ToLower(filepath.Ext(a.Filename)))
+	if err != nil {
+		return err
+	}
+	var sentTo *int64
+	if from == thing {
+		sentTo = &thing
+	}
+	if err := s.store.BackFromWherehouse(ctx, a.ID, name, size, sentTo); err != nil {
+		s.files.Remove(name)
+		return err
+	}
+	if from == thing {
+		return s.store.OnWherehouseThing(ctx, a.ID, thing, att)
+	}
+	return nil
+}
+
+// freePhotos are the thing's photos no photo of the warranty is kept as.
+func freePhotos(ctx context.Context, wh *wherehouse.Client, wr *store.Warranty, thing int64) ([]photoThere, error) {
+	all, err := thingPhotos(ctx, wh, thing)
+	if err != nil {
+		return nil, err
+	}
+	taken := map[int64]bool{}
+	for _, a := range wr.Attachments {
+		if a.Storage == store.StorageWherehouse && a.WherehousePhoto != nil && a.WherehouseThing != nil && *a.WherehouseThing == thing {
+			taken[*a.WherehousePhoto] = true
+		}
+	}
+	var out []photoThere
+	for _, p := range all {
+		if !taken[p.id] {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // photoThere is one of a thing's photos, with its contents' hash once read.
@@ -193,24 +352,34 @@ func thingPhotos(ctx context.Context, wh *wherehouse.Client, thing int64) ([]pho
 // sent there before, and returns its ID (0 if there's none) and the photos
 // not matched yet.
 func (s *Server) matchPhoto(ctx context.Context, wh *wherehouse.Client, a *store.Attachment, have []photoThere) (int64, []photoThere, error) {
+	return matchContents(ctx, wh, a.Size, func() (*[32]byte, error) {
+		f, err := s.files.Open(a.LocalPath)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return nil, err
+		}
+		return (*[32]byte)(h.Sum(nil)), nil
+	}, have)
+}
+
+// matchContents finds the thing's photo of size whose contents hash to
+// what sum returns, read only if needed; see matchPhoto.
+func matchContents(ctx context.Context, wh *wherehouse.Client, size int64, sum func() (*[32]byte, error), have []photoThere) (int64, []photoThere, error) {
 	var mine *[32]byte
 	for i := range have {
 		p := &have[i]
-		if p.size != a.Size {
+		if p.size != size {
 			continue
 		}
 		if mine == nil {
-			f, err := s.files.Open(a.LocalPath)
-			if err != nil {
+			var err error
+			if mine, err = sum(); err != nil {
 				return 0, have, err
 			}
-			h := sha256.New()
-			_, err = io.Copy(h, f)
-			f.Close()
-			if err != nil {
-				return 0, have, err
-			}
-			mine = (*[32]byte)(h.Sum(nil))
 		}
 		if p.sum == nil {
 			data, err := readWherehousePhoto(ctx, []*wherehouse.Client{wh}, p.id)
@@ -252,7 +421,8 @@ func readWherehousePhoto(ctx context.Context, clients []*wherehouse.Client, id i
 	return nil, err
 }
 
-// proxyWherehousePhoto streams a photo kept in Wherehouse, or its preview,
+// proxyWherehousePhoto streams a photo or document kept in Wherehouse, or a
+// photo's preview,
 // through the viewer's connection or another one that can see the warranty.
 func (s *Server) proxyWherehousePhoto(w http.ResponseWriter, r *http.Request, a *store.Attachment, thumb, download bool) {
 	clients, _, err := s.wherehouseClients(r.Context(), userID(r), a.WarrantyID)
@@ -260,7 +430,7 @@ func (s *Server) proxyWherehousePhoto(w http.ResponseWriter, r *http.Request, a 
 		fail(w, err)
 		return
 	}
-	if len(clients) == 0 || a.WherehousePhoto == nil {
+	if len(clients) == 0 || (a.WherehousePhoto == nil && a.WherehouseAttachment == nil) {
 		writeMsg(w, http.StatusBadGateway, "server.wherehousePhotoNoConnection", nil)
 		return
 	}
@@ -268,7 +438,14 @@ func (s *Server) proxyWherehousePhoto(w http.ResponseWriter, r *http.Request, a 
 	defer cancel()
 	var res *http.Response
 	for _, c := range clients {
-		if res, err = c.OpenPhoto(ctx, *a.WherehousePhoto, thumb); err == nil {
+		if a.WherehousePhoto != nil {
+			res, err = c.OpenPhoto(ctx, *a.WherehousePhoto, thumb)
+		} else {
+			// A document has no preview there.
+			thumb = false
+			res, err = c.OpenAttachment(ctx, *a.WherehouseAttachment, download)
+		}
+		if err == nil {
 			break
 		}
 	}
@@ -324,22 +501,30 @@ func (s *Server) settleAllWherehousePhotos(ctx context.Context, uid int64, leavi
 // photoOnThing reports whether a photo is still on the thing that held it,
 // through any connection that can see the thing.
 func photoOnThing(ctx context.Context, clients []*wherehouse.Client, thing, photo int64) (bool, error) {
+	return onThingThere(ctx, clients, thing, func(t *wherehouse.Thing) bool {
+		for _, p := range t.Photos {
+			if p.ID == photo {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// onThingThere reports whether has holds for the thing, through any
+// connection that can see it; false if it's gone.
+func onThingThere(ctx context.Context, clients []*wherehouse.Client, thing int64, has func(*wherehouse.Thing) bool) (bool, error) {
 	var failed error
 	for _, c := range clients {
 		t, err := c.Get(ctx, thing)
 		var we *wherehouse.Error
 		switch {
 		case err == nil:
-			for _, p := range t.Photos {
-				if p.ID == photo {
-					return true, nil
-				}
-			}
-			return false, nil
+			return has(t), nil
 		case errors.As(err, &we) && we.NotFound():
 			// Not this one's, or gone.
 		default:
-			// A refused token or no answer says nothing about the photo.
+			// A refused token or no answer says nothing about it.
 			failed = err
 		}
 	}

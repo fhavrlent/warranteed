@@ -272,23 +272,25 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
         title={
           toDelete?.storage === "paperless"
             ? t("attachments.unlinkTitle")
-            : toDelete?.storage === "homebox" || toDelete?.storage === "wherehouse"
+            : toDelete?.storage === "homebox"
               ? t("attachments.removeTitle")
               : t("attachments.deleteTitle")
         }
         confirmLabel={
           toDelete?.storage === "paperless"
             ? t("attachments.unlink")
-            : toDelete?.storage === "homebox" || toDelete?.storage === "wherehouse"
+            : toDelete?.storage === "homebox"
               ? t("attachments.remove")
               : t("common.delete")
         }
         description={
           toDelete?.storage === "paperless"
-            ? t("attachments.unlinkText")
+            ? toDelete.onWherehouse
+              ? t("attachments.unlinkTextWherehouse")
+              : t("attachments.unlinkText")
             : toDelete?.storage === "homebox"
               ? t("attachments.removeText")
-              : toDelete?.storage === "wherehouse"
+              : toDelete?.onWherehouse
                 ? t("attachments.removeTextWherehouse")
                 : t("attachments.deleteText", { name: toDelete?.filename ?? "" })
         }
@@ -412,7 +414,7 @@ const AttachmentCard = ({
             <MenuItem danger icon={<Trash2 />} onSelect={onDelete}>
               {a.storage === "paperless"
                 ? t("attachments.unlink")
-                : a.storage === "homebox" || a.storage === "wherehouse"
+                : a.storage === "homebox"
                   ? t("attachments.remove")
                   : t("common.delete")}
             </MenuItem>

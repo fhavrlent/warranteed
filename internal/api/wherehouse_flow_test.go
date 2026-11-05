@@ -32,7 +32,7 @@ type fakeThing struct {
 	SoldDate    *string                  `json:"soldDate"`
 	Photos      []map[string]int64       `json:"photos"`
 	Maintenance []wherehouse.Maintenance `json:"maintenance"`
-	Attachments []map[string]int64       `json:"attachments"`
+	Attachments []map[string]any         `json:"attachments"`
 	Links       []map[string]string      `json:"links"`
 	Kind        map[string]any           `json:"kind"`
 	// app is the warranty it's linked to, or "".
@@ -55,6 +55,8 @@ type fakeWherehouse struct {
 	failLink bool
 	// paperless is the Paperless it links documents from, or "".
 	paperless string
+	// files are the contents of documents kept in Wherehouse, by ID.
+	files map[int64][]byte
 	// photos are the photos' contents by ID.
 	photos map[int64][]byte
 	// rejectToken refuses every request, as a Wherehouse set up afresh
@@ -211,12 +213,53 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			DocumentIDs []int64 `json:"documentIds"`
 		}
-		json.NewDecoder(r.Body).Decode(&in)
+		var kind struct {
+			Kind string `json:"kind"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &in)
+		json.Unmarshal(body, &kind)
 		t := thing(1)
+		var added []map[string]any
 		for _, d := range in.DocumentIDs {
-			t.Attachments = append(t.Attachments, map[string]int64{"paperlessDocId": d})
+			f.last++
+			a := map[string]any{"id": f.last, "kind": kind.Kind, "storage": "paperless", "paperlessDocId": d,
+				"filename": fmt.Sprintf("doc-%d.pdf", d), "mimeType": "application/pdf"}
+			t.Attachments = append(t.Attachments, a)
+			added = append(added, a)
 		}
 		w.WriteHeader(http.StatusCreated)
+		send(added)
+	case len(parts) == 2 && parts[0] == "photos" && r.Method == http.MethodDelete:
+		for _, t := range f.things {
+			for i, p := range t.Photos {
+				if p["id"] == id {
+					t.Photos = append(t.Photos[:i:i], t.Photos[i+1:]...)
+					delete(f.photos, id)
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
+		}
+		http.NotFound(w, r)
+	case parts[0] == "attachments":
+		n, _ := strconv.ParseInt(parts[1], 10, 64)
+		for _, t := range f.things {
+			for i, a := range t.Attachments {
+				if a["id"] != n {
+					continue
+				}
+				if r.Method == http.MethodDelete {
+					t.Attachments = append(t.Attachments[:i:i], t.Attachments[i+1:]...)
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w.Header().Set("Content-Type", "application/pdf")
+				w.Write(f.files[n])
+				return
+			}
+		}
+		http.NotFound(w, r)
 	case len(parts) == 3 && parts[2] == "links":
 		var in map[string]string
 		json.NewDecoder(r.Body).Decode(&in)

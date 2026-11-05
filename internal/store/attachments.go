@@ -30,6 +30,12 @@ type Attachment struct {
 	// photo there.
 	WherehouseThing *int64 `json:"-"`
 	WherehousePhoto *int64 `json:"-"`
+	// WherehouseAttachment is the same document on WherehouseThing, or the
+	// file there when it is stored in Wherehouse.
+	WherehouseAttachment *int64 `json:"-"`
+	// OnWherehouse is set for a document that is on the warranty's thing in
+	// Wherehouse too, so deleting it here deletes it there.
+	OnWherehouse bool `json:"onWherehouse"`
 	// ClaimID is the claim the document belongs to, if any.
 	ClaimID   *int64 `json:"claimId"`
 	Error     string `json:"error"`
@@ -40,7 +46,7 @@ const (
 	StorageLocal     = "local"
 	StoragePaperless = "paperless"
 	StorageHomeBox   = "homebox"
-	// StorageWherehouse is a photo kept only on a Wherehouse thing.
+	// StorageWherehouse is a photo or document kept only on a Wherehouse thing.
 	StorageWherehouse = "wherehouse"
 
 	StatusReady      = "ready"
@@ -56,13 +62,14 @@ func ValidKind(kind string) bool { return slices.Contains(AttachmentKinds, kind)
 
 const attachmentCols = `a.id, a.warranty_id, a.kind, a.storage, a.filename, a.mime_type, a.size, a.local_path,
 	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at, a.added_by, a.homebox_item, a.homebox_attachment, a.claim_id,
-	a.wherehouse_thing, a.wherehouse_photo`
+	a.wherehouse_thing, a.wherehouse_photo, a.wherehouse_attachment`
 
 func scanAttachment(row interface{ Scan(...any) error }) (*Attachment, error) {
 	var a Attachment
 	err := row.Scan(&a.ID, &a.WarrantyID, &a.Kind, &a.Storage, &a.Filename, &a.MimeType, &a.Size, &a.LocalPath,
 		&a.PaperlessDocID, &a.PaperlessTaskID, &a.Status, &a.Error, &a.CreatedAt, &a.AddedBy, &a.HomeBoxItem, &a.HomeBoxAttachment, &a.ClaimID,
-		&a.WherehouseThing, &a.WherehousePhoto)
+		&a.WherehouseThing, &a.WherehousePhoto, &a.WherehouseAttachment)
+	a.OnWherehouse = a.WherehouseAttachment != nil || (a.Storage == StorageWherehouse && a.WherehousePhoto != nil)
 	return &a, err
 }
 
@@ -70,11 +77,11 @@ func (s *Store) CreateAttachment(ctx context.Context, a *Attachment) error {
 	return s.db.QueryRowContext(ctx, `
 		INSERT INTO attachments (warranty_id, kind, storage, filename, mime_type, size, local_path,
 			paperless_doc_id, paperless_task_id, status, error, added_by, homebox_item, homebox_attachment, claim_id,
-			wherehouse_thing, wherehouse_photo)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
+			wherehouse_thing, wherehouse_photo, wherehouse_attachment)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
 		a.WarrantyID, a.Kind, a.Storage, a.Filename, a.MimeType, a.Size, a.LocalPath,
 		a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy, a.HomeBoxItem, a.HomeBoxAttachment, a.ClaimID,
-		a.WherehouseThing, a.WherehousePhoto,
+		a.WherehouseThing, a.WherehousePhoto, a.WherehouseAttachment,
 	).Scan(&a.ID, &a.CreatedAt)
 }
 

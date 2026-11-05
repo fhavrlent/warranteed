@@ -25,6 +25,8 @@ export interface Attachment {
   createdAt: string;
   /** The claim the document belongs to, if any. */
   claimId: number | null;
+  /** It's on the warranty's thing in Wherehouse too; deleting it here deletes it there. */
+  onWherehouse: boolean;
 }
 
 export type ClaimStatus = "open" | "repaired" | "replaced" | "refunded" | "rejected";

@@ -273,18 +273,21 @@ func (s *Store) AttachmentWarranty(ctx context.Context, id int64) (int64, error)
 }
 
 // StoredInWherehouse records that a photo is now kept only on a Wherehouse
-// thing, as photo there; its file here can go.
+// thing, as photo there; its file here, or its copy in HomeBox, can go.
 func (s *Store) StoredInWherehouse(ctx context.Context, id, thing, photo int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET storage = ?, local_path = '', wherehouse_thing = ?, wherehouse_photo = ?
-		WHERE id = ?`, StorageWherehouse, thing, photo, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET local_path = '',
+		homebox_item = CASE storage WHEN ? THEN '' ELSE homebox_item END,
+		homebox_attachment = CASE storage WHEN ? THEN '' ELSE homebox_attachment END,
+		storage = ?, wherehouse_thing = ?, wherehouse_photo = ?, wherehouse_attachment = NULL WHERE id = ?`,
+		StorageHomeBox, StorageHomeBox, StorageWherehouse, thing, photo, id)
 	return err
 }
 
 // BackFromWherehouse records that a photo kept in Wherehouse is stored here
 // again, as file name. sentTo is the thing that still has it, if any.
 func (s *Store) BackFromWherehouse(ctx context.Context, id int64, name string, size int64, sentTo *int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET storage = ?, local_path = ?, size = ?, wherehouse_thing = ?, wherehouse_photo = NULL
-		WHERE id = ?`, StorageLocal, name, size, sentTo, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET storage = ?, local_path = ?, size = ?, wherehouse_thing = ?,
+		wherehouse_photo = NULL, wherehouse_attachment = NULL WHERE id = ?`, StorageLocal, name, size, sentTo, id)
 	return err
 }
 
@@ -315,10 +318,30 @@ func (s *Store) WherehousePhotoWarranties(ctx context.Context, userID int64) ([]
 	return ids, rows.Err()
 }
 
-// ForgetWherehousePhotos drops the warranty's photos that were kept on a
-// thing deleted in Wherehouse, as they went with it.
+// ForgetWherehousePhotos drops the warranty's photos and documents that
+// were kept on a thing deleted in Wherehouse, as they went with it; the
+// others no longer have a copy there.
 func (s *Store) ForgetWherehousePhotos(ctx context.Context, warrantyID, thing int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE warranty_id = ? AND storage = ? AND wherehouse_thing = ?`,
-		warrantyID, StorageWherehouse, thing)
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE warranty_id = ? AND storage = ? AND wherehouse_thing = ?`,
+		warrantyID, StorageWherehouse, thing); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_attachment = NULL
+		WHERE warranty_id = ? AND wherehouse_thing = ? AND wherehouse_attachment IS NOT NULL`, warrantyID, thing)
+	return err
+}
+
+// OnWherehouseThing records that a document is on a Wherehouse thing too,
+// as attachment there.
+func (s *Store) OnWherehouseThing(ctx context.Context, id, thing, attachment int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_thing = ?, wherehouse_attachment = ? WHERE id = ?`,
+		thing, attachment, id)
+	return err
+}
+
+// NotOnWherehouseThing forgets that a document is on a Wherehouse thing,
+// e.g. as the warranty is no longer linked to it.
+func (s *Store) NotOnWherehouseThing(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_attachment = NULL WHERE id = ?`, id)
 	return err
 }

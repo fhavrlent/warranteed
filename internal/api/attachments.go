@@ -518,6 +518,12 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// It goes from the thing it's on too, or it would come back.
+	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	if err := s.deleteOnThing(r.Context(), userID(r), a); err != nil {
+		wherehouseFail(w, err)
+		return
+	}
 	doc, err := s.store.AttachmentPaperlessDoc(r.Context(), id)
 	if err != nil {
 		fail(w, err)
