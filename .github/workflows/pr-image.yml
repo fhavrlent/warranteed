@@ -5,8 +5,9 @@ name: Pull request image
 # pull_request_target runs this file as it is on main, never a pull
 # request's own version, so a branch can't change where images go or what
 # else the token is used for. Its code is only built: no step here runs it,
-# and the build can't reach the registry login. It gets its own build
-# cache, so it can't put anything in the release builds' cache.
+# and the build can't reach the registry login. It uses no build cache:
+# GitHub doesn't let pull_request_target runs write to it, and it keeps
+# pull request builds out of the release builds' cache.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -38,5 +39,3 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/warranteed:pr-${{ github.event.pull_request.number }}
           build-args: VERSION=pr-${{ github.event.pull_request.number }}
-          cache-from: type=gha,scope=pr-${{ github.event.pull_request.number }}
-          cache-to: type=gha,scope=pr-${{ github.event.pull_request.number }},mode=max
