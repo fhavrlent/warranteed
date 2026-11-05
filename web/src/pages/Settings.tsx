@@ -8,18 +8,19 @@ import {
   Database,
   Download,
   FileUp,
+  MapPin,
   Palette,
   Plug,
   Tag as TagIcon,
   Trash2,
   Users,
 } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { TagChip } from "@/components/Tags";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/dialog";
+import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Card, Segmented, Switch } from "@/components/ui/misc";
 import { browserLanguage, LANGUAGES } from "@/i18n";
@@ -75,6 +76,7 @@ export const Settings = () => {
         <Calendar />
         <Paperless s={settings} />
         <HomeBox s={settings} />
+        {settings.wherehouseServerUrl && <Wherehouse s={settings} />}
         <Household />
         <Tags />
         <Data />
@@ -666,6 +668,109 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
           </label>
         </>
       )}
+    </Section>
+  );
+};
+
+const Wherehouse = ({ s }: { s: SettingsT }) => {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const update = useAutoSave(s);
+  // Coming back from connecting: say how it went, once.
+  const [result] = useState(() => new URLSearchParams(location.search).get("wherehouse"));
+  useEffect(() => {
+    if (!result) return;
+    if (result === "connected") toast.success(t("settings.wherehouse.connectedToast"));
+    else toast.error(t("settings.wherehouse.failed"));
+    history.replaceState(null, "", location.pathname + location.hash);
+  }, [result, t]);
+  const connect = async () => {
+    try {
+      location.assign((await api.connectWherehouse()).url);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+  // Disconnecting is asked first, with the choice to unlink everything too.
+  const [asking, setAsking] = useState(false);
+  const [unlinkAll, setUnlinkAll] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await api.disconnectWherehouse(unlinkAll);
+      setAsking(false);
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+  return (
+    <Section id="wherehouse" icon={<MapPin />} title="Wherehouse" description={t("settings.wherehouse.description")}>
+      {s.wherehouseConnected ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-[13px] text-ok">
+            <CheckCircle2 className="size-4" />
+            {t("settings.wherehouse.connected", { household: s.wherehouseHousehold })}
+          </p>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setUnlinkAll(false);
+              setAsking(true);
+            }}
+          >
+            {t("settings.paperless.disconnect")}
+          </Button>
+          <Dialog
+            open={asking}
+            onOpenChange={setAsking}
+            size="sm"
+            title={t("settings.wherehouse.disconnectTitle")}
+            description={t("settings.wherehouse.disconnectText")}
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setAsking(false)}>
+                  {t("common.cancel")}
+                </Button>
+                <Button variant="danger" onClick={disconnect} loading={disconnecting}>
+                  {t("settings.paperless.disconnect")}
+                </Button>
+              </>
+            }
+          >
+            <label htmlFor="wherehouseUnlinkAll" className="flex items-start justify-between gap-4">
+              <span>
+                <span className="block text-[13px] font-medium">{t("settings.wherehouse.unlinkAll")}</span>
+                <span className="block text-xs text-fg-subtle">{t("settings.wherehouse.unlinkAllHint")}</span>
+              </span>
+              <Switch id="wherehouseUnlinkAll" checked={unlinkAll} onCheckedChange={setUnlinkAll} />
+            </label>
+          </Dialog>
+        </div>
+      ) : (
+        <Button onClick={connect} className="w-fit">
+          {t("settings.wherehouse.connect")}
+        </Button>
+      )}
+      <label
+        className={cn(
+          "flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-3",
+          !s.wherehouseConnected && "opacity-50",
+        )}
+      >
+        <span>
+          <span className="block text-sm font-medium">{t("settings.wherehouse.photosOnly")}</span>
+          <span className="block text-xs text-fg-subtle">{t("settings.wherehouse.photosOnlyHint")}</span>
+        </span>
+        <Switch
+          checked={s.wherehousePhotosOnly}
+          disabled={!s.wherehouseConnected}
+          onCheckedChange={(v) => update({ wherehousePhotosOnly: v })}
+        />
+      </label>
     </Section>
   );
 };

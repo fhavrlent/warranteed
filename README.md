@@ -24,7 +24,7 @@ Self-hosted warranty tracker. Track purchases, warranty periods, receipts and ma
 
 - Sign-in through an OpenID Connect provider (Pocket ID, Authentik, Keycloak, …). There are no local passwords.
 - Store receipts and manuals locally or in Paperless-ngx, or link documents already in Paperless.
-- Add warranties to your HomeBox inventory, or link them to items already there.
+- Add warranties to your [Wherehouse](https://github.com/fhavrlent/wherehouse) or HomeBox inventory, or link them to things already there.
 - Expiry reminders via ntfy, Gotify, Discord, Telegram, email and other services.
 - A private calendar feed of warranty end dates for Apple, Google or Outlook Calendar.
 - Repairs and claims with their documents, copied to the HomeBox item's maintenance log.
@@ -117,6 +117,12 @@ With [HomeBox](https://homebox.software) (v0.27 or later), a warranty can be add
 
 On a warranty, **Add to HomeBox** creates an item with the serial number, purchase date, price, seller and warranty details, plus links back to the warranty and to its receipts in Paperless. **Link existing item** searches HomeBox instead and only fills in fields that are empty. Product photos are copied to the item, including ones added later, or can be stored only in HomeBox and shown from there. The warranty then shows the item's asset ID, the number on HomeBox labels, and searching for it in Warranteed finds the warranty.
 
+## Wherehouse
+
+With [Wherehouse](https://github.com/fhavrlent/wherehouse), warranted products also live in your inventory. Set `WHEREHOUSE_URL` (and `WHEREHOUSE_PUBLIC_URL` if browsers use another address); each person then clicks **Connect to Wherehouse** under **Settings → Wherehouse** and allows it there. There's no key to copy.
+
+On a warranty, **Add to Wherehouse** makes a thing in a place you pick, or nowhere yet; **Link existing thing** finds one. Warranteed then owns the thing's purchase and warranty details (Wherehouse shows them read-only and keeps them up to date). The name, brand, model, serial numbers, quantity and notes are kept in step both ways, and so are documents in Paperless, with their names and types, claims' documents included; files stored only in Warranteed aren't sent, and custom fields aren't shared. Photos are copied to the thing, including ones added later. Claims are entries in the thing's maintenance log, and editing or deleting an entry there changes or deletes the claim. Wherehouse owns where it is, its photos, label, insurance and sale: the warranty shows where the thing is and its label code, which you can search for here, and selling or archiving the thing in Wherehouse archives the warranty within seconds. Confirming a draft can add its product to Wherehouse straight away. With **Keep product photos only in Wherehouse** on, a linked warranty's photos are the thing's photos, kept only there and shown from there, so there's one copy: a photo added or deleted on either side is added or deleted on the other. They come back to Warranteed if the warranty is unlinked.
+
 ## Reminders
 
 Under **Settings → Reminders**, add one or more [Shoutrrr URLs](https://shoutrrr.nickfedor.com/latest/services/overview/) and the number of days before expiry to send a reminder (e.g. `30, 7`). Reminders are checked once a day after `WARRANTEED_NOTIFY_HOUR` in the `TZ` timezone. Each reminder is sent once.
@@ -155,6 +161,8 @@ smtp://user:password@smtp.example.com:587/?from=warranty@example.com&to=me@examp
 | `WARRANTEED_CLAUDE_MODEL` | `claude-haiku-5-5` | Claude model that reads documents |
 | `HOMEBOX_URL` | | HomeBox URL |
 | `HOMEBOX_PUBLIC_URL` | `HOMEBOX_URL` | HomeBox URL used for browser links |
+| `WHEREHOUSE_URL` | | Wherehouse URL |
+| `WHEREHOUSE_PUBLIC_URL` | `WHEREHOUSE_URL` | Wherehouse URL used for browser links |
 | `TZ` | | Timezone |
 | `WARRANTEED_NOTIFY_HOUR` | `9` | Hour (0–23) after which reminders are sent |
 | `WARRANTEED_NOTIFY_ALLOWED_HOSTS` | | Comma-separated hosts non-admins may use with self-hosted notification services |

@@ -47,6 +47,8 @@ type Warranty struct {
 	SpaceKind     string       `json:"spaceKind"`
 	AddedBy       UserRef      `json:"addedBy"`
 	HomeBox       *HomeBoxLink `json:"homebox"`
+	// Wherehouse is the thing in Wherehouse the warranty belongs to.
+	Wherehouse *WherehouseLink `json:"wherehouse"`
 	// Draft is set on warranties created from a document in Paperless until
 	// someone confirms them.
 	Draft bool `json:"draft"`
@@ -65,6 +67,14 @@ type DocumentDates struct {
 type HomeBoxLink struct {
 	ID      string `json:"id"`
 	AssetID string `json:"assetId"`
+}
+
+// WherehouseLink is the Wherehouse thing a warranty belongs to, with its
+// label code and where it is as last heard.
+type WherehouseLink struct {
+	Thing int64  `json:"thing"`
+	Label string `json:"label"`
+	Path  string `json:"path"`
 }
 
 // UserRef names a user without exposing their details.
@@ -200,7 +210,7 @@ const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
 	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
 	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received, w.quantity,
-	w.voided_at, w.void_reason`
+	w.voided_at, w.void_reason, w.wherehouse_thing, w.wherehouse_label, w.wherehouse_path`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
@@ -208,13 +218,19 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 	var w Warranty
 	var homeboxID, homeboxAssetID string
 	var dates DocumentDates
+	var wh WherehouseLink
+	var whThing *int64
 	err := row.Scan(&w.ID, &w.ProductName, &w.Brand, &w.Model, &w.Vendor, &w.OrderNumber, &w.PurchaseDate,
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
 		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received, &w.Quantity,
-		&w.VoidedAt, &w.VoidReason)
+		&w.VoidedAt, &w.VoidReason, &whThing, &wh.Label, &wh.Path)
 	if err != nil {
 		return nil, err
+	}
+	if whThing != nil {
+		wh.Thing = *whThing
+		w.Wherehouse = &wh
 	}
 	if w.Draft && dates.Sold != "" && dates.Received != "" && dates.Sold != dates.Received {
 		w.DocumentDates = &dates
@@ -608,7 +624,7 @@ func (s *Store) SetArchived(ctx context.Context, userID, id int64, archived bool
 		at = now()
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE warranties AS w SET archived_at = ?, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
+		`UPDATE warranties AS w SET archived_at = ?, wherehouse_archived = 0, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
 		at, now(), userID, id)
 	if err != nil {
 		return err

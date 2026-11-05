@@ -197,6 +197,7 @@
     "draftText": "Made from a new document in Paperless. Check the details, then confirm it.",
     "confirm": "Confirm",
     "confirmed": "Warranty confirmed",
+    "confirmedNotInWherehouse": "The product wasn’t added to Wherehouse. Add it from this page.",
     "twoDates": "The document gives two dates. Count the warranty from:",
     "dateSold": "Sold {{date}}",
     "dateReceived": "Received {{date}}"
@@ -281,6 +282,7 @@
     "unlinkTitle": "Unlink document?",
     "unlink": "Unlink",
     "unlinkText": "It will be removed from this warranty but stays in Paperless-ngx.",
+    "unlinkTextWherehouse": "It will be removed from this warranty and from its thing in Wherehouse, but stays in Paperless-ngx.",
     "deleteTitle": "Delete file?",
     "deleteText": "“{{name}}” will be permanently deleted.",
     "added": "Added {{date}}",
@@ -292,13 +294,17 @@
     "type": "Type",
     "renameTitle": "Rename file",
     "renamePaperless": "Changes the name shown here; the document in Paperless keeps its title.",
+    "renamePaperlessWherehouse": "Changes the name here and in Wherehouse; the document in Paperless keeps its title.",
     "fileName": "File name",
     "openInTab": "Open in new tab",
     "inHomebox": "Stored on the HomeBox item",
+    "inWherehouse": "Stored on the Wherehouse thing",
     "remove": "Remove",
     "removeTitle": "Remove photo?",
     "removeText": "It will be removed from this warranty but stays on the item in HomeBox.",
-    "renameHomebox": "Changes the name shown here; the photo in HomeBox keeps its name."
+    "removeTextWherehouse": "It will be deleted here and on the thing in Wherehouse.",
+    "renameHomebox": "Changes the name shown here; the photo in HomeBox keeps its name.",
+    "renameWherehouse": "Changes the name here and in Wherehouse."
   },
   "picker": {
     "title": "Link documents from Paperless",
@@ -427,7 +433,7 @@
       "connected_other": "Connected to Paperless-ngx {{version}} (API v{{api}}) · {{count}} documents",
       "saved": "Paperless connection saved",
       "default": "Upload documents to Paperless by default",
-      "defaultHint": "Product photos always stay here.",
+      "defaultHint": "Product photos never go to Paperless.",
       "backlinks": "Link documents back to their warranty",
       "backlinksHint": "Fills a “{{warranty}}” link field on your documents in Paperless. Your token must be allowed to edit documents.",
       "backlinksHintHomebox": "Fills the “{{warranty}}” and “{{homebox}}” link fields on your documents in Paperless. Your token must be allowed to edit documents.",
@@ -515,6 +521,19 @@
       "problems_one": "{{count}} with problems",
       "problems_other": "{{count}} with problems",
       "row": "Row {{row}}: {{message}}"
+    },
+    "wherehouse": {
+      "description": "Keep warranted products in your Wherehouse inventory: where they are, with their warranty. Selling or archiving a thing there archives its warranty here.",
+      "connected": "Connected to the household “{{household}}”",
+      "connect": "Connect to Wherehouse",
+      "connectedToast": "Connected to Wherehouse",
+      "failed": "Couldn’t connect to Wherehouse. Try again.",
+      "disconnectTitle": "Disconnect Wherehouse?",
+      "disconnectText": "Warranteed stops sending changes to Wherehouse and reading them from it. Without the option below, warranties stay linked, and connecting again carries on from there. Photos and documents kept only in Wherehouse come back here.",
+      "unlinkAll": "Also unlink all warranties",
+      "unlinkAllHint": "Their things in Wherehouse keep the purchase details as their own. A warranty someone else still uses through their own connection stays linked.",
+      "photosOnly": "Keep product photos only in Wherehouse",
+      "photosOnlyHint": "For warranties linked to a thing: their photos are the thing's photos, kept there and not here as well, so there's one copy. Photos added or deleted on either side show on both. If a warranty is unlinked, you disconnect or turn this off, its photos come back here."
     }
   },
   "errors": {
@@ -610,6 +629,7 @@
     "homeboxItemGone": "That item no longer exists in HomeBox",
     "homeboxNotLinked": "Link this warranty to a HomeBox item first",
     "homeboxPhotoNoKey": "This photo is in HomeBox, but whoever added it has no HomeBox key saved",
+    "wherehousePhotoNoConnection": "This file is kept in Wherehouse, but no one who can see this warranty is connected to Wherehouse",
     "homeboxNeedsItem": "Choose a HomeBox item",
     "homeboxAlreadyLinked": "This warranty is already linked to a HomeBox item",
     "homeboxBusy": "This warranty is being linked to HomeBox right now. Try again in a moment.",
@@ -624,7 +644,17 @@
     "draftExtensionUnnamed_one": "Includes {{count}} month of extended warranty bought with it",
     "draftExtensionUnnamed_other": "Includes {{count}} months of extended warranty bought with it",
     "warrantyStart": "Choose which date warranties count from",
-    "draftItems": "Choose which products get drafts"
+    "draftItems": "Choose which products get drafts",
+    "wherehouseTokenRejected": "Wherehouse no longer accepts your connection. Connect again in Settings.",
+    "wherehouseThingGone": "That thing no longer exists in Wherehouse",
+    "wherehouseNotConnected": "Connect to Wherehouse in Settings first",
+    "wherehouseNotConfigured": "Wherehouse isn’t set up on this server; set WHEREHOUSE_URL",
+    "wherehouseNeedsThing": "Pick a thing",
+    "wherehouseAlreadyLinked": "This warranty is already on a thing in Wherehouse",
+    "wherehouseTitle": "Warranty",
+    "wherehouseTitleVoid": "Warranty void",
+    "wherehouseTitleLifetime": "Lifetime warranty",
+    "wherehouseTitleUntil": "Warranty until {{date}}"
   },
   "signIn": {
     "unreachable": "Could not reach the identity provider. Try again in a moment.",
@@ -719,6 +749,35 @@
     "confirm": "Split off",
     "done_one": "{{count}} piece moved to a new warranty",
     "done_other": "{{count}} pieces moved to a new warranty",
-    "homeboxFailed": "The warranty was split, but not the HomeBox item: {{error}}"
+    "homeboxFailed": "The warranty was split, but not the HomeBox item: {{error}}",
+    "wherehouse": "Split the Wherehouse thing too",
+    "wherehouseHint": "Adds a thing for the new warranty next to this one, and lowers this thing’s quantity.",
+    "wherehouseFailed": "The warranty was split, but not the Wherehouse thing: {{error}}"
+  },
+  "wherehouse": {
+    "where": "Where",
+    "nowhere": "Not put anywhere yet",
+    "label": "Label",
+    "open": "Open in Wherehouse",
+    "unlink": "Unlink",
+    "add": "Add to Wherehouse",
+    "linkExisting": "Link existing thing",
+    "connectHint": "Connect to Wherehouse to keep this in your inventory:",
+    "unlinked": "Unlinked from Wherehouse",
+    "unlinkTitle": "Unlink from Wherehouse?",
+    "unlinkText": "The thing stays in Wherehouse with its details, which can then be changed there.",
+    "created": "Added to Wherehouse",
+    "addTitle": "Add to Wherehouse",
+    "addDescription": "The product becomes a thing in Wherehouse with its purchase and warranty, photos and claims. Warranteed keeps those up to date.",
+    "place": "Put it in",
+    "noPlace": "Nowhere yet (put it away later)",
+    "create": "Add",
+    "linked": "Linked to Wherehouse",
+    "linkTitle": "Link a thing in Wherehouse",
+    "linkDescription": "Its purchase and warranty details are then kept by Warranteed.",
+    "linkButton": "Link",
+    "search": "Search Wherehouse",
+    "noResults": "Nothing found",
+    "addOnConfirm": "Add to Wherehouse"
   }
 }

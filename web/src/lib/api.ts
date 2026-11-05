@@ -8,8 +8,8 @@ export interface Tag {
   count?: number;
 }
 
-/** Where a file is kept: here, in Paperless-ngx, or (photos only) on the linked HomeBox item. */
-export type Storage = "local" | "paperless" | "homebox";
+/** Where a file is kept: here, in Paperless-ngx, or (photos only) on the linked HomeBox item or Wherehouse thing. */
+export type Storage = "local" | "paperless" | "homebox" | "wherehouse";
 
 export interface Attachment {
   id: number;
@@ -25,6 +25,8 @@ export interface Attachment {
   createdAt: string;
   /** The claim the document belongs to, if any. */
   claimId: number | null;
+  /** It's on the warranty's thing in Wherehouse too; deleting it here deletes it there. */
+  onWherehouse: boolean;
 }
 
 export type ClaimStatus = "open" | "repaired" | "replaced" | "refunded" | "rejected";
@@ -88,6 +90,8 @@ export interface Warranty {
   addedBy: { id: number; name: string };
   /** The linked HomeBox item, if any. */
   homebox: HomeBoxLink | null;
+  /** The linked thing in Wherehouse, if any. */
+  wherehouse: WherehouseLink | null;
   /** Made from a new document in Paperless and not confirmed yet. */
   draft: boolean;
   /** A draft's document dates of sale and receipt, when they differ. */
@@ -95,6 +99,22 @@ export interface Warranty {
 }
 
 export type DraftSource = "off" | "paperless" | "fields" | "claude";
+
+export interface WherehouseLink {
+  thing: number;
+  /** Its label code there, or "". */
+  label: string;
+  /** Where it is, e.g. "House › Garage", as last heard. */
+  path: string;
+}
+
+export interface WherehouseThing {
+  id: number;
+  name: string;
+  label: string;
+  path: string;
+  isPlace: boolean;
+}
 
 export interface HomeBoxLink {
   id: string;
@@ -158,6 +178,8 @@ export interface Settings {
   paperlessDefault: boolean;
   /** Store product photos in HomeBox by default, on warranties linked to an item. */
   homeboxPhotosDefault: boolean;
+  /** Keep product photos only in Wherehouse, on warranties linked to a thing. */
+  wherehousePhotosOnly: boolean;
   /** Write links to the warranty and HomeBox item into the user's Paperless documents. */
   paperlessBacklinks: boolean;
   /** Names of the custom fields those links go in. */
@@ -194,6 +216,11 @@ export interface Settings {
   hasHomeboxToken: boolean;
   /** HomeBox is set up and the user has an API key. */
   homeboxEnabled: boolean;
+  /** Where browsers open the server's Wherehouse, "" when there is none. */
+  wherehouseServerUrl: string;
+  wherehouseConnected: boolean;
+  /** The Wherehouse household the connection works in. */
+  wherehouseHousehold: string;
 }
 
 export type SettingsInput = Omit<
@@ -338,10 +365,19 @@ export const api = {
   createWarranty: (w: WarrantyInput) => request<Warranty>("POST", "/api/warranties", w),
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
   deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
-  confirmWarranty: (id: number) => request<Warranty>("POST", `/api/warranties/${id}/confirm`),
-  /** Moves pieces to a new warranty; with homebox, a linked item is split too. */
-  splitWarranty: (id: number, input: { pieces: number; serialNumbers: string[]; homebox: boolean }) =>
-    request<{ warranty: Warranty; homeboxError?: string }>("POST", `/api/warranties/${id}/split`, input),
+  /** Confirms a draft; with wherehouse, also adds its product to Wherehouse. */
+  confirmWarranty: (id: number, wherehouse = false) =>
+    request<Warranty>("POST", `/api/warranties/${id}/confirm`, { wherehouse }),
+  /** Moves pieces to a new warranty; with homebox or wherehouse, a linked item or thing is split too. */
+  splitWarranty: (
+    id: number,
+    input: { pieces: number; serialNumbers: string[]; homebox: boolean; wherehouse: boolean },
+  ) =>
+    request<{ warranty: Warranty; homeboxError?: string; wherehouseError?: string }>(
+      "POST",
+      `/api/warranties/${id}/split`,
+      input,
+    ),
   setVoid: (id: number, isVoid: boolean, reason = "") =>
     request<Warranty>("POST", `/api/warranties/${id}/${isVoid ? "void" : "unvoid"}`, isVoid ? { reason } : undefined),
   archive: (id: number, archived: boolean) =>
@@ -384,6 +420,20 @@ export const api = {
   linkHomeboxItem: (warrantyId: number, itemId: string) =>
     request<Warranty>("PUT", `/api/warranties/${warrantyId}/homebox`, { itemId }),
   unlinkHomebox: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/homebox`),
+
+  /** Where to send the browser to connect Wherehouse. */
+  connectWherehouse: () => request<{ url: string }>("POST", "/api/settings/wherehouse/connect"),
+  /** Disconnects Wherehouse; with unlink, every warranty is unlinked from its thing too. */
+  disconnectWherehouse: (unlink: boolean) =>
+    request<undefined>("DELETE", `/api/settings/wherehouse${unlink ? "?unlink=1" : ""}`),
+  wherehousePlaces: () => request<WherehouseThing[]>("GET", "/api/wherehouse/places"),
+  searchWherehouse: (q: string) =>
+    request<WherehouseThing[]>("GET", `/api/wherehouse/search?q=${encodeURIComponent(q)}`),
+  addToWherehouse: (warrantyId: number, parentId: number | null) =>
+    request<Warranty>("POST", `/api/warranties/${warrantyId}/wherehouse`, { parentId }),
+  linkWherehouse: (warrantyId: number, thingId: number) =>
+    request<Warranty>("PUT", `/api/warranties/${warrantyId}/wherehouse`, { thingId }),
+  unlinkWherehouse: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/wherehouse`),
 
   spaces: () => request<Space[]>("GET", "/api/spaces"),
   moveAllToSpace: (spaceId: number) => request<{ moved: number }>("POST", `/api/spaces/${spaceId}/move-all`),

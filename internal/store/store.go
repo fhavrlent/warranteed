@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"crypto/cipher"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -14,6 +15,8 @@ var ErrNotFound = errors.New("not found")
 
 type Store struct {
 	db *sql.DB
+	// aead encrypts tokens for other apps; see SetKey.
+	aead cipher.AEAD
 }
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
@@ -267,11 +270,19 @@ type Settings struct {
 	PaperlessPublicURL string `json:"paperlessPublicUrl"`
 	PaperlessToken     string `json:"-"`
 	HomeBoxToken       string `json:"-"`
-	PaperlessDefault   bool   `json:"paperlessDefault"`
-	PaperlessBacklinks bool   `json:"paperlessBacklinks"`
+	// WherehouseToken is from connecting to Wherehouse, for the household
+	// WherehouseHousehold; WherehouseSince is how far its changes were read.
+	WherehouseToken     string `json:"-"`
+	WherehouseHousehold string `json:"wherehouseHousehold"`
+	WherehouseSince     string `json:"-"`
+	PaperlessDefault    bool   `json:"paperlessDefault"`
+	PaperlessBacklinks  bool   `json:"paperlessBacklinks"`
 	// HomeBoxPhotosDefault stores product photos in HomeBox by default, on
 	// warranties linked to an item.
 	HomeBoxPhotosDefault bool `json:"homeboxPhotosDefault"`
+	// WherehousePhotosOnly keeps product photos only in Wherehouse, on
+	// warranties linked to a thing, rather than here and there.
+	WherehousePhotosOnly bool `json:"wherehousePhotosOnly"`
 	// DraftSource is whether the user gets drafts from new Paperless
 	// documents ("off" by default), and where their details come from:
 	// "paperless", "fields" or "claude".
@@ -288,14 +299,24 @@ func (s *Store) Settings(ctx context.Context, userID int64) (*Settings, error) {
 	var st Settings
 	err := s.db.QueryRowContext(ctx, `
 		SELECT date_format, currency, theme, language, browser_language, expiring_soon_days, notify_urls, notify_days,
-		       paperless_url, paperless_public_url, paperless_token, paperless_default, paperless_backlinks, homebox_token, homebox_photos_default, draft_source, warranty_start, draft_items
+		       paperless_url, paperless_public_url, paperless_token, paperless_default, paperless_backlinks, homebox_token, homebox_photos_default, draft_source, warranty_start, draft_items,
+		       wherehouse_token, wherehouse_household, wherehouse_since, wherehouse_photos_only
 		FROM user_settings WHERE user_id = ?`, userID,
 	).Scan(&st.DateFormat, &st.Currency, &st.Theme, &st.Language, &st.BrowserLanguage, &st.ExpiringSoonDays, &st.NotifyURLs,
-		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.PaperlessBacklinks, &st.HomeBoxToken, &st.HomeBoxPhotosDefault, &st.DraftSource, &st.WarrantyStart, &st.DraftItems)
+		&st.NotifyDays, &st.PaperlessURL, &st.PaperlessPublicURL, &st.PaperlessToken, &st.PaperlessDefault, &st.PaperlessBacklinks, &st.HomeBoxToken, &st.HomeBoxPhotosDefault, &st.DraftSource, &st.WarrantyStart, &st.DraftItems,
+		&st.WherehouseToken, &st.WherehouseHousehold, &st.WherehouseSince, &st.WherehousePhotosOnly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &st, err
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range []*string{&st.PaperlessToken, &st.HomeBoxToken, &st.WherehouseToken} {
+		if *t, err = s.open(*t); err != nil {
+			return nil, err
+		}
+	}
+	return &st, nil
 }
 
 // EffectiveLanguage is the language to write to the user in when there is no
@@ -316,14 +337,24 @@ func (s *Store) SetBrowserLanguage(ctx context.Context, userID int64, lang strin
 }
 
 func (s *Store) SaveSettings(ctx context.Context, userID int64, st *Settings) error {
-	_, err := s.db.ExecContext(ctx, `
+	paperlessToken, err := s.seal(st.PaperlessToken)
+	if err != nil {
+		return err
+	}
+	homeboxToken, err := s.seal(st.HomeBoxToken)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
 			date_format = ?, currency = ?, theme = ?, language = ?, expiring_soon_days = ?, notify_urls = ?,
 			notify_days = ?, paperless_url = ?, paperless_public_url = ?, paperless_token = ?, paperless_default = ?,
-			paperless_backlinks = ?, homebox_token = ?, homebox_photos_default = ?, draft_source = ?, warranty_start = ?, draft_items = ?
+			paperless_backlinks = ?, homebox_token = ?, homebox_photos_default = ?, draft_source = ?, warranty_start = ?, draft_items = ?,
+			wherehouse_photos_only = ?
 		WHERE user_id = ?`,
 		st.DateFormat, st.Currency, st.Theme, st.Language, st.ExpiringSoonDays, st.NotifyURLs,
-		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, st.PaperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, st.HomeBoxToken, st.HomeBoxPhotosDefault, st.DraftSource, st.WarrantyStart, st.DraftItems, userID)
+		st.NotifyDays, st.PaperlessURL, st.PaperlessPublicURL, paperlessToken, st.PaperlessDefault, st.PaperlessBacklinks, homeboxToken, st.HomeBoxPhotosDefault, st.DraftSource, st.WarrantyStart, st.DraftItems,
+		st.WherehousePhotosOnly, userID)
 	return err
 }
 

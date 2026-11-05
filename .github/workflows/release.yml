@@ -1,6 +1,7 @@
 name: Release image
 
-# main -> :edge, tags v1.2.3 -> :1.2.3, :1.2, :1, :latest
+# main -> :edge, tags v1.2.3 -> :1.2.3, :1.2, :1, :latest.
+# Pull requests get their images from pr-image.yml.
 on:
   push:
     branches: [main]

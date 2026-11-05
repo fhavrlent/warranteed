@@ -342,6 +342,10 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 			homeboxFail(w, err)
 			return
 		}
+		if wr.Wherehouse != nil {
+			// On the thing too, or kept only there.
+			s.sendToWherehouseLater(uid, wid)
+		}
 		writeJSON(w, http.StatusCreated, a)
 		return
 	}
@@ -359,6 +363,9 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	if kind == "photo" && wr.HomeBox != nil {
 		s.sendHomeBoxPhotosLater(uid, wid)
+	}
+	if kind == "photo" && wr.Wherehouse != nil {
+		s.sendToWherehouseLater(uid, wid)
 	}
 	writeJSON(w, http.StatusCreated, a)
 }
@@ -450,6 +457,9 @@ func (s *Server) linkPaperless(w http.ResponseWriter, r *http.Request) {
 		out = append(out, a)
 		s.syncBacklinksLater(store.PaperlessDoc{Owner: uid, DocID: doc.ID})
 	}
+	if len(out) > 0 {
+		s.sendToWherehouseLater(uid, out[0].WarrantyID)
+	}
 	writeJSON(w, http.StatusCreated, out)
 }
 
@@ -492,9 +502,27 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 		}
 		filename = cleanFilename(name)
 	}
+	// Changed on the thing it's on too, first. Read again once nothing
+	// else can be sending it there, so it's changed where it is now.
+	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	if a, err = s.store.GetAttachment(r.Context(), userID(r), id); err != nil {
+		fail(w, err)
+		return
+	}
+	seen, err := s.updateOnThing(r.Context(), userID(r), a, kind, filename)
+	if err != nil {
+		wherehouseFail(w, err)
+		return
+	}
 	if err := s.store.UpdateAttachment(r.Context(), id, kind, filename); err != nil {
 		fail(w, err)
 		return
+	}
+	if seen != "" {
+		if err := s.store.SeenOnWherehouse(r.Context(), id, seen); err != nil {
+			fail(w, err)
+			return
+		}
 	}
 	a.Kind, a.Filename = kind, filename
 	writeJSON(w, http.StatusOK, a)
@@ -510,6 +538,18 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 	a, err := s.store.GetAttachment(r.Context(), userID(r), id)
 	if err != nil {
 		fail(w, err)
+		return
+	}
+	// It goes from the thing it's on too, or it would come back. Read again
+	// once nothing else can be sending it there, so it's deleted where it is
+	// now.
+	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	if a, err = s.store.GetAttachment(r.Context(), userID(r), id); err != nil {
+		fail(w, err)
+		return
+	}
+	if err := s.deleteOnThing(r.Context(), userID(r), a); err != nil {
+		wherehouseFail(w, err)
 		return
 	}
 	doc, err := s.store.AttachmentPaperlessDoc(r.Context(), id)
@@ -558,6 +598,7 @@ func (s *Server) retryAttachment(w http.ResponseWriter, r *http.Request) {
 			if doc, derr := s.store.AttachmentPaperlessDoc(r.Context(), id); derr == nil && doc != nil {
 				s.syncBacklinksLater(*doc)
 			}
+			s.sendToWherehouseLater(userID(r), a.WarrantyID)
 		}
 	case paperless.TaskFailed:
 		err = s.store.FailAttachment(r.Context(), id, res.Error)
@@ -595,6 +636,11 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
 	} else {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors 'self'")
+	}
+
+	if a.Storage == store.StorageWherehouse {
+		s.proxyWherehousePhoto(w, r, a, thumb, download)
+		return
 	}
 
 	if thumb && a.Storage != store.StoragePaperless && thumbnail.Supported(a.MimeType) {
@@ -646,9 +692,19 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 		writeMsg(w, http.StatusConflict, "server.paperlessProcessing", nil)
 		return
 	}
+	// Without a token for it here, or with Paperless out of reach from
+	// here, the document opens in Paperless itself, which asks for its own
+	// sign-in. A thumbnail just isn't there.
+	inPaperless := func() {
+		if web := s.attachmentPaperlessWeb(r.Context(), a, userID(r)); web != "" && !thumb {
+			http.Redirect(w, r, fmt.Sprintf("%s/documents/%d/details", web, *a.PaperlessDocID), http.StatusFound)
+			return
+		}
+		writeMsg(w, http.StatusNotFound, "server.paperlessNotConfigured", nil)
+	}
 	pc, err := s.attachmentPaperless(r.Context(), a, userID(r))
 	if err != nil || pc == nil {
-		writeMsg(w, http.StatusBadGateway, "server.paperlessNotConfigured", nil)
+		inPaperless()
 		return
 	}
 	variant := "preview"
@@ -658,18 +714,41 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request, downloa
 	case download:
 		variant = "download"
 	}
-	s.proxyPaperless(w, r, pc, *a.PaperlessDocID, variant, a.Filename, download)
+	s.proxyPaperless(w, r, pc, *a.PaperlessDocID, variant, a.Filename, download, inPaperless)
 }
 
-func (s *Server) proxyPaperless(w http.ResponseWriter, r *http.Request, pc *paperless.Client, docID int64, variant, filename string, download bool) {
+// attachmentPaperlessWeb is where a Paperless document opens in the browser:
+// the Paperless of whoever attached it, or the server's.
+func (s *Server) attachmentPaperlessWeb(ctx context.Context, a *store.Attachment, viewer int64) string {
+	owner := viewer
+	if a.AddedBy != nil {
+		owner = *a.AddedBy
+	}
+	if web, err := s.userPaperlessWebURL(ctx, owner); err == nil && web != "" {
+		return web
+	}
+	if s.cfg.Paperless.PublicURL != "" {
+		return s.cfg.Paperless.PublicURL
+	}
+	return s.cfg.Paperless.URL
+}
+
+// proxyPaperless streams a document from Paperless. If Paperless can't hand
+// it over, unreachable is called, or with none an error is sent.
+func (s *Server) proxyPaperless(w http.ResponseWriter, r *http.Request, pc *paperless.Client, docID int64, variant, filename string,
+	download bool, unreachable func()) {
 	resp, err := pc.Stream(r.Context(), docID, variant)
+	if paperless.IsNotFound(err) {
+		writeMsg(w, http.StatusNotFound, "server.paperlessGone", nil)
+		return
+	}
+	if err != nil && unreachable != nil {
+		slog.Warn("paperless document", "doc", docID, "err", err)
+		unreachable()
+		return
+	}
 	if err != nil {
-		status := http.StatusBadGateway
-		if paperless.IsNotFound(err) {
-			status = http.StatusNotFound
-			err = i18n.NewError("server.paperlessGone", nil)
-		}
-		writeErr(w, status, err)
+		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
 	defer resp.Body.Close()
@@ -823,7 +902,7 @@ func (s *Server) paperlessThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	s.proxyPaperless(w, r, pc, docID, "thumb", "", false)
+	s.proxyPaperless(w, r, pc, docID, "thumb", "", false, nil)
 }
 
 // attachmentPaperless returns the Paperless connection of whoever attached a
@@ -899,6 +978,9 @@ func (s *Server) pollOne(ctx context.Context, p store.PendingPaperless, giveUp t
 		if err := s.store.CompleteAttachment(ctx, p.AttachmentID, res.DocID); err == nil {
 			slog.Info("paperless document ready", "attachment", p.AttachmentID, "doc", res.DocID)
 			s.syncBacklinksLater(store.PaperlessDoc{Owner: p.UserID, DocID: res.DocID})
+			if wid, err := s.store.AttachmentWarranty(ctx, p.AttachmentID); err == nil {
+				s.sendToWherehouseLater(p.UserID, wid)
+			}
 		}
 	case paperless.TaskFailed:
 		s.store.FailAttachment(ctx, p.AttachmentID, res.Error)

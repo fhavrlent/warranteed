@@ -23,6 +23,8 @@ export const SplitDialog = ({ w, onClose }: { w: Warranty; onClose: () => void }
   const [serials, setSerials] = useState<string[]>([]);
   const canSplitItem = w.homebox !== null && (settings?.homeboxEnabled ?? false);
   const [homebox, setHomebox] = useState(canSplitItem);
+  const canSplitThing = w.wherehouse !== null && (settings?.wherehouseConnected ?? false);
+  const [wherehouse, setWherehouse] = useState(canSplitThing);
   const [saving, setSaving] = useState(false);
   const n = Number(pieces);
   const valid = Number.isInteger(n) && n >= 1 && n <= max;
@@ -35,10 +37,12 @@ export const SplitDialog = ({ w, onClose }: { w: Warranty; onClose: () => void }
         pieces: n,
         serialNumbers: serials,
         homebox: homebox && canSplitItem,
+        wherehouse: wherehouse && canSplitThing,
       });
       invalidate();
       toast.success(t("split.done", { count: n }));
       if (res.homeboxError) toast.error(t("split.homeboxFailed", { error: res.homeboxError }));
+      if (res.wherehouseError) toast.error(t("split.wherehouseFailed", { error: res.wherehouseError }));
       onClose();
       void navigate(`/w/${res.warranty.id}`);
     } catch (e) {
@@ -109,6 +113,15 @@ export const SplitDialog = ({ w, onClose }: { w: Warranty; onClose: () => void }
               <span className="block text-xs text-fg-subtle">{t("split.homeboxHint")}</span>
             </span>
             <Switch id="splitHomeBox" checked={homebox} onCheckedChange={setHomebox} />
+          </label>
+        )}
+        {canSplitThing && (
+          <label htmlFor="splitWherehouse" className="flex items-start justify-between gap-4">
+            <span>
+              <span className="block text-[13px] font-medium">{t("split.wherehouse")}</span>
+              <span className="block text-xs text-fg-subtle">{t("split.wherehouseHint")}</span>
+            </span>
+            <Switch id="splitWherehouse" checked={wherehouse} onCheckedChange={setWherehouse} />
           </label>
         )}
         <p className="text-xs text-fg-subtle">{t("split.copies")}</p>

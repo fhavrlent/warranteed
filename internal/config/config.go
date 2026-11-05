@@ -30,7 +30,10 @@ type Config struct {
 	OIDC      OIDC
 	Paperless Paperless
 	HomeBox   HomeBox
-	Claude    Claude
+	// Wherehouse is the household inventory app; each person connects to it
+	// in Settings.
+	Wherehouse Wherehouse
+	Claude     Claude
 
 	// Secret derives the key that encrypts stored refresh tokens. When empty,
 	// a key is generated in DataDir/secret.key.
@@ -83,6 +86,13 @@ var DraftFieldKeys = []string{"product", "brand", "model", "vendor", "purchase_d
 type Claude struct {
 	APIKey string
 	Model  string
+}
+
+// Wherehouse is set by the admin only, like HomeBox: URL is where the
+// server reaches it, PublicURL where browsers do.
+type Wherehouse struct {
+	URL       string
+	PublicURL string
 }
 
 // HomeBox is set by the admin only, so users can't point the server at
@@ -159,6 +169,10 @@ func Load() (*Config, error) {
 			URL:       strings.TrimSuffix(os.Getenv("HOMEBOX_URL"), "/"),
 			PublicURL: strings.TrimSuffix(os.Getenv("HOMEBOX_PUBLIC_URL"), "/"),
 		},
+		Wherehouse: Wherehouse{
+			URL:       strings.TrimSuffix(os.Getenv("WHEREHOUSE_URL"), "/"),
+			PublicURL: strings.TrimSuffix(os.Getenv("WHEREHOUSE_PUBLIC_URL"), "/"),
+		},
 	}
 	c.FilesDir = env("WARRANTEED_FILES_DIR", filepath.Join(c.DataDir, "files"))
 	if c.Paperless.PublicURL == "" {
@@ -166,6 +180,9 @@ func Load() (*Config, error) {
 	}
 	if c.HomeBox.PublicURL == "" {
 		c.HomeBox.PublicURL = c.HomeBox.URL
+	}
+	if c.Wherehouse.PublicURL == "" {
+		c.Wherehouse.PublicURL = c.Wherehouse.URL
 	}
 
 	if c.OIDC.Issuer == "" && !c.DevLogin {

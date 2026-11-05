@@ -568,14 +568,64 @@ func (s *Server) confirmWarranty(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.ConfirmWarranty(r.Context(), userID(r), id); err != nil {
+	// Older clients send no body.
+	var in struct {
+		// Wherehouse adds the product to Wherehouse, not put anywhere yet.
+		Wherehouse bool `json:"wherehouse"`
+	}
+	if r.ContentLength > 0 && !decode(w, r, &in) {
+		return
+	}
+	uid := userID(r)
+	if err := s.store.ConfirmWarranty(r.Context(), uid, id); err != nil {
 		fail(w, err)
 		return
 	}
-	wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
+	wr, err := s.store.GetWarranty(r.Context(), uid, id)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	// A second confirm, or linking from the warranty's page, while this one
+	// is adding the product leaves it to that one.
+	if in.Wherehouse {
+		if _, busy := s.homeboxBusy.LoadOrStore(wherehouseKey(id), true); !busy {
+			defer s.homeboxBusy.Delete(wherehouseKey(id))
+			if wr, err = s.addDraftToWherehouse(r.Context(), uid, id); err != nil {
+				fail(w, err)
+				return
+			}
+		}
+	}
 	writeJSON(w, 200, wr)
+}
+
+// addDraftToWherehouse makes a thing for a confirmed draft, with no place
+// yet, unless it's linked already. The warranty is confirmed either way; the
+// person can add it to Wherehouse again from its page.
+func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id int64) (*store.Warranty, error) {
+	wr, err := s.store.GetWarranty(ctx, uid, id)
+	if err != nil || wr.Wherehouse != nil {
+		return wr, err
+	}
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		return wr, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	t, err := wh.Create(ctx, newThing(wr, nil))
+	if err == nil {
+		if err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID); err != nil {
+			s.dropUnlinkedThing(uid, id, wh, t.ID)
+		}
+	}
+	if err != nil {
+		slog.Warn("add confirmed draft to wherehouse", "warranty", id, "err", err)
+	}
+	return s.store.GetWarranty(ctx, uid, id)
 }

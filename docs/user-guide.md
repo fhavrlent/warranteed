@@ -1,6 +1,6 @@
 # User guide
 
-How to use Warranteed day to day. Setting up the server and its connections to Paperless-ngx, HomeBox and notification services is covered in the [README](../README.md) and the [integration guide](integrations.md).
+How to use Warranteed day to day. Setting up the server and its connections to Paperless-ngx, Wherehouse, HomeBox and notification services is covered in the [README](../README.md) and the [integration guide](integrations.md).
 
 - [Signing in](#signing-in)
 - [Adding a warranty](#adding-a-warranty)
@@ -9,6 +9,7 @@ How to use Warranteed day to day. Setting up the server and its connections to P
 - [Finding warranties](#finding-warranties)
 - [Sharing with the household](#sharing-with-the-household)
 - [Repairs and claims](#repairs-and-claims)
+- [Wherehouse](#wherehouse)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
 - [Calendar](#calendar)
@@ -43,7 +44,7 @@ Each warranty can hold its receipt, warranty terms and card, extended warranty, 
 
 With Paperless-ngx connected:
 
-- Documents can be **stored in Paperless** instead of in Warranteed. The upload dialog asks where to store them. **Upload documents to Paperless by default** in Settings makes Paperless the default. Product photos are stored in Warranteed or in [HomeBox](#homebox), never in Paperless, and file types Paperless can't take stay in Warranteed.
+- Documents can be **stored in Paperless** instead of in Warranteed. The upload dialog asks where to store them. **Upload documents to Paperless by default** in Settings makes Paperless the default. Product photos are stored in Warranteed, in [HomeBox](#homebox) or on the Wherehouse thing, never in Paperless, and file types Paperless can't take stay in Warranteed.
 - **Link from Paperless** attaches documents that are already there. Search by text, title or document ID.
 - A document stored in Paperless shows *Paperless is processing…* until Paperless has finished with it. If an upload fails, **Check again** retries it.
 - **Unlinking** a Paperless document only removes it from the warranty. The document stays in Paperless.
@@ -105,6 +106,18 @@ When something breaks, **Add claim** under **Claims** on the warranty records wh
 
 A claim's menu adds documents to it, such as the shop's letter, photos of the defect or the repair report. They're stored like other documents, in Paperless if that's your default, and also appear among the warranty's documents. Deleting a claim keeps its documents on the warranty.
 
+## Wherehouse
+
+With Wherehouse connected (**Settings → Wherehouse**), a warranty can be part of your Wherehouse inventory. **Add to Wherehouse** makes a thing for it, in a place you pick or nowhere yet; **Link existing thing** finds one already there.
+
+- **Details**: the name, brand, model, serial numbers, quantity and notes are the same on both. Change them on either side and the other follows within seconds. Wherehouse's custom fields aren't shared. The purchase and warranty details are kept here; Wherehouse shows them read-only.
+- **Documents** in Paperless, claims' documents included, are on both. Adding, deleting, renaming or changing the type of one on either side does the same on the other. Documents stored in Warranteed itself aren't sent to Wherehouse; store them in Paperless to have them on the thing.
+- **Photos** are copied to the thing, including ones you add later. Copies are separate: deleting one leaves the other. With **Keep product photos only in Wherehouse** on, the photos are the thing's photos instead, and adding or deleting one on either side does the same on the other.
+- **Claims** are entries in the thing's maintenance log. Editing an entry in Wherehouse changes the claim, and deleting it deletes the claim. Other maintenance entries stay in Wherehouse.
+- The warranty shows where the thing is and its label code. Selling or archiving the thing in Wherehouse archives the warranty.
+
+See the [integration guide](integrations.md#wherehouse) for setting it up and the details.
+
 ## HomeBox
 
 With HomeBox connected (**Settings → HomeBox**, with an API key from HomeBox's *Profile → API keys*), a warranty can be part of your inventory:
@@ -163,6 +176,7 @@ Documents aren't part of the CSV.
 - **Reminders**: see [Reminders](#reminders).
 - **Paperless-ngx**: your API token (Paperless: *Profile → API Auth Token*), whether uploads go to Paperless by default, links back from Paperless, and drafts.
 - **HomeBox**: your API key, and whether product photos are stored in HomeBox by default.
+- **Wherehouse**: connecting, and whether product photos of linked warranties are kept only in Wherehouse, as the thing's photos.
 - **Household**: who you share with, and sharing everything at once.
 - **Tags**, and **Import & export**.
 

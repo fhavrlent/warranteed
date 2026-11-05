@@ -9,6 +9,7 @@ Step-by-step setup of what Warranteed connects to: Paperless-ngx for documents, 
   - [Drafts from new documents](#drafts-from-new-documents)
   - [Draft details from paperless-gpt](#draft-details-from-paperless-gpt)
   - [Draft details from Claude](#draft-details-from-claude)
+- [Wherehouse](#wherehouse)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
 - [Troubleshooting](#troubleshooting)
@@ -134,6 +135,32 @@ What to know:
 - **Cost:** the API key's account pays for each document read. Only users who choose Claude cause reads, and only for documents the workflow sends.
 - **Failures:** if Claude can't be reached or declines, the draft is made from the document's own details instead.
 - **Size:** documents over 24 MB aren't sent.
+
+## Wherehouse
+
+[Wherehouse](https://github.com/fhavrlent/wherehouse) is a household inventory made to go with Warranteed.
+
+1. Set `WHEREHOUSE_URL` to where Warranteed reaches Wherehouse, and `WHEREHOUSE_PUBLIC_URL` if browsers use another address. Restart.
+2. Each person opens **Settings → Wherehouse → Connect to Wherehouse**, picks a household there and allows it. Wherehouse sends them back connected. To disconnect for good, delete the "Warranteed" token in Wherehouse under **Settings → API tokens**.
+
+Linked warranties and things share their details by who owns what:
+
+| Detail | Kept in |
+| --- | --- |
+| Name, brand, model, serial numbers, quantity and notes | Both: a change on either side is made on the other |
+| Purchase date, price, seller, warranty end and details | Warranteed: Wherehouse shows them read-only |
+| Claims | Warranteed, as entries in the thing's maintenance log: editing or deleting the entry there changes or deletes the claim |
+| Where the thing is, its photos, kind, tags, label, custom fields, insurance and sale | Wherehouse: the warranty shows where it is and its label code |
+
+Warranteed sends changes as they happen. When connecting, it asks Wherehouse to ping `/hooks/wherehouse` whenever something changes there; the ping is signed and carries no data, and Warranteed then reads Wherehouse's changes straight away. It also reads them every 10 minutes, in case a ping got lost or Warranteed's address can't be reached from Wherehouse (connections made before pings existed get them after reconnecting). A thing sold or archived there archives its warranty, a deleted one is unlinked.
+
+The brand is Wherehouse's manufacturer, and the thing's name is the brand and product name; a name changed in Wherehouse becomes the product name here. Several serial numbers are one comma-separated serial number there. When a warranty and a thing are first brought in step, each keeps its own details, but what the thing lacks is filled in from the warranty: empty details, and serial numbers after the first. After that, if a detail changed on both sides before they were brought in step, the warranty's value wins. Wherehouse's custom fields and Warranteed's tags, product link and order number aren't shared.
+
+The warranty's documents, claims' documents included, and the thing's are kept in step both ways. A document added to either is added to the other, one deleted from either is deleted from the other, and renaming one or changing its type does the same on the other; a document in Paperless stays in Paperless. Wherehouse has fewer types: proof of purchase becomes a receipt; warranty terms, card and extended warranty become a warranty; a manual stays a manual; the rest, repair and claim reports included, become other. Changing the type there changes it here only when the two don't match already, so a warranty card stays a card. Documents stored in Warranteed itself, not in Paperless, aren't sent to Wherehouse: store them in Paperless to have them on the thing. With the same Paperless in both, a Paperless document is the same document on both: Wherehouse links it as a receipt, warranty, manual or other document, and one linked in Wherehouse becomes a Paperless document here. A file Wherehouse keeps itself is shown here from Wherehouse, through the connection of anyone in the household who can see the warranty, and comes to Warranteed if the warranty is unlinked; the thing keeps it too. With another Paperless, or none in Wherehouse, receipts become links to Paperless on the thing instead. When Warranteed starts, it brings every linked warranty in step once, so what changed while it was stopped is caught up too.
+
+Each claim is an entry in the thing's maintenance log, titled "Warranty claim:" and the claim's title, dated when it was resolved or else reported, with its cost, and with the status, case number, notes and a link to the warranty in the entry's notes. Changing a claim here changes its entry. Editing the entry in Wherehouse changes the claim: its title, date, cost, and the status, case number and notes as written in the entry's notes. Deleting the entry deletes the claim; its documents stay on the warranty. Other maintenance entries stay in Wherehouse.
+
+The warranty's product photos are copied to the thing, and so are photos added later; each is sent once. They are copies: deleting one on either side leaves the other, and photos added to the thing stay in Wherehouse. With **Keep product photos only in Wherehouse** under **Settings → Wherehouse**, a linked warranty's photos are the thing's photos instead: kept only on the thing, and shown here from there through the connection of anyone in the household who can see the warranty. A photo added to the thing in Wherehouse shows on the warranty, one deleted there goes from it, and one deleted here is deleted from the thing. Turning it on moves the photos already there: a copy sent before, or the copy of a photo kept in HomeBox, is matched with the photo on the thing by its contents, and only Warranteed's file is deleted (HomeBox keeps its copy). Photos come back to Warranteed when the warranty is unlinked, when you disconnect, and when you turn the setting off; the thing keeps them too. Photos and documents on a thing deleted in Wherehouse go with it. With Paperless, turn on Wherehouse's own links back (in its settings) for receipts to lead to their things as well; Warranteed's HomeBox field isn't used.
 
 ## HomeBox
 

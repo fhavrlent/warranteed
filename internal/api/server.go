@@ -30,8 +30,16 @@ type Server struct {
 	files    *Files
 	assets   fs.FS
 	version  string
+	// wherehouseSyncing marks people whose Wherehouse changes are being
+	// read; true means read again when done.
+	wherehouseSyncing sync.Map
 	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
 	homeboxBusy sync.Map
+	// wherehouseRetry holds the warranties whose things changed but that
+	// couldn't be brought in step with them, by [user, warranty], so the
+	// next sync tries again although Wherehouse's changes were read past
+	// them.
+	wherehouseRetry sync.Map
 	// photoLocks has a mutex per warranty whose photos are being sent to HomeBox.
 	photoLocks sync.Map
 	// backlinks tracks link updates running in the background.
@@ -107,6 +115,14 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/attachments/{id}", s.deleteAttachment)
 	api.HandleFunc("POST /api/attachments/{id}/retry", s.retryAttachment)
 
+	api.HandleFunc("POST /api/settings/wherehouse/connect", s.connectWherehouse)
+	api.HandleFunc("DELETE /api/settings/wherehouse", s.disconnectWherehouse)
+	api.HandleFunc("GET /api/wherehouse/places", s.wherehousePlaces)
+	api.HandleFunc("GET /api/wherehouse/search", s.searchWherehouse)
+	api.HandleFunc("POST /api/warranties/{id}/wherehouse", s.addToWherehouse)
+	api.HandleFunc("PUT /api/warranties/{id}/wherehouse", s.linkWherehouseThing)
+	api.HandleFunc("DELETE /api/warranties/{id}/wherehouse", s.unlinkWherehouse)
+
 	api.HandleFunc("POST /api/warranties/{id}/homebox", s.createHomeBoxItem)
 	api.HandleFunc("PUT /api/warranties/{id}/homebox", s.linkHomeBoxItem)
 	api.HandleFunc("DELETE /api/warranties/{id}/homebox", s.unlinkHomeBox)
@@ -135,6 +151,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/export.csv", s.exportCSV)
 	api.HandleFunc("POST /api/import", s.importCSV)
 
+	mux.HandleFunc("POST /hooks/wherehouse", s.wherehousePing)
+	mux.Handle("GET /wherehouse/callback", s.auth.Middleware(http.HandlerFunc(s.wherehouseCallback)))
 	mux.Handle("/api/", s.auth.Middleware(api))
 	mux.Handle("/", s.spa())
 

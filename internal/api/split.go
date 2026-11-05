@@ -23,7 +23,8 @@ func (s *Server) splitWarranty(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		store.SplitInput
-		HomeBox bool `json:"homebox"`
+		HomeBox    bool `json:"homebox"`
+		Wherehouse bool `json:"wherehouse"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -77,12 +78,21 @@ func (s *Server) splitWarranty(w http.ResponseWriter, r *http.Request) {
 		// HomeBoxError says why the HomeBox item couldn't be split; the
 		// warranty is split either way.
 		HomeBoxError string `json:"homeboxError,omitempty"`
+		// WherehouseError, the same for the Wherehouse thing.
+		WherehouseError string `json:"wherehouseError,omitempty"`
 	}
 	if in.HomeBox && wr.HomeBox != nil {
 		if err := s.splitHomeBoxItem(r.Context(), uid, wr, newID); err != nil {
 			out.HomeBoxError = err.Error()
 		}
 	}
+	if in.Wherehouse && wr.Wherehouse != nil {
+		if err := s.splitWherehouseThing(r.Context(), uid, wr, newID); err != nil {
+			out.WherehouseError = err.Error()
+		}
+	}
+	// Photos kept on the original's thing go on the new one's, or come here.
+	s.settleWherehousePhotosLater(uid, newID)
 	if out.Warranty, err = s.store.GetWarranty(r.Context(), uid, newID); err != nil {
 		fail(w, err)
 		return
@@ -188,6 +198,47 @@ func (s *Server) copyHomeBoxPhotos(ctx context.Context, hb *homebox.Client, uid 
 		if err := s.store.MovedInHomeBox(ctx, a.ID, itemID, id); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// splitWherehouseThing adds a thing for the split-off warranty next to the
+// original's, as adding it to Wherehouse would, and lowers the original
+// thing's quantity by the pieces split off, if it still had the warranty's.
+func (s *Server) splitWherehouseThing(reqCtx context.Context, uid int64, orig *store.Warranty, newID int64) error {
+	st, err := s.store.Settings(reqCtx, uid)
+	if err != nil {
+		return err
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		return errors.New("not connected to Wherehouse")
+	}
+	ctx, cancel := context.WithTimeout(reqCtx, 2*time.Minute)
+	defer cancel()
+	t, err := wh.Get(ctx, orig.Wherehouse.Thing)
+	if err != nil {
+		return err
+	}
+	nw, err := s.store.GetWarranty(reqCtx, uid, newID)
+	if err != nil {
+		return err
+	}
+	created, err := wh.Create(ctx, newThing(nw, t.ParentID))
+	if err != nil {
+		return err
+	}
+	if err := s.joinWherehouse(ctx, uid, st, wh, nw, created.ID); err != nil {
+		s.dropUnlinkedThing(uid, newID, wh, created.ID)
+		return err
+	}
+	rest, err := s.store.GetWarranty(reqCtx, uid, orig.ID)
+	if err != nil {
+		return err
+	}
+	// A quantity changed by hand there stays.
+	if t.Quantity == max(orig.Quantity, 1) {
+		return wh.SetQuantity(ctx, t.ID, max(rest.Quantity, 1))
 	}
 	return nil
 }
