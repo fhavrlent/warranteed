@@ -149,6 +149,7 @@ type Thing struct {
 	Photos []struct {
 		ID int64 `json:"id"`
 	} `json:"photos"`
+	Maintenance []Maintenance `json:"maintenance"`
 }
 
 // PathText is where the thing is, e.g. "House › Garage".
@@ -290,6 +291,12 @@ func (c *Client) Changes(ctx context.Context, since string) (*Changes, error) {
 func (c *Client) FromHomeBox(ctx context.Context, homeboxID string) (*Thing, error) {
 	var out Thing
 	return &out, c.do(ctx, http.MethodGet, "/api/homebox/"+url.PathEscape(homeboxID), nil, &out)
+}
+
+// LinkedThing returns the thing linked to a warranty, by its ID.
+func (c *Client) LinkedThing(ctx context.Context, warrantyID int64) (*Thing, error) {
+	var out Thing
+	return &out, c.do(ctx, http.MethodGet, fmt.Sprintf("/api/apps/%s/%d", Source, warrantyID), nil, &out)
 }
 
 // SetHook asks Wherehouse to ping url when something changes, and returns

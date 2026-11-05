@@ -15,8 +15,9 @@ func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *Where
 		thing, label, path = link.Thing, link.Label, link.Path
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE warranties AS w SET wherehouse_thing = ?, wherehouse_label = ?, wherehouse_path = ?, updated_at = ?
-		WHERE `+visibleTo+` AND w.id = ?`, thing, label, path, now(), userID, id)
+		`UPDATE warranties AS w SET wherehouse_thing = ?, wherehouse_label = ?, wherehouse_path = ?,
+			wherehouse_unlinked = wherehouse_unlinked AND ? IS NULL, updated_at = ?
+		WHERE `+visibleTo+` AND w.id = ?`, thing, label, path, thing, now(), userID, id)
 	if err != nil {
 		return err
 	}
@@ -158,6 +159,42 @@ func (s *Store) WherehouseHooks(ctx context.Context) ([]WherehouseHook, error) {
 			return nil, err
 		}
 		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// SetWherehouseUnlinked marks a warranty someone unlinked from Wherehouse, so
+// it isn't linked again by itself.
+func (s *Store) SetWherehouseUnlinked(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE warranties SET wherehouse_unlinked = 1 WHERE id = ?`, id)
+	return err
+}
+
+// WherehouseState is how a warranty stands with Wherehouse: the thing it's
+// linked to, or the HomeBox item it's linked to instead.
+type WherehouseState struct {
+	ID        int64
+	Thing     *int64
+	HomeBoxID string
+}
+
+// WherehouseStates lists the confirmed warranties someone can see that are
+// linked to Wherehouse or to HomeBox.
+func (s *Store) WherehouseStates(ctx context.Context, userID int64) ([]WherehouseState, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT w.id, w.wherehouse_thing, w.homebox_id FROM warranties w
+		WHERE `+visibleTo+` AND NOT w.draft
+			AND (w.wherehouse_thing IS NOT NULL OR (w.homebox_id != '' AND NOT w.wherehouse_unlinked)) ORDER BY w.id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WherehouseState
+	for rows.Next() {
+		var st WherehouseState
+		if err := rows.Scan(&st.ID, &st.Thing, &st.HomeBoxID); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
 	}
 	return out, rows.Err()
 }

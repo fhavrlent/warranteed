@@ -120,6 +120,18 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Links from before, and warranties linked to HomeBox, are put in step
+	// with this Wherehouse. That can take a while with many warranties.
+	uid := userID(r)
+	s.background.Add(1)
+	go func() {
+		defer s.background.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		if err := s.adoptWherehouse(ctx, uid, true); err != nil {
+			slog.Warn("wherehouse: put warranties in step", "err", err)
+		}
+	}()
 	done("connected")
 }
 
@@ -312,6 +324,9 @@ func (s *Server) joinWherehouse(ctx context.Context, uid int64, st *store.Settin
 	if err != nil {
 		return err
 	}
+	if err := s.matchClaimEntries(ctx, st, t, ids); err != nil {
+		return err
+	}
 	for _, c := range ids {
 		if err := s.syncWherehouseClaim(ctx, uid, c); err != nil {
 			slog.Warn("claim to wherehouse", "claim", c, "err", err)
@@ -452,6 +467,10 @@ func (s *Server) unlinkWherehouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.SetWherehouse(r.Context(), uid, id, nil); err != nil {
+		fail(w, err)
+		return
+	}
+	if err := s.store.SetWherehouseUnlinked(r.Context(), id); err != nil {
 		fail(w, err)
 		return
 	}
@@ -646,5 +665,110 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 			}
 		}
 	}
-	return s.store.SetWherehouseSince(ctx, uid, ch.Until)
+	if err := s.store.SetWherehouseSince(ctx, uid, ch.Until); err != nil {
+		return err
+	}
+	// Things copied from HomeBox since are picked up.
+	return s.adoptWherehouse(cctx, uid, false)
+}
+
+// ---- moving over ----
+
+// adoptWherehouse brings a person's warranties in step with the Wherehouse
+// they connected to. A link the thing there doesn't have, because that
+// Wherehouse was set up afresh or the link was removed there, is dropped.
+// With all is false, only that is skipped: a warranty linked to a HomeBox
+// item that was copied into Wherehouse is linked to the thing it became.
+func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error {
+	st, err := s.store.Settings(ctx, uid)
+	if err != nil {
+		return err
+	}
+	wh := s.wherehouseFor(st)
+	if wh == nil {
+		return nil
+	}
+	states, err := s.store.WherehouseStates(ctx, uid)
+	if err != nil {
+		return err
+	}
+	for _, ws := range states {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if ws.Thing != nil {
+			if !all {
+				continue
+			}
+			t, err := wh.LinkedThing(ctx, ws.ID)
+			var we *wherehouse.Error
+			switch {
+			case errors.As(err, &we) && we.NotFound(), err == nil && t.ID != *ws.Thing:
+				slog.Info("wherehouse link dropped: the thing there isn't linked to the warranty", "warranty", ws.ID)
+				if err := s.store.SetWherehouse(ctx, uid, ws.ID, nil); err != nil {
+					return err
+				}
+				ws.Thing = nil
+			case err != nil:
+				return err
+			}
+		}
+		if ws.Thing != nil || ws.HomeBoxID == "" {
+			continue
+		}
+		t, err := wh.FromHomeBox(ctx, ws.HomeBoxID)
+		var we *wherehouse.Error
+		if errors.As(err, &we) && we.NotFound() {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.moveFromHomeBox(ctx, uid, st, wh, ws.ID, t); err != nil {
+			slog.Warn("link warranty to wherehouse", "warranty", ws.ID, "err", err)
+			continue
+		}
+		slog.Info("warranty linked to the wherehouse thing its homebox item became", "warranty", ws.ID, "thing", t.ID)
+	}
+	return nil
+}
+
+// moveFromHomeBox links a warranty to the thing its HomeBox item was copied
+// into.
+func (s *Server) moveFromHomeBox(ctx context.Context, uid int64, st *store.Settings, wh *wherehouse.Client,
+	id int64, t *wherehouse.Thing) error {
+	if _, busy := s.homeboxBusy.LoadOrStore(wherehouseKey(id), true); busy {
+		return nil
+	}
+	defer s.homeboxBusy.Delete(wherehouseKey(id))
+	wr, err := s.store.GetWarranty(ctx, uid, id)
+	if err != nil || wr.Wherehouse != nil {
+		return err
+	}
+	return s.joinWherehouse(ctx, uid, st, wh, wr, t.ID)
+}
+
+// matchClaimEntries records the thing's maintenance entries that already
+// are the claims, by title, so they're written over instead of added
+// again: a maintenance log copied from HomeBox has them, as does a thing
+// linked before.
+func (s *Server) matchClaimEntries(ctx context.Context, st *store.Settings, t *wherehouse.Thing, claims []int64) error {
+	taken := map[int64]bool{}
+	for _, cid := range claims {
+		c, _, err := s.store.ClaimSync(ctx, cid)
+		if err != nil {
+			return err
+		}
+		title := s.claimMaintenance(c, st).Title
+		for _, m := range t.Maintenance {
+			if m.Title == title && !taken[m.ID] {
+				taken[m.ID] = true
+				if _, err := s.store.SetClaimWherehouseEntry(ctx, cid, t.ID, m.ID); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+	return nil
 }
