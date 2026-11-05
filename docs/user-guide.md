@@ -1,6 +1,6 @@
 # User guide
 
-How to use Warranteed day to day. Setting up the server and its connections to Paperless-ngx, HomeBox and notification services is covered in the [README](../README.md) and the [integration guide](integrations.md).
+How to use Warranteed day to day. Setting up the server and its connections to Paperless-ngx, Wherehouse, HomeBox and notification services is covered in the [README](../README.md) and the [integration guide](integrations.md).
 
 - [Signing in](#signing-in)
 - [Adding a warranty](#adding-a-warranty)
@@ -9,6 +9,7 @@ How to use Warranteed day to day. Setting up the server and its connections to P
 - [Finding warranties](#finding-warranties)
 - [Sharing with the household](#sharing-with-the-household)
 - [Repairs and claims](#repairs-and-claims)
+- [Wherehouse](#wherehouse)
 - [HomeBox](#homebox)
 - [Reminders](#reminders)
 - [Calendar](#calendar)
@@ -104,6 +105,18 @@ With a single user, none of this appears.
 When something breaks, **Add claim** under **Claims** on the warranty records what went wrong and when you reported it. Keep it up to date as it goes: the status (open, repaired, replaced, refunded or rejected), when it was resolved, the shop's case or RMA number, anything you paid, and notes. A warranty with an open claim is marked in the list.
 
 A claim's menu adds documents to it, such as the shop's letter, photos of the defect or the repair report. They're stored like other documents, in Paperless if that's your default, and also appear among the warranty's documents. Deleting a claim keeps its documents on the warranty.
+
+## Wherehouse
+
+With Wherehouse connected (**Settings → Wherehouse**), a warranty can be part of your Wherehouse inventory. **Add to Wherehouse** makes a thing for it, in a place you pick or nowhere yet; **Link existing thing** finds one already there.
+
+- **Details**: the name, brand, model, serial numbers, quantity and notes are the same on both. Change them on either side and the other follows within seconds. Wherehouse's custom fields aren't shared. The purchase and warranty details are kept here; Wherehouse shows them read-only.
+- **Documents** in Paperless, claims' documents included, are on both. Adding, deleting, renaming or changing the type of one on either side does the same on the other. Documents stored in Warranteed itself aren't sent to Wherehouse; store them in Paperless to have them on the thing.
+- **Photos** are copied to the thing, including ones you add later. Copies are separate: deleting one leaves the other. With **Keep product photos only in Wherehouse** on, the photos are the thing's photos instead, and adding or deleting one on either side does the same on the other.
+- **Claims** are entries in the thing's maintenance log. Editing an entry in Wherehouse changes the claim, and deleting it deletes the claim. Other maintenance entries stay in Wherehouse.
+- The warranty shows where the thing is and its label code. Selling or archiving the thing in Wherehouse archives the warranty.
+
+See the [integration guide](integrations.md#wherehouse) for setting it up and the details.
 
 ## HomeBox
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 // SetWherehouse links a warranty to a Wherehouse thing; nil removes the
@@ -333,9 +334,80 @@ func (s *Store) ForgetWherehousePhotos(ctx context.Context, warrantyID, thing in
 
 // OnWherehouseThing records that a document is on a Wherehouse thing too,
 // as attachment there.
-func (s *Store) OnWherehouseThing(ctx context.Context, id, thing, attachment int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_thing = ?, wherehouse_attachment = ? WHERE id = ?`,
-		thing, attachment, id)
+// seen is its type and name there.
+func (s *Store) OnWherehouseThing(ctx context.Context, id, thing, attachment int64, seen string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_thing = ?, wherehouse_attachment = ?, wherehouse_seen = ?
+		WHERE id = ?`, thing, attachment, seen, id)
+	return err
+}
+
+// SeenOnWherehouse records a document's type and name on its thing.
+func (s *Store) SeenOnWherehouse(ctx context.Context, id int64, seen string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_seen = ? WHERE id = ?`, seen, id)
+	return err
+}
+
+// WherehouseFields is what a linked warranty and its thing last agreed on
+// (JSON), or "" before that.
+func (s *Store) WherehouseFields(ctx context.Context, id int64) (string, error) {
+	var v string
+	err := s.db.QueryRowContext(ctx, `SELECT wherehouse_fields FROM warranties WHERE id = ?`, id).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return v, err
+}
+
+func (s *Store) SetWherehouseFields(ctx context.Context, id int64, v string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE warranties SET wherehouse_fields = ? WHERE id = ?`, v, id)
+	return err
+}
+
+// ThingDetails are a warranty's details its Wherehouse thing has too.
+type ThingDetails struct {
+	ProductName, Brand, Model, Notes string
+	SerialNumbers                    []string
+	Quantity                         int
+}
+
+// SetThingDetails changes a warranty's details as they were changed on its
+// thing.
+func (s *Store) SetThingDetails(ctx context.Context, id int64, d ThingDetails) error {
+	d.ProductName = strings.TrimSpace(d.ProductName)
+	if d.ProductName == "" || d.Quantity < 1 || d.Quantity > MaxQuantity {
+		return invalid("productName", nil)
+	}
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE warranties SET product_name = ?, brand = ?, model = ?, notes = ?, quantity = ?,
+			updated_at = ? WHERE id = ?`, d.ProductName, strings.TrimSpace(d.Brand), strings.TrimSpace(d.Model),
+			strings.TrimRight(d.Notes, " \n\t"), d.Quantity, now(), id); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM serial_numbers WHERE warranty_id = ?`, id); err != nil {
+			return err
+		}
+		for i, sn := range d.SerialNumbers {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO serial_numbers (warranty_id, position, value) VALUES (?, ?, ?)`, id, i, sn); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// ClaimWherehouseSeen is a claim's maintenance entry as last seen (JSON).
+func (s *Store) ClaimWherehouseSeen(ctx context.Context, claimID int64) (string, error) {
+	var v string
+	err := s.db.QueryRowContext(ctx, `SELECT wherehouse_seen FROM claims WHERE id = ?`, claimID).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return v, err
+}
+
+func (s *Store) SetClaimWherehouseSeen(ctx context.Context, claimID int64, v string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE claims SET wherehouse_seen = ? WHERE id = ?`, v, claimID)
 	return err
 }
 

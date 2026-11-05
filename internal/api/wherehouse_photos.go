@@ -303,7 +303,7 @@ func (s *Server) documentBack(ctx context.Context, readers []*wherehouse.Client,
 		return err
 	}
 	if from == thing {
-		return s.store.OnWherehouseThing(ctx, a.ID, thing, att)
+		return s.store.OnWherehouseThing(ctx, a.ID, thing, att, a.WherehouseSeen)
 	}
 	return nil
 }

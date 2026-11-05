@@ -33,6 +33,9 @@ type Attachment struct {
 	// WherehouseAttachment is the same document on WherehouseThing, or the
 	// file there when it is stored in Wherehouse.
 	WherehouseAttachment *int64 `json:"-"`
+	// WherehouseSeen is the type and name its counterpart there had when last
+	// seen, to tell a change there from one here.
+	WherehouseSeen string `json:"-"`
 	// OnWherehouse is set for a document that is on the warranty's thing in
 	// Wherehouse too, so deleting it here deletes it there.
 	OnWherehouse bool `json:"onWherehouse"`
@@ -62,13 +65,13 @@ func ValidKind(kind string) bool { return slices.Contains(AttachmentKinds, kind)
 
 const attachmentCols = `a.id, a.warranty_id, a.kind, a.storage, a.filename, a.mime_type, a.size, a.local_path,
 	a.paperless_doc_id, a.paperless_task_id, a.status, a.error, a.created_at, a.added_by, a.homebox_item, a.homebox_attachment, a.claim_id,
-	a.wherehouse_thing, a.wherehouse_photo, a.wherehouse_attachment`
+	a.wherehouse_thing, a.wherehouse_photo, a.wherehouse_attachment, a.wherehouse_seen`
 
 func scanAttachment(row interface{ Scan(...any) error }) (*Attachment, error) {
 	var a Attachment
 	err := row.Scan(&a.ID, &a.WarrantyID, &a.Kind, &a.Storage, &a.Filename, &a.MimeType, &a.Size, &a.LocalPath,
 		&a.PaperlessDocID, &a.PaperlessTaskID, &a.Status, &a.Error, &a.CreatedAt, &a.AddedBy, &a.HomeBoxItem, &a.HomeBoxAttachment, &a.ClaimID,
-		&a.WherehouseThing, &a.WherehousePhoto, &a.WherehouseAttachment)
+		&a.WherehouseThing, &a.WherehousePhoto, &a.WherehouseAttachment, &a.WherehouseSeen)
 	a.OnWherehouse = a.WherehouseAttachment != nil || (a.Storage == StorageWherehouse && a.WherehousePhoto != nil)
 	return &a, err
 }
@@ -77,11 +80,11 @@ func (s *Store) CreateAttachment(ctx context.Context, a *Attachment) error {
 	return s.db.QueryRowContext(ctx, `
 		INSERT INTO attachments (warranty_id, kind, storage, filename, mime_type, size, local_path,
 			paperless_doc_id, paperless_task_id, status, error, added_by, homebox_item, homebox_attachment, claim_id,
-			wherehouse_thing, wherehouse_photo, wherehouse_attachment)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
+			wherehouse_thing, wherehouse_photo, wherehouse_attachment, wherehouse_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`,
 		a.WarrantyID, a.Kind, a.Storage, a.Filename, a.MimeType, a.Size, a.LocalPath,
 		a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy, a.HomeBoxItem, a.HomeBoxAttachment, a.ClaimID,
-		a.WherehouseThing, a.WherehousePhoto, a.WherehouseAttachment,
+		a.WherehouseThing, a.WherehousePhoto, a.WherehouseAttachment, a.WherehouseSeen,
 	).Scan(&a.ID, &a.CreatedAt)
 }
 

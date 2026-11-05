@@ -425,13 +425,15 @@ const AttachmentCard = ({
   );
 };
 
-/** Renames the file as shown here; the extension is kept and Paperless and HomeBox are untouched. */
+/** Renames the file as shown here and on the Wherehouse thing; the extension is kept and Paperless and HomeBox are untouched. */
 const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () => void; onRenamed: () => void }) => {
   const { t } = useTranslation();
   const dot = a.filename.lastIndexOf(".");
   const ext = dot > 0 ? a.filename.slice(dot) : "";
   const [name, setName] = useState(ext ? a.filename.slice(0, dot) : a.filename);
   const [saving, setSaving] = useState(false);
+  // Photos keep their own names in Wherehouse.
+  const onWherehouse = a.onWherehouse && a.kind !== "photo";
 
   const save = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -455,11 +457,11 @@ const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () =>
       title={t("attachments.renameTitle")}
       description={
         a.storage === "paperless"
-          ? t("attachments.renamePaperless")
-          : a.storage === "homebox"
-            ? t("attachments.renameHomebox")
-            : a.storage === "wherehouse"
-              ? t("attachments.renameWherehouse")
+          ? t(onWherehouse ? "attachments.renamePaperlessWherehouse" : "attachments.renamePaperless")
+          : onWherehouse
+            ? t("attachments.renameWherehouse")
+            : a.storage === "homebox"
+              ? t("attachments.renameHomebox")
               : undefined
       }
       footer={

@@ -498,9 +498,22 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 		}
 		filename = cleanFilename(name)
 	}
+	// Changed on the thing it's on too, first.
+	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	seen, err := s.updateOnThing(r.Context(), userID(r), a, kind, filename)
+	if err != nil {
+		wherehouseFail(w, err)
+		return
+	}
 	if err := s.store.UpdateAttachment(r.Context(), id, kind, filename); err != nil {
 		fail(w, err)
 		return
+	}
+	if seen != "" {
+		if err := s.store.SeenOnWherehouse(r.Context(), id, seen); err != nil {
+			fail(w, err)
+			return
+		}
 	}
 	a.Kind, a.Filename = kind, filename
 	writeJSON(w, http.StatusOK, a)

@@ -143,17 +143,18 @@ func copyAttachments(ctx context.Context, tx *sql.Tx, from, to int64, localCopie
 		// A photo kept in Wherehouse is still on the original's thing, until
 		// the copy is settled; a copy here was sent nowhere yet.
 		var whThing, whAttachment *int64
+		whSeen := ""
 		if a.Storage == StorageWherehouse {
-			whThing, whAttachment = a.WherehouseThing, a.WherehouseAttachment
+			whThing, whAttachment, whSeen = a.WherehouseThing, a.WherehouseAttachment, a.WherehouseSeen
 		}
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO attachments (warranty_id, kind, storage, filename, mime_type, size, local_path,
 				paperless_doc_id, paperless_task_id, status, error, added_by, homebox_item, homebox_attachment, created_at,
-				wherehouse_thing, wherehouse_photo, wherehouse_attachment)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				wherehouse_thing, wherehouse_photo, wherehouse_attachment, wherehouse_seen)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			to, a.Kind, a.Storage, a.Filename, a.MimeType, a.Size, a.LocalPath,
 			a.PaperlessDocID, a.PaperlessTaskID, a.Status, a.Error, a.AddedBy, a.HomeBoxItem, a.HomeBoxAttachment, a.CreatedAt,
-			whThing, a.WherehousePhoto, whAttachment)
+			whThing, a.WherehousePhoto, whAttachment, whSeen)
 		if err != nil {
 			return err
 		}

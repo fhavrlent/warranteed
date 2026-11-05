@@ -145,7 +145,12 @@ type Thing struct {
 	SoldDate   *string `json:"soldDate"`
 	Contains   int     `json:"contains"`
 	Quantity   int     `json:"quantity"`
-	Kind       struct {
+	// Details a warranty has too.
+	Manufacturer string `json:"manufacturer"`
+	Model        string `json:"model"`
+	Serial       string `json:"serial"`
+	Notes        string `json:"notes"`
+	Kind         struct {
 		IsPlace bool `json:"isPlace"`
 	} `json:"kind"`
 	Photos []struct {
@@ -285,6 +290,12 @@ func (c *Client) AddLink(ctx context.Context, thing int64, url, title string) er
 // SetQuantity changes how many of a thing there are, keeping everything
 // else as it is.
 func (c *Client) SetQuantity(ctx context.Context, id int64, quantity int) error {
+	return c.SetDetails(ctx, id, map[string]any{"quantity": quantity})
+}
+
+// SetDetails changes some of a thing's details (by their JSON names, e.g.
+// "name" or "serial"), keeping everything else as it is.
+func (c *Client) SetDetails(ctx context.Context, id int64, details map[string]any) error {
 	var t map[string]any
 	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/things/%d", id), nil, &t); err != nil {
 		return err
@@ -296,8 +307,16 @@ func (c *Client) SetQuantity(ctx context.Context, id int64, quantity int) error 
 	if k, ok := t["kind"].(map[string]any); ok {
 		t["kindId"] = k["id"]
 	}
-	t["quantity"] = quantity
+	for k, v := range details {
+		t[k] = v
+	}
 	return c.do(ctx, http.MethodPut, fmt.Sprintf("/api/things/%d", id), t, nil)
+}
+
+// UpdateAttachment changes a document's kind and name.
+func (c *Client) UpdateAttachment(ctx context.Context, id int64, kind, filename string) error {
+	return c.do(ctx, http.MethodPatch, fmt.Sprintf("/api/attachments/%d", id),
+		map[string]string{"kind": kind, "filename": filename}, nil)
 }
 
 // Delete deletes a thing and everything about it.

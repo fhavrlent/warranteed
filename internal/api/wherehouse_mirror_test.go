@@ -322,3 +322,223 @@ func TestWherehouseAllInStepAtStart(t *testing.T) {
 		t.Errorf("thing documents = %+v", th.Attachments)
 	}
 }
+
+// patchHere changes an attachment the way the browser does.
+func (f *wherehouseFixture) patchHere(t *testing.T, id int64, body string) {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(body))
+	r.SetPathValue("id", fmt.Sprint(id))
+	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+	w := httptest.NewRecorder()
+	f.srv.patchAttachment(w, r)
+	if w.Code != 200 {
+		t.Fatalf("patch = %d %s", w.Code, w.Body)
+	}
+	f.srv.background.Wait()
+}
+
+func TestWherehouseMirrorDocumentChanges(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.wh.paperless = "http://paperless:8000/"
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	receipt := f.documents(t)[0]
+	there := func() map[string]any { return f.wh.get(thing).Attachments[0] }
+	// Linked, it's named there as here.
+	if a := there(); a["filename"] != "receipt.pdf" || a["kind"] != "receipt" {
+		t.Fatalf("there = %+v", a)
+	}
+
+	// Changed here, it's changed there.
+	f.patchHere(t, receipt.ID, `{"kind":"terms","filename":"terms"}`)
+	if a := there(); a["filename"] != "terms.pdf" || a["kind"] != "warranty" {
+		t.Errorf("there after a change here = %+v", a)
+	}
+	// Read again, nothing changes back: terms stays terms, not a card.
+	f.changedThere(t, thing)
+	if d := f.documents(t)[0]; d.Kind != "terms" || d.Filename != "terms.pdf" {
+		t.Errorf("here after another sync = %s %s", d.Kind, d.Filename)
+	}
+
+	// Changed there, it's changed here.
+	f.wh.mu.Lock()
+	f.wh.things[thing].Attachments[0]["kind"] = "manual"
+	f.wh.things[thing].Attachments[0]["filename"] = "manual.pdf"
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	if d := f.documents(t)[0]; d.Kind != "manual" || d.Filename != "manual.pdf" {
+		t.Errorf("here after a change there = %s %s", d.Kind, d.Filename)
+	}
+}
+
+// A claim's documents go to the thing too.
+func TestWherehouseClaimDocuments(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.wh.paperless = "http://paperless:8000/"
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ctx := context.Background()
+	c, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Broken lid", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := int64(21)
+	if err := f.srv.store.CreateAttachment(ctx, &store.Attachment{WarrantyID: f.warrantyID, Kind: "claim",
+		Storage: store.StoragePaperless, Filename: "rma.pdf", MimeType: "application/pdf", PaperlessDocID: &doc,
+		Status: store.StatusReady, AddedBy: &f.alice.ID, ClaimID: &c.ID}); err != nil {
+		t.Fatal(err)
+	}
+	f.changedThere(t, thing)
+	th := f.wh.get(thing)
+	if len(th.Attachments) != 2 || th.Attachments[1]["paperlessDocId"] != doc || th.Attachments[1]["kind"] != "other" {
+		t.Errorf("thing documents = %+v", th.Attachments)
+	}
+	if docs := f.documents(t); len(docs) != 2 || docs[1].ClaimID == nil {
+		t.Errorf("documents = %+v", docs)
+	}
+}
+
+func TestWherehouseMirrorDetails(t *testing.T) {
+	f := newWherehouseFixture(t)
+	ctx := context.Background()
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.changedThere(t, thing)
+
+	// Changed there, they're changed here.
+	f.wh.mu.Lock()
+	th := f.wh.things[thing]
+	th.Name, th.Manufacturer, th.Serial, th.Notes, th.Quantity = "Desk lamp", "Lumo", "A1, B2", "On the desk", 3
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	wr := f.warranty(t, f.warrantyID)
+	if wr.ProductName != "Desk lamp" || wr.Brand != "Lumo" || strings.Join(wr.SerialNumbers, "|") != "A1|B2" ||
+		wr.Notes != "On the desk" || wr.Quantity != 3 || wr.PurchaseDate != "2025-03-01" {
+		t.Errorf("warranty after changes there = %+v", wr)
+	}
+	// Nothing goes back, and the thing's name isn't changed to "Lumo Desk lamp".
+	if th := f.wh.get(thing); th.Name != "Desk lamp" || th.Serial != "A1, B2" {
+		t.Errorf("thing after changes there = %+v", th)
+	}
+
+	// Changed here, they're changed there.
+	months := 24
+	in := &store.WarrantyInput{ProductName: "Desk lamp", Brand: "Lumo", Model: "L-2", PurchaseDate: "2025-03-01",
+		WarrantyMonths: &months, Quantity: 3, Notes: "On the desk", SerialNumbers: []string{"A1", "B2", "C3"}}
+	if err := f.srv.store.UpdateWarranty(ctx, f.alice.ID, f.warrantyID, in); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.pushWherehouseLater(f.alice.ID, f.warrantyID)
+	f.srv.background.Wait()
+	if th := f.wh.get(thing); th.Model != "L-2" || th.Serial != "A1, B2, C3" || th.Name != "Desk lamp" {
+		t.Errorf("thing after changes here = %+v", th)
+	}
+}
+
+// A thing linked with other details than the warranty's keeps them, and so
+// does the warranty, until one of them changes.
+func TestWherehouseDetailsThatDifferStay(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.wh.mu.Lock()
+	th := f.wh.add("Lamp in the hall", nil)
+	th.Serial = "OLD"
+	f.wh.mu.Unlock()
+	if w := f.call(t, f.srv.linkWherehouseThing, http.MethodPut, fmt.Sprintf(`{"thingId":%d}`, th.ID)); w.Code != 200 {
+		t.Fatalf("link = %d %s", w.Code, w.Body)
+	}
+	f.changedThere(t, th.ID)
+	f.changedThere(t, th.ID)
+	if wr := f.warranty(t, f.warrantyID); wr.ProductName != "Lamp" || len(wr.SerialNumbers) != 0 {
+		t.Errorf("warranty = %+v", wr)
+	}
+	if got := f.wh.get(th.ID); got.Name != "Lamp in the hall" || got.Serial != "OLD" {
+		t.Errorf("thing = %+v", got)
+	}
+}
+
+func TestWherehouseClaimEntryChangedThere(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ctx := context.Background()
+	c, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Broken lid", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, c.ID)
+	f.srv.background.Wait()
+	f.changedThere(t, thing)
+	entries := f.wh.get(thing).Maintenance
+	if len(entries) != 1 || entries[0].Title != "Warranty claim: Broken lid" {
+		t.Fatalf("entries = %+v", entries)
+	}
+
+	// Edited there, the claim follows.
+	f.wh.mu.Lock()
+	m := &f.wh.things[thing].Maintenance[0]
+	done, cost := "2026-03-04", 12.5
+	m.Title, m.DoneOn, m.Cost = "Warranty claim: Broken lid hinge", &done, &cost
+	m.Notes = fmt.Sprintf("Repaired\nCase number: R-7\n\nNew hinge\n\nhttps://warranty.example.test/w/%d", f.warrantyID)
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	got, err := f.srv.store.GetClaim(ctx, f.alice.ID, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "Broken lid hinge" || got.Status != "repaired" || got.CaseNumber != "R-7" || got.Notes != "New hinge" ||
+		got.Cost == nil || *got.Cost != 12.5 || got.ReportedOn != "2026-03-04" {
+		t.Errorf("claim after an edit there = %+v", got)
+	}
+	// Read again, it stays.
+	f.changedThere(t, thing)
+	if again, _ := f.srv.store.GetClaim(ctx, f.alice.ID, c.ID); again.Title != got.Title || again.Notes != got.Notes {
+		t.Errorf("claim after another sync = %+v", again)
+	}
+
+	// Deleted there, the claim goes.
+	f.wh.mu.Lock()
+	f.wh.things[thing].Maintenance = nil
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	if _, err := f.srv.store.GetClaim(ctx, f.alice.ID, c.ID); err == nil {
+		t.Error("the claim is still here")
+	}
+}
+
+// An entry that went missing before it was ever seen there is added again,
+// and its claim stays.
+func TestWherehouseClaimEntryNeverSeen(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ctx := context.Background()
+	c, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Broken lid", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, c.ID)
+	f.srv.background.Wait()
+	if err := f.srv.store.SetClaimWherehouseSeen(ctx, c.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	f.wh.mu.Lock()
+	f.wh.things[thing].Maintenance = nil
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	if _, err := f.srv.store.GetClaim(ctx, f.alice.ID, c.ID); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if entries := f.wh.get(thing).Maintenance; len(entries) != 1 {
+		t.Errorf("entries = %+v", entries)
+	}
+}

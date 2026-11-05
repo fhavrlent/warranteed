@@ -536,6 +536,8 @@ func wherehousePushKey(id int64) string { return "wh-push:" + strconv.FormatInt(
 // Pushes take turns and each reads the warranty once it's its turn, so an
 // older one can't land after a newer one.
 func (s *Server) pushWherehouseLater(uid, warrantyID int64) {
+	// Its name and the other details the thing has too.
+	s.sendToWherehouseLater(uid, warrantyID)
 	s.inBackground("update wherehouse", func(ctx context.Context) error {
 		defer s.lockPhotos(wherehousePushKey(warrantyID))()
 		wr, err := s.store.GetWarranty(ctx, uid, warrantyID)
@@ -634,7 +636,7 @@ func (s *Server) syncWherehouseClaim(ctx context.Context, uid, claimID int64) er
 	for _, wh := range clients {
 		if entry != nil {
 			if err = wh.UpdateMaintenance(ctx, *entry, m); err == nil {
-				return nil
+				return s.store.SetClaimWherehouseSeen(ctx, claimID, entrySeen(m))
 			}
 			var we *wherehouse.Error
 			if !errors.As(err, &we) || !we.NotFound() {
@@ -646,6 +648,9 @@ func (s *Server) syncWherehouseClaim(ctx context.Context, uid, claimID int64) er
 			continue
 		}
 		saved, err := s.store.SetClaimWherehouseEntry(ctx, claimID, *thing, id)
+		if err == nil && saved {
+			err = s.store.SetClaimWherehouseSeen(ctx, claimID, entrySeen(m))
+		}
 		if err != nil || saved {
 			return err
 		}
@@ -1117,6 +1122,12 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 	}
 	t, err := wh.Get(ctx, thing)
 	if err != nil {
+		return err
+	}
+	if err := s.mirrorDetails(ctx, wh, wr, t); err != nil {
+		return err
+	}
+	if err := s.mirrorClaims(ctx, uid, st, wr, t); err != nil {
 		return err
 	}
 	if st.WherehousePhotosOnly {

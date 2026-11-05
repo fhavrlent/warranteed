@@ -318,6 +318,7 @@
     "type": "Typ",
     "renameTitle": "Přejmenovat soubor",
     "renamePaperless": "Změní název zobrazený tady; dokument v Paperless si ponechá svůj.",
+    "renamePaperlessWherehouse": "Změní název tady i ve Wherehouse; dokument v Paperless si ponechá svůj.",
     "fileName": "Název souboru",
     "openInTab": "Otevřít v nové kartě",
     "inHomebox": "Uloženo u položky v HomeBoxu",
@@ -327,7 +328,7 @@
     "removeText": "Ze záruky zmizí, ale u položky v HomeBoxu zůstane.",
     "removeTextWherehouse": "Smaže se tady i u věci ve Wherehouse.",
     "renameHomebox": "Změní název zobrazený tady; fotka v HomeBoxu si ponechá svůj.",
-    "renameWherehouse": "Změní název zobrazený tady; souboru ve Wherehouse se to netýká."
+    "renameWherehouse": "Změní název tady i ve Wherehouse."
   },
   "picker": {
     "title": "Připojit dokumenty z Paperless",

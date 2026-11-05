@@ -294,6 +294,7 @@
     "type": "Type",
     "renameTitle": "Rename file",
     "renamePaperless": "Changes the name shown here; the document in Paperless keeps its title.",
+    "renamePaperlessWherehouse": "Changes the name here and in Wherehouse; the document in Paperless keeps its title.",
     "fileName": "File name",
     "openInTab": "Open in new tab",
     "inHomebox": "Stored on the HomeBox item",
@@ -303,7 +304,7 @@
     "removeText": "It will be removed from this warranty but stays on the item in HomeBox.",
     "removeTextWherehouse": "It will be deleted here and on the thing in Wherehouse.",
     "renameHomebox": "Changes the name shown here; the photo in HomeBox keeps its name.",
-    "renameWherehouse": "Changes the name shown here; the file in Wherehouse is untouched."
+    "renameWherehouse": "Changes the name here and in Wherehouse."
   },
   "picker": {
     "title": "Link documents from Paperless",

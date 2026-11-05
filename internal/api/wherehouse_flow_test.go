@@ -25,16 +25,20 @@ import (
 )
 
 type fakeThing struct {
-	ID          int64                    `json:"id"`
-	ParentID    *int64                   `json:"parentId"`
-	Name        string                   `json:"name"`
-	Quantity    int                      `json:"quantity"`
-	SoldDate    *string                  `json:"soldDate"`
-	Photos      []map[string]int64       `json:"photos"`
-	Maintenance []wherehouse.Maintenance `json:"maintenance"`
-	Attachments []map[string]any         `json:"attachments"`
-	Links       []map[string]string      `json:"links"`
-	Kind        map[string]any           `json:"kind"`
+	ID           int64                    `json:"id"`
+	ParentID     *int64                   `json:"parentId"`
+	Name         string                   `json:"name"`
+	Quantity     int                      `json:"quantity"`
+	Manufacturer string                   `json:"manufacturer"`
+	Model        string                   `json:"model"`
+	Serial       string                   `json:"serial"`
+	Notes        string                   `json:"notes"`
+	SoldDate     *string                  `json:"soldDate"`
+	Photos       []map[string]int64       `json:"photos"`
+	Maintenance  []wherehouse.Maintenance `json:"maintenance"`
+	Attachments  []map[string]any         `json:"attachments"`
+	Links        []map[string]string      `json:"links"`
+	Kind         map[string]any           `json:"kind"`
 	// app is the warranty it's linked to, or "".
 	app string
 }
@@ -88,13 +92,15 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/things":
 		var in struct {
-			Name     string `json:"name"`
-			ParentID *int64 `json:"parentId"`
-			Quantity int    `json:"quantity"`
+			Name                               string `json:"name"`
+			ParentID                           *int64 `json:"parentId"`
+			Quantity                           int    `json:"quantity"`
+			Manufacturer, Model, Serial, Notes string
 		}
 		json.NewDecoder(r.Body).Decode(&in)
 		t := f.add(in.Name, in.ParentID)
 		t.Quantity = in.Quantity
+		t.Manufacturer, t.Model, t.Serial, t.Notes = in.Manufacturer, in.Model, in.Serial, in.Notes
 		send(t)
 	case len(parts) == 2 && parts[0] == "things":
 		t := f.things[id]
@@ -113,6 +119,11 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			t.Quantity = int(in["quantity"].(float64))
+			t.Name, _ = in["name"].(string)
+			t.Manufacturer, _ = in["manufacturer"].(string)
+			t.Model, _ = in["model"].(string)
+			t.Serial, _ = in["serial"].(string)
+			t.Notes, _ = in["notes"].(string)
 			send(t)
 		case http.MethodDelete:
 			delete(f.things, id)
@@ -252,6 +263,13 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodDelete {
 					t.Attachments = append(t.Attachments[:i:i], t.Attachments[i+1:]...)
 					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				if r.Method == http.MethodPatch {
+					var in map[string]string
+					json.NewDecoder(r.Body).Decode(&in)
+					a["kind"], a["filename"] = in["kind"], in["filename"]
+					send(a)
 					return
 				}
 				w.Header().Set("Content-Type", "application/pdf")
