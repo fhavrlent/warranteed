@@ -1,5 +1,5 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type Settings, type Warranty } from "./api";
 import { formatDate } from "./dates";
 import { formatMoney } from "./utils";
@@ -102,4 +102,29 @@ export const useSaveSettings = () => {
     mutationFn: api.saveSettings,
     onSuccess: (s) => qc.setQueryData(keys.settings, s),
   });
+};
+
+const LAST_HOUSEHOLD = "wherehouse-connection";
+
+/** The connected Wherehouse households and the one to add things to: the last one picked, or the first. */
+export const useHouseholdPick = () => {
+  const { settings } = usePrefs();
+  const households = settings?.wherehouseHouseholds ?? [];
+  const [picked, setPicked] = useState(() => {
+    try {
+      return Number(localStorage.getItem(LAST_HOUSEHOLD)) || 0;
+    } catch {
+      return 0;
+    }
+  });
+  const connection = (households.find((h) => h.id === picked) ?? households[0])?.id;
+  const pick = (id: number) => {
+    setPicked(id);
+    try {
+      localStorage.setItem(LAST_HOUSEHOLD, String(id));
+    } catch {
+      /* ignore */
+    }
+  };
+  return { households, connection, pick };
 };

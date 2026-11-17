@@ -574,14 +574,16 @@
     },
     "wherehouse": {
       "description": "Mějte výrobky se zárukou i v inventáři Wherehouse: kde jsou a s jakou zárukou. Prodej nebo archivace věci tam archivuje její záruku tady.",
-      "connected": "Připojeno k domácnosti „{{household}}“",
       "connect": "Připojit Wherehouse",
+      "connectOne": "Připojit",
+      "chooseHouseholds": "Vybrat domácnosti",
+      "notConnectedHint": "K těmto domácnostem Warranteed zatím připojený není. Připojte je, ať máte záruky jejich věcí i tady.",
       "connectedToast": "Wherehouse připojen",
       "failed": "Wherehouse se nepodařilo připojit. Zkuste to znovu.",
-      "disconnectTitle": "Odpojit Wherehouse?",
+      "disconnectTitle": "Odpojit „{{household}}“?",
       "revokeManually": "Odpojeno, ale Wherehouse nebyl dostupný, takže přístup Warranteed se v něm nezrušil. Smažte token ve Wherehouse v Nastavení → API tokeny.",
-      "disconnectText": "Warranteed přestane posílat změny do Wherehouse a číst je z něj. Bez volby níže zůstanou záruky propojené a po novém připojení se naváže tam, kde to skončilo. Fotky a dokumenty uložené jen ve Wherehouse se vrátí sem.",
-      "unlinkAll": "Zrušit i propojení všech záruk",
+      "disconnectText": "Warranteed přestane posílat změny do této domácnosti a číst je z ní. Bez volby níže zůstanou její záruky propojené a po novém připojení se naváže tam, kde to skončilo. Fotky a dokumenty uložené jen tam se vrátí sem.",
+      "unlinkAll": "Zrušit i propojení jejích záruk",
       "unlinkAllHint": "Věci ve Wherehouse si údaje o nákupu nechají jako vlastní. Záruka, kterou někdo jiný používá přes své vlastní připojení, zůstane propojená.",
       "photosOnly": "Ukládat fotky produktu jen do Wherehouse",
       "photosOnlyHint": "U záruk propojených s věcí: fotky záruky jsou fotky věci, uložené u ní a ne ještě tady, takže existují jen jednou. Fotky přidané nebo smazané na jedné straně se projeví na obou. Když záruku odpojíte, odpojíte Wherehouse nebo tohle vypnete, fotky se vrátí sem."
@@ -847,6 +849,8 @@
     "linkButton": "Propojit",
     "search": "Hledat ve Wherehouse",
     "noResults": "Nic se nenašlo",
-    "addOnConfirm": "Přidat do Wherehouse"
+    "addOnConfirm": "Přidat do Wherehouse",
+    "household": "Domácnost",
+    "householdUnnamed": "Domácnost bez názvu"
   }
 }

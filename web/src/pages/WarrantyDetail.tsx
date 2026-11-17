@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { AttachmentsPanel } from "@/components/Attachments";
 import { ClaimsPanel } from "@/components/Claims";
 import { HomeBoxCard } from "@/components/HomeBox";
-import { WherehouseCard } from "@/components/Wherehouse";
+import { HouseholdSelect, WherehouseCard } from "@/components/Wherehouse";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
 import { SplitDialog } from "@/components/SplitDialog";
@@ -33,7 +33,7 @@ import { Card, Segmented } from "@/components/ui/misc";
 import { WarrantyForm } from "@/components/WarrantyForm";
 import { api, errorMessage, thumbUrl } from "@/lib/api";
 import { durationLabel } from "@/lib/dates";
-import { useInvalidate, useMe, usePrefs, useSharing, useWarranty } from "@/lib/queries";
+import { useHouseholdPick, useInvalidate, useMe, usePrefs, useSharing, useWarranty } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { displayName, photoOf, statusOf, expiryText, toInput } from "@/lib/warranty";
 
@@ -45,6 +45,7 @@ export const WarrantyDetail = () => {
   const [editing, setEditing] = useState(false);
   // Confirming a draft also adds its product to Wherehouse, unless unticked.
   const [toWherehouse, setToWherehouse] = useState(true);
+  const whPick = useHouseholdPick();
   const [deleting, setDeleting] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [splitting, setSplitting] = useState(false);
@@ -73,7 +74,7 @@ export const WarrantyDetail = () => {
   const confirm = async () => {
     try {
       const add = toWherehouse && !!settings?.wherehouseConnected;
-      const confirmed = await api.confirmWarranty(w.id, add);
+      const confirmed = await api.confirmWarranty(w.id, add, add ? whPick.connection : undefined);
       invalidate();
       toast.success(t("detail.confirmed"));
       if (add && confirmed.wherehouse === null) toast.error(t("detail.confirmedNotInWherehouse"));
@@ -170,6 +171,14 @@ export const WarrantyDetail = () => {
                     />
                     {t("wherehouse.addOnConfirm")}
                   </label>
+                )}
+                {settings?.wherehouseConnected && !w.wherehouse && toWherehouse && (
+                  <HouseholdSelect
+                    households={whPick.households}
+                    value={whPick.connection}
+                    onChange={whPick.pick}
+                    className="h-8 w-auto text-[13px]"
+                  />
                 )}
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                   <Pencil /> {t("detail.edit")}

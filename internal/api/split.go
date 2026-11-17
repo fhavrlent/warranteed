@@ -214,12 +214,16 @@ func (s *Server) splitWherehouseThing(reqCtx context.Context, uid int64, orig *s
 	if err != nil {
 		return err
 	}
-	wh := s.wherehouseFor(st)
-	if wh == nil {
-		return errors.New("not connected to Wherehouse")
-	}
 	ctx, cancel := context.WithTimeout(reqCtx, 2*time.Minute)
 	defer cancel()
+	// The pieces go next to the original, in its household.
+	wh, err := s.ownWherehouse(ctx, uid, orig)
+	if err != nil {
+		return err
+	}
+	if wh == nil {
+		return errors.New("not connected to the Wherehouse household the thing is in")
+	}
 	// Nothing of a private warranty goes to a household others share,
 	// asked before a thing is made for the pieces split off.
 	if err := s.checkPrivate(ctx, wh, orig); err != nil {

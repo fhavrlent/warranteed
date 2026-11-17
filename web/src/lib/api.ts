@@ -106,6 +106,8 @@ export interface WherehouseLink {
   label: string;
   /** Where it is, e.g. "House › Garage", as last heard. */
   path: string;
+  /** The Wherehouse household it's in, 0 if not known yet. */
+  household: number;
 }
 
 export interface WherehouseThing {
@@ -219,8 +221,24 @@ export interface Settings {
   /** Where browsers open the server's Wherehouse, "" when there is none. */
   wherehouseServerUrl: string;
   wherehouseConnected: boolean;
-  /** The Wherehouse household the connection works in. */
-  wherehouseHousehold: string;
+  /** The Wherehouse households connected, each with its own connection. */
+  wherehouseHouseholds: WherehouseConnection[];
+}
+
+/** A connection to one Wherehouse household; id is the connection's, which requests name. */
+export interface WherehouseConnection {
+  id: number;
+  /** Wherehouse's ID of the household, 0 until it's known. */
+  householdId: number;
+  name: string;
+}
+
+/** A household the person is in, in Wherehouse, and whether Warranteed is connected to it. */
+export interface WherehouseHouseholdChoice {
+  id: number;
+  name: string;
+  members: number;
+  connected: boolean;
 }
 
 export type SettingsInput = Omit<
@@ -339,6 +357,9 @@ const request = async <T>(method: string, url: string, body?: unknown): Promise<
   return res.json() as Promise<T>;
 };
 
+/** The query part naming a Wherehouse connection, after sep, or "" for the default one. */
+const conn = (connection: number | undefined, sep: "?" | "&") => (connection ? `${sep}connection=${connection}` : "");
+
 export const api = {
   authInfo: () => request<AuthInfo>("GET", "/api/auth/info"),
   me: () => request<User>("GET", "/api/me"),
@@ -366,8 +387,8 @@ export const api = {
   updateWarranty: (id: number, w: WarrantyInput) => request<Warranty>("PUT", `/api/warranties/${id}`, w),
   deleteWarranty: (id: number) => request<undefined>("DELETE", `/api/warranties/${id}`),
   /** Confirms a draft; with wherehouse, also adds its product to Wherehouse. */
-  confirmWarranty: (id: number, wherehouse = false) =>
-    request<Warranty>("POST", `/api/warranties/${id}/confirm`, { wherehouse }),
+  confirmWarranty: (id: number, wherehouse = false, connection?: number) =>
+    request<Warranty>("POST", `/api/warranties/${id}/confirm${conn(connection, "?")}`, { wherehouse }),
   /** Moves pieces to a new warranty; with homebox or wherehouse, a linked item or thing is split too. */
   splitWarranty: (
     id: number,
@@ -421,18 +442,25 @@ export const api = {
     request<Warranty>("PUT", `/api/warranties/${warrantyId}/homebox`, { itemId }),
   unlinkHomebox: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/homebox`),
 
-  /** Where to send the browser to connect Wherehouse. */
-  connectWherehouse: () => request<{ url: string }>("POST", "/api/settings/wherehouse/connect"),
-  /** Disconnects Wherehouse; with unlink, every warranty is unlinked from its thing too. */
-  disconnectWherehouse: (unlink: boolean) =>
-    request<{ revokeManually: boolean }>("DELETE", `/api/settings/wherehouse${unlink ? "?unlink=1" : ""}`),
-  wherehousePlaces: () => request<WherehouseThing[]>("GET", "/api/wherehouse/places"),
-  searchWherehouse: (q: string) =>
-    request<WherehouseThing[]>("GET", `/api/wherehouse/search?q=${encodeURIComponent(q)}`),
-  addToWherehouse: (warrantyId: number, parentId: number | null) =>
-    request<Warranty>("POST", `/api/warranties/${warrantyId}/wherehouse`, { parentId }),
-  linkWherehouse: (warrantyId: number, thingId: number) =>
-    request<Warranty>("PUT", `/api/warranties/${warrantyId}/wherehouse`, { thingId }),
+  /** Where to send the browser to connect Wherehouse households; with household, that one is offered ticked. */
+  connectWherehouse: (household?: number) =>
+    request<{ url: string }>("POST", `/api/settings/wherehouse/connect${household ? `?household=${household}` : ""}`),
+  /** Disconnects one household; with unlink, its warranties are unlinked from their things too. */
+  disconnectWherehouse: (connection: number, unlink: boolean) =>
+    request<{ revokeManually: boolean }>(
+      "DELETE",
+      `/api/settings/wherehouse/${connection}${unlink ? "?unlink=1" : ""}`,
+    ),
+  /** The person's households in Wherehouse, connected or not. */
+  wherehouseHouseholds: () => request<WherehouseHouseholdChoice[]>("GET", "/api/wherehouse/households"),
+  wherehousePlaces: (connection?: number) =>
+    request<WherehouseThing[]>("GET", `/api/wherehouse/places${conn(connection, "?")}`),
+  searchWherehouse: (q: string, connection?: number) =>
+    request<WherehouseThing[]>("GET", `/api/wherehouse/search?q=${encodeURIComponent(q)}${conn(connection, "&")}`),
+  addToWherehouse: (warrantyId: number, parentId: number | null, connection?: number) =>
+    request<Warranty>("POST", `/api/warranties/${warrantyId}/wherehouse${conn(connection, "?")}`, { parentId }),
+  linkWherehouse: (warrantyId: number, thingId: number, connection?: number) =>
+    request<Warranty>("PUT", `/api/warranties/${warrantyId}/wherehouse${conn(connection, "?")}`, { thingId }),
   unlinkWherehouse: (warrantyId: number) => request<Warranty>("DELETE", `/api/warranties/${warrantyId}/wherehouse`),
 
   spaces: () => request<Space[]>("GET", "/api/spaces"),

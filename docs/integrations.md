@@ -141,7 +141,11 @@ What to know:
 [Wherehouse](https://github.com/fhavrlent/wherehouse) is a household inventory made to go with Warranteed.
 
 1. Set `WHEREHOUSE_URL` to where Warranteed reaches Wherehouse, and `WHEREHOUSE_PUBLIC_URL` if browsers use another address. Restart.
-2. Each person opens **Settings → Wherehouse → Connect to Wherehouse**, picks a household there and allows it. Wherehouse sends them back connected. **Disconnect** deletes Warranteed's token in Wherehouse; if Wherehouse can't be reached then, Warranteed disconnects anyway and says so, and the "Warranteed" token is to be deleted in Wherehouse under **Settings → API tokens**.
+2. Each person opens **Settings → Wherehouse → Connect to Wherehouse**, ticks the households to connect there (a cottage as well as home, say) and allows it. Wherehouse sends them back connected. Each household has its own connection and its own token in Wherehouse.
+
+**Choose households** connects more later, and households not connected yet, new ones included, are listed under **Settings → Wherehouse** with a **Connect** button. **Disconnect** next to a household deletes Warranteed's token in it; if Wherehouse can't be reached then, Warranteed disconnects anyway and says so, and the "Warranteed" token is to be deleted in Wherehouse under **Settings → API tokens**. A household deleted in Wherehouse, or one you've left, is disconnected on its own, and its warranties are unlinked unless someone else here is still connected to it.
+
+With several households, **Add to Wherehouse**, **Link existing thing** and confirming a draft ask which household; the last one picked is the default. A linked warranty's changes go to the household its thing is in.
 
 Connecting needs a Wherehouse that takes PKCE and gives connected apps their own limited access; older ones refuse the connection.
 

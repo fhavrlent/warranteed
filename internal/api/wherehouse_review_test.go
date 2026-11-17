@@ -385,7 +385,7 @@ func TestWherehousePrivateDraftMakesNoThing(t *testing.T) {
 	f := newWherehouseFixture(t)
 	f.makePrivate(t)
 	f.members(2)
-	wr, err := f.srv.addDraftToWherehouse(context.Background(), f.alice.ID, f.warrantyID)
+	wr, err := f.srv.addDraftToWherehouse(context.Background(), f.alice.ID, f.warrantyID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestWherehousePushTriesTheOwnersConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.srv.store.SetWherehouseConnection(ctx, bob.ID, "bob-token", "Elsewhere"); err != nil {
+	if err := saveConn(ctx, f.srv.store, bob.ID, 2, "Elsewhere", "bob-token"); err != nil {
 		t.Fatal(err)
 	}
 	f.wh.mu.Lock()

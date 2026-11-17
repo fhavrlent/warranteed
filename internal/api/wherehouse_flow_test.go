@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -42,6 +43,8 @@ type fakeThing struct {
 	// app is the warranty it's linked to, or "", and link what it was told.
 	app  string
 	link wherehouse.Link
+	// household is the household it's in; 0 is household 1.
+	household int64
 }
 
 // fakeWherehouse keeps things in memory, the way Wherehouse's API answers
@@ -88,7 +91,26 @@ type fakeWherehouse struct {
 	created int
 	// entryWrites counts maintenance entries written over.
 	entryWrites int
+	// households gives the household of each token, 1 if not given, and
+	// householdNames their names.
+	households     map[string]int64
+	householdNames map[int64]string
+	// gone are tokens Wherehouse no longer takes, e.g. of a deleted
+	// household.
+	gone map[string]bool
+	// connectTokens is what connecting with multiple=1 hands back.
+	connectTokens []wherehouse.Connected
 }
+
+// householdOf is the household a request's token is to.
+func (f *fakeWherehouse) householdOf(r *http.Request) int64 {
+	if h := f.households[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]; h != 0 {
+		return h
+	}
+	return 1
+}
+
+func (t *fakeThing) in() int64 { return max(t.household, 1) }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
 	f.last++
@@ -111,8 +133,25 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"invalid code"}`, http.StatusBadRequest)
 			return
 		}
+		if f.connectTokens != nil {
+			json.NewEncoder(w).Encode(map[string]any{"tokens": f.connectTokens})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]any{"token": "wh-token-2", "household": map[string]any{"id": 1, "name": "Home"}})
 		return
+	}
+	if f.gone[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")] {
+		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		return
+	}
+	// A thing in another household is not found, as Wherehouse scopes
+	// everything to the token's household.
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/api/things/"); ok {
+		n, _ := strconv.ParseInt(strings.Split(rest, "/")[0], 10, 64)
+		if t := f.things[n]; t != nil && t.in() != f.householdOf(r) {
+			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			return
+		}
 	}
 	if f.strangers[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")] &&
 		(strings.HasPrefix(r.URL.Path, "/api/things/") || strings.HasPrefix(r.URL.Path, "/api/apps/")) {
@@ -137,6 +176,7 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&in)
 		f.created++
 		t := f.add(in.Name, in.ParentID)
+		t.household = f.householdOf(r)
 		t.Quantity = in.Quantity
 		t.Manufacturer, t.Model, t.Serial, t.Notes = in.Manufacturer, in.Model, in.Serial, in.Notes
 		send(t)
@@ -215,7 +255,7 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		send(t)
 	case len(parts) == 3 && parts[0] == "apps":
 		for _, t := range f.things {
-			if t.app == parts[2] {
+			if t.app == parts[2] && t.in() == f.householdOf(r) {
 				send(t)
 				return
 			}
@@ -352,6 +392,10 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			hook()
 			f.mu.Lock()
 		}
+		if r.Method == http.MethodPut {
+			writeJSON(w, 200, map[string]string{"secret": "hook-secret-" + r.Header.Get("Authorization")})
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	case r.URL.Path == "/api/token" && r.Method == http.MethodDelete:
 		f.revoked = true
@@ -362,7 +406,15 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for i := range max(f.members, 1) {
 			members = append(members, map[string]any{"id": i + 1})
 		}
-		send(map[string]any{"id": 1, "name": "Home", "members": members})
+		h := f.householdOf(r)
+		name := f.householdNames[h]
+		if name == "" {
+			name = "Home"
+		}
+		send(map[string]any{"id": h, "name": name, "members": members})
+	case r.URL.Path == "/api/connect/households":
+		send([]map[string]any{{"id": 1, "name": "Home", "members": 1, "connected": true},
+			{"id": 3, "name": "Cottage", "members": 1, "connected": false}})
 	case r.URL.Path == "/api/paperless":
 		if f.paperless == "" {
 			http.NotFound(w, r)
@@ -372,7 +424,7 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/changes":
 		out := wherehouse.Changes{Until: "2026-01-01T00:00:00Z", Things: []wherehouse.Thing{}, Deleted: []int64{}}
 		for _, cid := range f.changes {
-			if t, ok := f.things[cid]; ok {
+			if t, ok := f.things[cid]; ok && t.in() == f.householdOf(r) {
 				out.Things = append(out.Things, wherehouse.Thing{ID: t.ID, Name: t.Name, SoldDate: t.SoldDate})
 			}
 		}
@@ -399,8 +451,27 @@ type wherehouseFixture struct {
 	// whServer serves wh; closing it makes Wherehouse unreachable.
 	whServer *httptest.Server
 	alice    *store.User
+	// conn is Alice's connection, to household 1.
+	conn int64
 	// warrantyID has 2 pieces and a Paperless receipt Alice added.
 	warrantyID int64
+	db         *sql.DB
+}
+
+// saveConn connects someone to a household.
+func saveConn(ctx context.Context, st *store.Store, uid, household int64, name, token string) error {
+	_, err := st.SaveWherehouseConn(ctx, uid, household, name, token)
+	return err
+}
+
+// client is Alice's Wherehouse connection.
+func (f *wherehouseFixture) client(t *testing.T) *wherehouse.Client {
+	t.Helper()
+	wh, err := f.srv.pickWherehouse(context.Background(), f.alice.ID, f.conn)
+	if err != nil || wh == nil {
+		t.Fatalf("alice's connection: %v", err)
+	}
+	return wh
 }
 
 // Alice, connected to Wherehouse, with a warranty for two pieces.
@@ -422,7 +493,8 @@ func newWherehouseFixture(t *testing.T) *wherehouseFixture {
 	if err := st.SaveSettings(ctx, alice.ID, s); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetWherehouseConnection(ctx, alice.ID, "wh-token", "Home"); err != nil {
+	conn, err := st.SaveWherehouseConn(ctx, alice.ID, 1, "Home", "wh-token")
+	if err != nil {
 		t.Fatal(err)
 	}
 	months := 24
@@ -445,7 +517,7 @@ func newWherehouseFixture(t *testing.T) *wherehouseFixture {
 	t.Cleanup(whServer.Close)
 	appURL, _ := url.Parse("https://warranty.example.test")
 	cfg := &config.Config{AppURL: appURL, MaxUploadMB: 10, Wherehouse: config.Wherehouse{URL: whServer.URL, PublicURL: whServer.URL}}
-	return &wherehouseFixture{srv: New(cfg, st, nil, nil, files, nil, "test"), wh: wh, whServer: whServer, alice: alice, warrantyID: wid}
+	return &wherehouseFixture{srv: New(cfg, st, nil, nil, files, nil, "test"), wh: wh, whServer: whServer, alice: alice, conn: conn, warrantyID: wid, db: database}
 }
 
 // call runs a handler as Alice, with the warranty as its {id}.
@@ -554,11 +626,7 @@ func TestWherehouseDropThingOfDeletedWarranty(t *testing.T) {
 	if _, err := f.srv.store.DeleteWarranty(ctx, f.alice.ID, f.warrantyID); err != nil {
 		t.Fatal(err)
 	}
-	st, err := f.srv.store.Settings(ctx, f.alice.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.srv.dropUnlinkedThing(f.alice.ID, f.warrantyID, f.srv.wherehouseFor(st), thing.ID)
+	f.srv.dropUnlinkedThing(f.alice.ID, f.warrantyID, f.client(t), thing.ID)
 	f.srv.background.Wait()
 	if th := f.wh.get(thing.ID); th != nil {
 		t.Errorf("thing left behind: %+v", th)
@@ -684,7 +752,7 @@ func TestWherehouseAdopt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := f.srv.adoptWherehouse(ctx, f.alice.ID, true); err != nil {
+	if err := f.srv.adoptWherehouse(ctx, f.alice.ID, f.client(t), true); err != nil {
 		t.Fatal(err)
 	}
 	f.srv.background.Wait()
@@ -699,7 +767,7 @@ func TestWherehouseAdopt(t *testing.T) {
 	if w := f.call(t, f.srv.unlinkWherehouse, http.MethodDelete, ``); w.Code != 200 {
 		t.Fatalf("unlink = %d %s", w.Code, w.Body)
 	}
-	if err := f.srv.adoptWherehouse(ctx, f.alice.ID, true); err != nil {
+	if err := f.srv.adoptWherehouse(ctx, f.alice.ID, f.client(t), true); err != nil {
 		t.Fatal(err)
 	}
 	if wr := f.warranty(t, f.warrantyID); wr.Wherehouse != nil {
@@ -710,7 +778,7 @@ func TestWherehouseAdopt(t *testing.T) {
 func TestWherehousePing(t *testing.T) {
 	f := newWherehouseFixture(t)
 	ctx := context.Background()
-	if err := f.srv.store.SetWherehouseHookSecret(ctx, f.alice.ID, "secret"); err != nil {
+	if err := f.srv.store.SetWherehouseHookSecret(ctx, f.conn, "secret"); err != nil {
 		t.Fatal(err)
 	}
 	ping := func(sig string) int {
@@ -745,6 +813,7 @@ func TestWherehouseDisconnect(t *testing.T) {
 		r := httptest.NewRequest(http.MethodDelete, target, nil)
 		r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 		w := httptest.NewRecorder()
+		r.SetPathValue("id", fmt.Sprint(f.conn))
 		f.srv.disconnectWherehouse(w, r)
 		if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"revokeManually":false}` {
 			t.Fatalf("disconnect = %d %s", w.Code, w.Body)
@@ -794,6 +863,7 @@ func TestWherehouseDisconnectFromGone(t *testing.T) {
 				r := httptest.NewRequest(http.MethodDelete, target, nil)
 				r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 				w := httptest.NewRecorder()
+				r.SetPathValue("id", fmt.Sprint(f.conn))
 				f.srv.disconnectWherehouse(w, r)
 				// A token refused is gone already; one Wherehouse can't
 				// be told about is to be deleted there by hand.
@@ -801,12 +871,8 @@ func TestWherehouseDisconnectFromGone(t *testing.T) {
 				if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != want {
 					t.Fatalf("disconnect = %d %s, want %s", w.Code, w.Body, want)
 				}
-				st, err := f.srv.store.Settings(context.Background(), f.alice.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if st.WherehouseToken != "" {
-					t.Error("still connected")
+				if conns, err := f.srv.store.WherehouseConns(context.Background(), f.alice.ID); err != nil || len(conns) != 0 {
+					t.Errorf("still connected: %+v, %v", conns, err)
 				}
 				if wr := f.warranty(t, f.warrantyID); (wr.Wherehouse == nil) != unlink {
 					t.Errorf("linked = %v, unlink = %v", wr.Wherehouse != nil, unlink)
@@ -868,11 +934,12 @@ func TestWherehouseConnectPKCE(t *testing.T) {
 	if to := callback(""); !strings.Contains(to, "wherehouse=connected") {
 		t.Fatalf("back to %s", to)
 	}
-	st, err := f.srv.store.Settings(context.Background(), f.alice.ID)
+	// Connecting to the same household again replaces its token.
+	conns, err := f.srv.store.WherehouseConns(context.Background(), f.alice.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.WherehouseToken != "wh-token-2" {
-		t.Errorf("token = %q", st.WherehouseToken)
+	if len(conns) != 1 || conns[0].Token != "wh-token-2" || conns[0].HouseholdID != 1 {
+		t.Errorf("connections = %+v", conns)
 	}
 }

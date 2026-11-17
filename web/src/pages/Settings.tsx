@@ -4,6 +4,7 @@ import {
   Boxes,
   CalendarDays,
   CheckCircle2,
+  Circle,
   Copy,
   Database,
   Download,
@@ -32,6 +33,7 @@ import {
   type ImportResult,
   type Settings as SettingsT,
   type Tag,
+  type WherehouseConnection,
 } from "@/lib/api";
 import { formatDate, todayISO } from "@/lib/dates";
 import {
@@ -684,22 +686,33 @@ const Wherehouse = ({ s }: { s: SettingsT }) => {
     else toast.error(t("settings.wherehouse.failed"));
     history.replaceState(null, "", location.pathname + location.hash);
   }, [result, t]);
-  const connect = async () => {
+  // Households there not connected yet, new ones included, are offered to connect.
+  const choices = useQuery({
+    queryKey: ["wherehouse-households", s.wherehouseHouseholds.length],
+    queryFn: api.wherehouseHouseholds,
+    enabled: s.wherehouseConnected,
+    retry: false,
+  });
+  // Wherehouse's own "connected" isn't enough: its token may be one this
+  // Warranteed has lost, which connecting again replaces.
+  const notConnected = (choices.data ?? []).filter((c) => !s.wherehouseHouseholds.some((h) => h.householdId === c.id));
+  const connect = async (household?: number) => {
     try {
-      location.assign((await api.connectWherehouse()).url);
+      location.assign((await api.connectWherehouse(household)).url);
     } catch (e) {
       toast.error(errorMessage(e));
     }
   };
-  // Disconnecting is asked first, with the choice to unlink everything too.
-  const [asking, setAsking] = useState(false);
+  // Disconnecting a household is asked first, with the choice to unlink its warranties too.
+  const [asking, setAsking] = useState<WherehouseConnection | null>(null);
   const [unlinkAll, setUnlinkAll] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const disconnect = async () => {
+    if (!asking) return;
     setDisconnecting(true);
     try {
-      const res = await api.disconnectWherehouse(unlinkAll);
-      setAsking(false);
+      const res = await api.disconnectWherehouse(asking.id, unlinkAll);
+      setAsking(null);
       // Wherehouse couldn't be told: its token is deleted there by hand.
       if (res.revokeManually)
         toast.warning(t("settings.wherehouse.revokeManually"), { duration: Infinity, closeButton: true });
@@ -710,32 +723,54 @@ const Wherehouse = ({ s }: { s: SettingsT }) => {
       setDisconnecting(false);
     }
   };
+  const name = (h: { name: string }) => h.name || t("wherehouse.householdUnnamed");
   return (
     <Section id="wherehouse" icon={<MapPin />} title="Wherehouse" description={t("settings.wherehouse.description")}>
       {s.wherehouseConnected ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="flex items-center gap-2 text-[13px] text-ok">
-            <CheckCircle2 className="size-4" />
-            {t("settings.wherehouse.connected", { household: s.wherehouseHousehold })}
-          </p>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setUnlinkAll(false);
-              setAsking(true);
-            }}
-          >
-            {t("settings.paperless.disconnect")}
-          </Button>
+        <div className="flex flex-col gap-2">
+          <ul className="flex flex-col divide-y divide-border rounded-xl border border-border">
+            {s.wherehouseHouseholds.map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-3 py-1.5 pr-1.5 pl-4">
+                <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                  <CheckCircle2 className="size-4 shrink-0 text-ok" />
+                  <span className="truncate">{name(h)}</span>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setUnlinkAll(false);
+                    setAsking(h);
+                  }}
+                >
+                  {t("settings.paperless.disconnect")}
+                </Button>
+              </li>
+            ))}
+            {notConnected.map((c) => (
+              <li key={`new-${c.id}`} className="flex items-center justify-between gap-3 py-1.5 pr-1.5 pl-4">
+                <span className="flex min-w-0 items-center gap-2 text-[13px] text-fg-muted">
+                  <Circle className="size-4 shrink-0 text-fg-subtle" />
+                  <span className="truncate">{name(c)}</span>
+                </span>
+                <Button variant="outline" size="sm" onClick={() => void connect(c.id)}>
+                  {t("settings.wherehouse.connectOne")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {notConnected.length > 0 && (
+            <p className="text-xs text-fg-subtle">{t("settings.wherehouse.notConnectedHint")}</p>
+          )}
           <Dialog
-            open={asking}
-            onOpenChange={setAsking}
+            open={asking !== null}
+            onOpenChange={(o) => !o && setAsking(null)}
             size="sm"
-            title={t("settings.wherehouse.disconnectTitle")}
+            title={t("settings.wherehouse.disconnectTitle", { household: asking ? name(asking) : "" })}
             description={t("settings.wherehouse.disconnectText")}
             footer={
               <>
-                <Button variant="ghost" onClick={() => setAsking(false)}>
+                <Button variant="ghost" onClick={() => setAsking(null)}>
                   {t("common.cancel")}
                 </Button>
                 <Button variant="danger" onClick={disconnect} loading={disconnecting}>
@@ -754,8 +789,13 @@ const Wherehouse = ({ s }: { s: SettingsT }) => {
           </Dialog>
         </div>
       ) : (
-        <Button onClick={connect} className="w-fit">
+        <Button onClick={() => void connect()} className="w-fit">
           {t("settings.wherehouse.connect")}
+        </Button>
+      )}
+      {s.wherehouseConnected && (
+        <Button variant="outline" onClick={() => void connect()} className="w-fit">
+          {t("settings.wherehouse.chooseHouseholds")}
         </Button>
       )}
       <label

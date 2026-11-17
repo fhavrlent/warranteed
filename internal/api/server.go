@@ -30,18 +30,18 @@ type Server struct {
 	files    *Files
 	assets   fs.FS
 	version  string
-	// wherehouseSyncing marks people whose Wherehouse changes are being
-	// read; true means read again when done.
+	// wherehouseSyncing marks Wherehouse connections whose changes are
+	// being read; true means read again when done.
 	wherehouseSyncing sync.Map
 	// homeboxBusy holds the IDs of warranties being added to or linked with HomeBox.
 	homeboxBusy sync.Map
 	// wherehouseRetry holds the warranties whose things changed but that
-	// couldn't be brought in step with them, by [user, warranty], so the
+	// couldn't be brought in step with them, by [connection, warranty], so the
 	// next sync tries again although Wherehouse's changes were read past
 	// them.
 	wherehouseRetry sync.Map
-	// wherehouseLeaving marks people disconnecting from Wherehouse, whose
-	// photos are coming back here and mustn't be sent there again.
+	// wherehouseLeaving marks Wherehouse connections being disconnected,
+	// whose photos are coming back here and mustn't be sent there again.
 	wherehouseLeaving sync.Map
 	// photoLocks has a mutex per warranty whose photos are being sent to HomeBox.
 	photoLocks sync.Map
@@ -119,7 +119,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/attachments/{id}/retry", s.retryAttachment)
 
 	api.HandleFunc("POST /api/settings/wherehouse/connect", s.connectWherehouse)
-	api.HandleFunc("DELETE /api/settings/wherehouse", s.disconnectWherehouse)
+	api.HandleFunc("DELETE /api/settings/wherehouse/{id}", s.disconnectWherehouse)
+	api.HandleFunc("GET /api/wherehouse/households", s.wherehouseHouseholds)
 	api.HandleFunc("GET /api/wherehouse/places", s.wherehousePlaces)
 	api.HandleFunc("GET /api/wherehouse/search", s.searchWherehouse)
 	api.HandleFunc("POST /api/warranties/{id}/wherehouse", s.addToWherehouse)

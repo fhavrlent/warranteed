@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,13 +21,53 @@ import (
 	"github.com/fhavrlent/warranteed/internal/wherehouse"
 )
 
-// wherehouseFor returns a Wherehouse client with the person's token, or nil
-// when Wherehouse isn't set up here or they haven't connected.
-func (s *Server) wherehouseFor(st *store.Settings) *wherehouse.Client {
-	if s.cfg.Wherehouse.URL == "" || st.WherehouseToken == "" {
+// connClient returns a Wherehouse client for a connection, nil when
+// Wherehouse isn't set up here.
+func (s *Server) connClient(c store.WherehouseConn) *wherehouse.Client {
+	if s.cfg.Wherehouse.URL == "" {
 		return nil
 	}
-	return wherehouse.New(s.cfg.Wherehouse.URL, st.WherehouseToken)
+	wh := wherehouse.New(s.cfg.Wherehouse.URL, c.Token)
+	wh.ConnID, wh.HouseholdID = c.ID, c.HouseholdID
+	return wh
+}
+
+// wherehouseConns returns clients for a person's connections, oldest first:
+// none when Wherehouse isn't set up here or they haven't connected.
+func (s *Server) wherehouseConns(ctx context.Context, uid int64) ([]*wherehouse.Client, error) {
+	if s.cfg.Wherehouse.URL == "" {
+		return nil, nil
+	}
+	conns, err := s.store.WherehouseConns(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*wherehouse.Client, 0, len(conns))
+	for _, c := range conns {
+		out = append(out, s.connClient(c))
+	}
+	return out, nil
+}
+
+// pickWherehouse returns uid's connection with the ID conn, or their first
+// with 0; nil if there's none.
+func (s *Server) pickWherehouse(ctx context.Context, uid, conn int64) (*wherehouse.Client, error) {
+	all, err := s.wherehouseConns(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	for _, wh := range all {
+		if conn == 0 || wh.ConnID == conn {
+			return wh, nil
+		}
+	}
+	return nil, nil
+}
+
+// connParam is the connection a request names in ?connection=, 0 if none.
+func connParam(r *http.Request) int64 {
+	id, _ := strconv.ParseInt(r.URL.Query().Get("connection"), 10, 64)
+	return id
 }
 
 // wherehouseFail reports an error from Wherehouse: a token it no longer
@@ -52,13 +91,19 @@ func wherehouseFail(w http.ResponseWriter, err error) {
 	}
 }
 
+// userWherehouse is the connection a request is for: the one named in
+// ?connection=, or the person's first.
 func (s *Server) userWherehouse(w http.ResponseWriter, r *http.Request) (*store.Settings, *wherehouse.Client) {
 	st, err := s.store.Settings(r.Context(), userID(r))
 	if err != nil {
 		fail(w, err)
 		return nil, nil
 	}
-	wh := s.wherehouseFor(st)
+	wh, err := s.pickWherehouse(r.Context(), userID(r), connParam(r))
+	if err != nil {
+		fail(w, err)
+		return nil, nil
+	}
 	if wh == nil {
 		writeMsg(w, http.StatusBadRequest, "server.wherehouseNotConnected", nil)
 		return nil, nil
@@ -94,7 +139,10 @@ func (s *Server) connectWherehouse(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/wherehouse/", MaxAge: 600,
 			HttpOnly: true, Secure: s.cfg.Secure(), SameSite: http.SameSiteLaxMode})
 	}
-	writeJSON(w, 200, map[string]string{"url": wherehouse.ConnectURL(s.cfg.Wherehouse.PublicURL, s.wherehouseCallbackURL(), state, verifier)})
+	// ?household= offers that household ticked, e.g. one made since.
+	household, _ := strconv.ParseInt(r.URL.Query().Get("household"), 10, 64)
+	writeJSON(w, 200, map[string]string{"url": wherehouse.ConnectURL(s.cfg.Wherehouse.PublicURL, s.wherehouseCallbackURL(),
+		state, verifier, household)})
 }
 
 // wherehouseCallback is where Wherehouse sends the browser back with a code,
@@ -129,67 +177,80 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 		done("failed")
 		return
 	}
-	if err := s.store.SetWherehouseConnection(r.Context(), userID(r), got.Token, got.Household.Name); err != nil {
-		fail(w, err)
-		return
-	}
-	// Pings make changes there show here at once; without them, the
-	// regular reads still catch everything.
-	hook := strings.TrimSuffix(s.cfg.AppURL.String(), "/") + "/hooks/wherehouse"
-	if secret, err := wherehouse.New(s.cfg.Wherehouse.URL, got.Token).SetHook(ctx, hook); err != nil {
-		slog.Warn("wherehouse pings", "err", err)
-	} else if err := s.store.SetWherehouseHookSecret(r.Context(), userID(r), secret); err != nil {
-		fail(w, err)
-		return
+	uid := userID(r)
+	var added []*wherehouse.Client
+	for _, c := range got {
+		id, err := s.store.SaveWherehouseConn(r.Context(), uid, c.Household.ID, c.Household.Name, c.Token)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		wh := wherehouse.New(s.cfg.Wherehouse.URL, c.Token)
+		wh.ConnID, wh.HouseholdID = id, c.Household.ID
+		added = append(added, wh)
+		// Pings make changes there show here at once; without them, the
+		// regular reads still catch everything.
+		hook := strings.TrimSuffix(s.cfg.AppURL.String(), "/") + "/hooks/wherehouse"
+		if secret, err := wh.SetHook(ctx, hook); err != nil {
+			slog.Warn("wherehouse pings", "household", c.Household.ID, "err", err)
+		} else if err := s.store.SetWherehouseHookSecret(r.Context(), id, secret); err != nil {
+			fail(w, err)
+			return
+		}
 	}
 	// Links from before, and warranties linked to HomeBox, are put in step
-	// with this Wherehouse. That can take a while with many warranties.
-	uid := userID(r)
+	// with these households. That can take a while with many warranties.
 	s.background.Add(1)
 	go func() {
 		defer s.background.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		if err := s.adoptWherehouse(ctx, uid, true); err != nil {
-			slog.Warn("wherehouse: put warranties in step", "err", err)
+		for _, wh := range added {
+			if err := s.adoptWherehouse(ctx, uid, wh, true); err != nil {
+				slog.Warn("wherehouse: put warranties in step", "household", wh.HouseholdID, "err", err)
+			}
 		}
 		// Photos left in Wherehouse by an earlier disconnect come back,
 		// or stay there, as the setting says.
-		if err := s.settleAllWherehousePhotos(ctx, uid, false); err != nil {
+		if err := s.settleAllWherehousePhotos(ctx, uid); err != nil {
 			slog.Warn("wherehouse: settle photos", "err", err)
 		}
 		// What changed while disconnected, claims among it, goes there.
-		s.sendAllToWherehouse(ctx, uid)
+		for _, wh := range added {
+			s.sendAllToWherehouse(ctx, uid, wh)
+		}
 	}()
 	done("connected")
 }
 
-// disconnectWherehouse forgets the person's connection and deletes its token
-// in Wherehouse. Links to things stay, for whenever someone connects again.
-// If Wherehouse can't be told, it's forgotten here all the same, and the
-// answer says the token is to be deleted there by hand.
+// disconnectWherehouse forgets one of the person's connections, named in
+// the path, and deletes its token in Wherehouse. Links to things stay, for
+// whenever someone connects again. If Wherehouse can't be told, it's
+// forgotten here all the same, and the answer says the token is to be
+// deleted there by hand.
 func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
-	// With ?unlink=1, warranties are unlinked too, both here and there,
-	// while the token still works.
+	// With ?unlink=1, the household's warranties are unlinked too, both
+	// here and there, while the token still works.
 	unlink := r.URL.Query().Get("unlink") == "1"
 	uid := userID(r)
-	revokeManually := false
-	st, err := s.store.Settings(r.Context(), uid)
-	if err != nil {
-		fail(w, err)
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	c, err := s.store.WherehouseConnByID(r.Context(), id)
+	if err != nil || c.UserID != uid {
+		writeMsg(w, http.StatusNotFound, "server.wherehouseNotConnected", nil)
 		return
 	}
-	if wh := s.wherehouseFor(st); wh != nil {
+	revokeManually := false
+	if wh := s.connClient(*c); wh != nil {
 		// Nothing sends photos there again until the connection is gone,
 		// not even a sync waiting for a warranty's photos meanwhile.
-		s.wherehouseLeaving.Store(uid, true)
-		defer s.wherehouseLeaving.Delete(uid)
-		// Photos kept only in Wherehouse come back here while the
+		s.wherehouseLeaving.Store(c.ID, true)
+		defer s.wherehouseLeaving.Delete(c.ID)
+		// Photos kept only in this household come back here while the
 		// connection still reads them. Ones Wherehouse can't hand over
 		// stay as they are, shown through anyone else's connection, and
 		// come back after connecting again.
 		photoCtx, cancelPhotos := context.WithTimeout(r.Context(), 5*time.Minute)
-		if err := s.settleAllWherehousePhotos(photoCtx, uid, true); err != nil {
+		if err := s.settleAllWherehousePhotos(photoCtx, uid); err != nil {
 			slog.Warn("wherehouse: photos back on disconnecting", "err", err)
 		}
 		cancelPhotos()
@@ -211,31 +272,45 @@ func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 			revokeManually = true
 		}
 	}
-	if err := s.store.SetWherehouseConnection(r.Context(), uid, "", ""); err != nil {
+	if err := s.store.DeleteWherehouseConn(r.Context(), c.ID); err != nil {
 		fail(w, err)
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"revokeManually": revokeManually})
 }
 
-// leavingWherehouse reports whether uid is disconnecting from Wherehouse.
-func (s *Server) leavingWherehouse(uid int64) bool {
-	_, ok := s.wherehouseLeaving.Load(uid)
+// leavingWherehouse reports whether wh's connection is being disconnected.
+func (s *Server) leavingWherehouse(wh *wherehouse.Client) bool {
+	_, ok := s.wherehouseLeaving.Load(wh.ConnID)
 	return ok
 }
 
 // unlinkAllWherehouse unlinks the warranties someone can see from their
-// things in Wherehouse, which keep their details as their own. A warranty
-// someone else still reaches through their own connection stays linked.
-// Unlinked warranties aren't linked again by themselves.
+// things in wh's household, which keep their details as their own. A
+// warranty someone else still reaches through their own connection stays
+// linked. Unlinked warranties aren't linked again by themselves.
 func (s *Server) unlinkAllWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client) error {
 	states, err := s.store.WherehouseStates(ctx, uid)
 	if err != nil {
 		return err
 	}
+	household := wh.HouseholdID
 	for _, ws := range states {
 		if ws.Thing == nil {
 			continue
+		}
+		// Things in the person's other households stay linked. One whose
+		// household isn't known is this one's if wh finds it linked.
+		if ws.Household != 0 && ws.Household != household {
+			continue
+		}
+		if ws.Household == 0 {
+			if wh == nil {
+				continue
+			}
+			if t, err := wh.LinkedThing(ctx, ws.ID); err != nil || t.ID != *ws.Thing {
+				continue
+			}
 		}
 		unlock := s.lockPhotos(wherehousePushKey(ws.ID))
 		gone, err := s.unlinkForDisconnect(ctx, uid, wh, ws.ID, *ws.Thing)
@@ -285,6 +360,31 @@ func (s *Server) unlinkForDisconnect(ctx context.Context, uid int64, wh *whereho
 		return gone, err
 	}
 	return gone, s.store.SetWherehouseUnlinked(ctx, id)
+}
+
+// wherehouseHouseholds lists the person's households in Wherehouse, asked
+// through their connections in turn, and whether each is connected, for
+// connecting more. Without a connection there's nothing to ask with.
+func (s *Server) wherehouseHouseholds(w http.ResponseWriter, r *http.Request) {
+	conns, err := s.wherehouseConns(r.Context(), userID(r))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	failed := error(nil)
+	for _, wh := range conns {
+		list, err := wh.Households(r.Context())
+		if err == nil {
+			writeJSON(w, 200, list)
+			return
+		}
+		failed = err
+	}
+	if failed != nil {
+		wherehouseFail(w, failed)
+		return
+	}
+	writeJSON(w, 200, []wherehouse.HouseholdChoice{})
 }
 
 // ---- finding things ----
@@ -481,7 +581,8 @@ func (s *Server) joinWherehouse(ctx context.Context, uid int64, st *store.Settin
 	if err != nil {
 		return err
 	}
-	if err := s.store.SetWherehouse(ctx, uid, wr.ID, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()}); err != nil {
+	if err := s.store.SetWherehouse(ctx, uid, wr.ID, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText(),
+		Household: wh.HouseholdID}); err != nil {
 		// Not linked here, so not there either; but a thing another
 		// warranty here has keeps its link.
 		if !errors.Is(err, store.ErrThingTaken) {
@@ -569,32 +670,38 @@ func (s *Server) wherehouseLink(wr *store.Warranty, st *store.Settings) wherehou
 
 // wherehouseClients are the Wherehouse connections to update a warranty's
 // thing with: the person's first, then those of others who can see it.
+// Once the thing's household is known, only connections to it (or to a
+// household not known yet) are given. The settings are the person's.
 func (s *Server) wherehouseClients(ctx context.Context, uid, warrantyID int64) ([]*wherehouse.Client, *store.Settings, error) {
-	users := []int64{uid}
-	others, err := s.store.WherehouseUsers(ctx, warrantyID)
+	st, err := s.store.Settings(ctx, uid)
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, id := range others {
-		if !slices.Contains(users, id) {
-			users = append(users, id)
-		}
+	if s.cfg.Wherehouse.URL == "" {
+		return nil, st, nil
+	}
+	household, err := s.store.WherehouseHouseholdOf(ctx, warrantyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	own, err := s.store.WherehouseConns(ctx, uid)
+	if err != nil {
+		return nil, nil, err
+	}
+	others, err := s.store.WherehouseConnsFor(ctx, warrantyID)
+	if err != nil {
+		return nil, nil, err
 	}
 	var out []*wherehouse.Client
-	var first *store.Settings
-	for _, u := range users {
-		st, err := s.store.Settings(ctx, u)
-		if err != nil {
-			return nil, nil, err
+	seen := map[int64]bool{}
+	for _, c := range append(own, others...) {
+		if seen[c.ID] || (household != 0 && c.HouseholdID != 0 && c.HouseholdID != household) {
+			continue
 		}
-		if first == nil {
-			first = st
-		}
-		if c := s.wherehouseFor(st); c != nil {
-			out = append(out, c)
-		}
+		seen[c.ID] = true
+		out = append(out, s.connClient(c))
 	}
-	return out, first, nil
+	return out, st, nil
 }
 
 // wherehouseKey marks a warranty being added to or linked with Wherehouse.
@@ -877,8 +984,7 @@ func (s *Server) claimMaintenance(c *store.Claim, st *store.Settings) wherehouse
 // ---- keeping in step ----
 
 // wherehousePing is where Wherehouse pings when something changed: the
-// signature says whose connection it is, and that person's changes are read
-// at once.
+// signature says whose connection it is, and its changes are read at once.
 func (s *Server) wherehousePing(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
 	if err != nil {
@@ -895,7 +1001,7 @@ func (s *Server) wherehousePing(w http.ResponseWriter, r *http.Request) {
 		m := hmac.New(sha256.New, []byte(h.Secret))
 		m.Write(body)
 		if hmac.Equal([]byte(sig), []byte("sha256="+hex.EncodeToString(m.Sum(nil)))) {
-			s.syncWherehouseSoon(h.UserID)
+			s.syncWherehouseSoon(h.ConnID)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -903,29 +1009,29 @@ func (s *Server) wherehousePing(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusUnauthorized)
 }
 
-// syncWherehouseSoon reads a person's Wherehouse changes now, once at a
+// syncWherehouseSoon reads a connection's Wherehouse changes now, once at a
 // time: a ping while reading reads again after.
-func (s *Server) syncWherehouseSoon(uid int64) {
-	if _, running := s.wherehouseSyncing.LoadOrStore(uid, false); running {
-		s.wherehouseSyncing.Store(uid, true) // read again once done
+func (s *Server) syncWherehouseSoon(connID int64) {
+	if _, running := s.wherehouseSyncing.LoadOrStore(connID, false); running {
+		s.wherehouseSyncing.Store(connID, true) // read again once done
 		return
 	}
 	s.inBackground("wherehouse sync", func(ctx context.Context) error {
 		for {
-			if err := s.syncWherehouseUser(ctx, uid); err != nil {
-				s.wherehouseSyncing.Delete(uid)
+			if err := s.syncWherehouseConn(ctx, connID); err != nil {
+				s.wherehouseSyncing.Delete(connID)
 				return err
 			}
-			if again, _ := s.wherehouseSyncing.Load(uid); again != true {
-				s.wherehouseSyncing.Delete(uid)
+			if again, _ := s.wherehouseSyncing.Load(connID); again != true {
+				s.wherehouseSyncing.Delete(connID)
 				return nil
 			}
-			s.wherehouseSyncing.Store(uid, false)
+			s.wherehouseSyncing.Store(connID, false)
 		}
 	})
 }
 
-// SyncWherehouse reads each connected person's Wherehouse changes every few
+// SyncWherehouse reads each connection's Wherehouse changes every few
 // minutes: where linked things are now, and which were sold, archived or
 // deleted there. A sold or archived thing archives its warranty; a deleted
 // one is unlinked.
@@ -937,18 +1043,20 @@ func (s *Server) SyncWherehouse(ctx context.Context) {
 	defer tick.Stop()
 	first := true
 	for {
-		users, err := s.store.WherehouseConnected(ctx)
+		conns, err := s.store.AllWherehouseConns(ctx)
 		if err != nil {
 			slog.Warn("wherehouse sync", "err", err)
 		}
-		for _, uid := range users {
-			if err := s.syncWherehouseUser(ctx, uid); err != nil {
-				slog.Warn("wherehouse sync", "user", uid, "err", err)
+		for _, c := range conns {
+			if err := s.syncWherehouseConn(ctx, c.ID); err != nil {
+				slog.Warn("wherehouse sync", "user", c.UserID, "household", c.HouseholdID, "err", err)
 			}
 			if first {
 				// What changed while this was stopped, or before it kept
 				// documents and photos in step, is brought in step once.
-				s.sendAllToWherehouse(ctx, uid)
+				if c, err := s.store.WherehouseConnByID(ctx, c.ID); err == nil {
+					s.sendAllToWherehouse(ctx, c.UserID, s.connClient(*c))
+				}
 			}
 		}
 		first = false
@@ -960,23 +1068,65 @@ func (s *Server) SyncWherehouse(ctx context.Context) {
 	}
 }
 
+// syncWherehouse reads all of a person's connections' changes now.
 func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
-	st, err := s.store.Settings(ctx, uid)
+	conns, err := s.store.WherehouseConns(ctx, uid)
 	if err != nil {
 		return err
 	}
-	wh := s.wherehouseFor(st)
-	if wh == nil {
+	var errs []error
+	for _, c := range conns {
+		errs = append(errs, s.syncWherehouseConn(ctx, c.ID))
+	}
+	return errors.Join(errs...)
+}
+
+// learnHousehold asks which household a connection made before households
+// were recorded is to. It reports false if the connection went with it, as
+// the person has another to the same household.
+func (s *Server) learnHousehold(ctx context.Context, c *store.WherehouseConn) (bool, error) {
+	if c.HouseholdID != 0 {
+		return true, nil
+	}
+	h, err := s.connClient(*c).Household(ctx)
+	if err != nil {
+		return false, err
+	}
+	merged, err := s.store.SetWherehouseConnHousehold(ctx, c.ID, h.ID, h.Name)
+	if err != nil || merged {
+		return false, err
+	}
+	c.HouseholdID, c.Household = h.ID, h.Name
+	return true, nil
+}
+
+func (s *Server) syncWherehouseConn(ctx context.Context, connID int64) error {
+	if s.cfg.Wherehouse.URL == "" {
 		return nil
+	}
+	c, err := s.store.WherehouseConnByID(ctx, connID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 	cctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
+	ok, err := s.learnHousehold(cctx, c)
+	if err != nil {
+		return s.connFailed(ctx, c, err)
+	}
+	if !ok {
+		return nil
+	}
+	wh, uid := s.connClient(*c), c.UserID
 	// Many changes come a page at a time.
-	since := st.WherehouseSince
+	since := c.Since
 	changed := map[int64]bool{}
 	// Those that couldn't be brought in step last time are tried again.
 	s.wherehouseRetry.Range(func(k, _ any) bool {
-		if key := k.([2]int64); key[0] == uid {
+		if key := k.([2]int64); key[0] == connID {
 			changed[key[1]] = true
 			s.wherehouseRetry.Delete(k)
 		}
@@ -990,19 +1140,19 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 			cancel()
 			if err != nil && !errors.Is(err, store.ErrNotFound) {
 				slog.Warn("wherehouse: photos and documents", "warranty", wid, "err", err)
-				s.wherehouseRetry.Store([2]int64{uid, wid}, true)
+				s.wherehouseRetry.Store([2]int64{connID, wid}, true)
 			}
 		}
 	}()
 	for range 50 {
 		ch, err := wh.Changes(cctx, since)
 		if err != nil {
+			return s.connFailed(ctx, c, err)
+		}
+		if err := s.applyWherehouseChanges(ctx, uid, wh, ch, changed); err != nil {
 			return err
 		}
-		if err := s.applyWherehouseChanges(ctx, uid, ch, changed); err != nil {
-			return err
-		}
-		if err := s.store.SetWherehouseSince(ctx, uid, ch.Until); err != nil {
+		if err := s.store.SetWherehouseSince(ctx, connID, ch.Until); err != nil {
 			return err
 		}
 		if since = ch.Until; !ch.More {
@@ -1010,19 +1160,75 @@ func (s *Server) syncWherehouseUser(ctx context.Context, uid int64) error {
 		}
 	}
 	// Things copied from HomeBox since are picked up.
-	return s.adoptWherehouse(cctx, uid, false)
+	return s.adoptWherehouse(cctx, uid, wh, false)
+}
+
+// connFailed handles a connection's call failing. A token Wherehouse no
+// longer takes means the connection is gone there: the household was
+// deleted, or the person left it or deleted the token. It's forgotten here,
+// and warranties linked to things in that household are unlinked once
+// nobody here can reach it any more.
+func (s *Server) connFailed(ctx context.Context, c *store.WherehouseConn, err error) error {
+	var we *wherehouse.Error
+	if !errors.As(err, &we) || !we.Unauthorized() {
+		return err
+	}
+	slog.Warn("wherehouse: a connection's token is no longer taken; it's forgotten",
+		"user", c.UserID, "household", c.HouseholdID)
+	if err := s.store.DeleteWherehouseConn(ctx, c.ID); err != nil {
+		return err
+	}
+	if c.HouseholdID == 0 {
+		return nil
+	}
+	conns, err := s.store.AllWherehouseConns(ctx)
+	if err != nil {
+		return err
+	}
+	for _, o := range conns {
+		if o.HouseholdID == c.HouseholdID || o.HouseholdID == 0 {
+			return nil // someone may still reach it
+		}
+	}
+	ids, err := s.store.LinkedInHousehold(ctx, c.UserID, c.HouseholdID)
+	if err != nil {
+		return err
+	}
+	for _, wid := range ids {
+		if h, err := s.store.WherehouseHouseholdOf(ctx, wid); err != nil || h != c.HouseholdID {
+			continue
+		}
+		var thing int64
+		if wr, err := s.store.GetWarranty(ctx, c.UserID, wid); err == nil && wr.Wherehouse != nil {
+			thing = wr.Wherehouse.Thing
+		}
+		if err := s.store.SetWherehouse(ctx, c.UserID, wid, nil); err != nil {
+			return err
+		}
+		// Photos kept only there can't be reached any more.
+		if err := s.store.ForgetWherehousePhotos(ctx, wid, thing); err != nil {
+			return err
+		}
+		slog.Info("wherehouse link dropped: its household can't be reached", "warranty", wid)
+	}
+	return nil
 }
 
 // applyWherehouseChanges brings the warranties linked to things that changed
 // in Wherehouse in step with them.
 // The warranties linked to changed things are added to changed.
-func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, ch *wherehouse.Changes, changed map[int64]bool) error {
+func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, wh *wherehouse.Client, ch *wherehouse.Changes,
+	changed map[int64]bool) error {
 	for _, t := range ch.Things {
 		ids, err := s.store.LinkedToThing(ctx, uid, t.ID)
 		if err != nil {
 			return err
 		}
 		for _, wid := range ids {
+			// A thing that changed in wh's household is in it.
+			if err := s.store.SetWherehouseHousehold(ctx, wid, t.ID, wh.HouseholdID); err != nil {
+				return err
+			}
 			if err := s.store.SetWherehouseSeen(ctx, wid, t.Label, t.PathText()); err != nil {
 				return err
 			}
@@ -1066,14 +1272,10 @@ func (s *Server) applyWherehouseChanges(ctx context.Context, uid int64, ch *wher
 // Wherehouse was set up afresh or the link was removed there, is dropped.
 // With all is false, only that is skipped: a warranty linked to a HomeBox
 // item that was copied into Wherehouse is linked to the thing it became.
-func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error {
+func (s *Server) adoptWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client, all bool) error {
 	st, err := s.store.Settings(ctx, uid)
 	if err != nil {
 		return err
-	}
-	wh := s.wherehouseFor(st)
-	if wh == nil {
-		return nil
 	}
 	states, err := s.store.WherehouseStates(ctx, uid)
 	if err != nil {
@@ -1084,7 +1286,9 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 			return err
 		}
 		if ws.Thing != nil {
-			if !all {
+			// Links to things in the person's other households are seen
+			// to with those.
+			if !all || (ws.Household != 0 && ws.Household != wh.HouseholdID) {
 				continue
 			}
 			stale, moved, err := s.wherehouseLinkStale(ctx, uid, ws.ID, *ws.Thing)
@@ -1108,7 +1312,7 @@ func (s *Server) adoptWherehouse(ctx context.Context, uid int64, all bool) error
 					return err
 				}
 				ws.Thing = nil
-				if err := s.settleWherehousePhotos(ctx, uid, ws.ID, false); err != nil {
+				if err := s.settleWherehousePhotos(ctx, uid, ws.ID); err != nil {
 					slog.Warn("wherehouse: photos of a dropped link", "warranty", ws.ID, "err", err)
 				}
 			}
@@ -1273,15 +1477,9 @@ func (s *Server) matchClaimEntries(ctx context.Context, st *store.Settings, t *w
 
 // ---- photos and receipts ----
 
-// sendAllToWherehouse brings every warranty uid has linked in step with its
-// thing, one after another.
-func (s *Server) sendAllToWherehouse(ctx context.Context, uid int64) {
-	st, err := s.store.Settings(ctx, uid)
-	if err != nil {
-		slog.Warn("wherehouse: photos and documents", "user", uid, "err", err)
-		return
-	}
-	wh := s.wherehouseFor(st)
+// sendAllToWherehouse brings every warranty uid has linked to a thing in
+// wh's household in step with its thing, one after another.
+func (s *Server) sendAllToWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client) {
 	if wh == nil {
 		return
 	}
@@ -1291,16 +1489,40 @@ func (s *Server) sendAllToWherehouse(ctx context.Context, uid int64) {
 		return
 	}
 	for _, ws := range states {
-		if ws.Thing == nil || ctx.Err() != nil {
+		if ws.Thing == nil || ctx.Err() != nil || (ws.Household != 0 && ws.Household != wh.HouseholdID) {
 			continue
 		}
 		wctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		err := s.sendToWherehouse(wctx, uid, wh, ws.ID)
 		cancel()
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
+		// A thing not found may just be in another household.
+		if err != nil && !errors.Is(err, store.ErrNotFound) && !wherehouseNotFound(err) {
 			slog.Warn("wherehouse: photos and documents", "warranty", ws.ID, "err", err)
 		}
 	}
+}
+
+// errOtherHousehold is a thing in a household other than a connection's,
+// which that connection can't see: as Wherehouse answers it.
+var errOtherHousehold = &wherehouse.Error{Status: http.StatusNotFound, Body: "the thing is in another household"}
+
+// thingHere makes sure wr's thing is in wh's household, recording it when
+// it wasn't known; errOtherHousehold (or Wherehouse's 404) if it isn't.
+func (s *Server) thingHere(ctx context.Context, wh *wherehouse.Client, wr *store.Warranty) error {
+	if wr.Wherehouse == nil || wh.HouseholdID == 0 {
+		return nil
+	}
+	switch wr.Wherehouse.Household {
+	case wh.HouseholdID:
+		return nil
+	case 0:
+		if _, err := wh.Get(ctx, wr.Wherehouse.Thing); err != nil {
+			return err
+		}
+		wr.Wherehouse.Household = wh.HouseholdID
+		return s.store.SetWherehouseHousehold(ctx, wr.ID, wr.Wherehouse.Thing, wh.HouseholdID)
+	}
+	return errOtherHousehold
 }
 
 // sendToWherehouseLater sends a linked warranty's new photos and receipts
@@ -1327,11 +1549,15 @@ func (s *Server) sendToWherehouseLater(uid, wid int64) {
 func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client, wid int64) error {
 	// One at a time per warranty, so a photo isn't sent twice.
 	defer s.lockPhotos(wherehousePhotosKey(wid))()
-	if s.leavingWherehouse(uid) {
+	if s.leavingWherehouse(wh) {
 		return nil // their photos are coming back here
 	}
 	wr, err := s.store.GetWarranty(ctx, uid, wid)
 	if err != nil {
+		return err
+	}
+	// A connection to another household can't reach the thing.
+	if err := s.thingHere(ctx, wh, wr); err != nil {
 		return err
 	}
 	// Nothing of a private warranty goes to, or comes from, a household

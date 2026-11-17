@@ -60,27 +60,33 @@ func (s *Store) open(value string) (string, error) {
 	return string(plain), nil
 }
 
-// sealedColumns hold tokens for other apps.
-var sealedColumns = []string{"paperless_token", "homebox_token", "wherehouse_token", "wherehouse_hook_secret"}
+// sealedColumns hold tokens for other apps, by table and its key column.
+var sealedColumns = []struct{ table, key, col string }{
+	{"user_settings", "user_id", "paperless_token"},
+	{"user_settings", "user_id", "homebox_token"},
+	{"wherehouse_connections", "id", "token"},
+	{"wherehouse_connections", "id", "hook_secret"},
+}
 
 // SealTokens encrypts tokens stored before they were encrypted.
 func (s *Store) SealTokens(ctx context.Context) error {
 	if s.aead == nil {
 		return nil
 	}
-	for _, col := range sealedColumns {
-		rows, err := s.db.QueryContext(ctx, `SELECT user_id, `+col+` FROM user_settings WHERE `+col+` != '' AND `+col+` NOT LIKE 'enc1:%'`)
+	for _, c := range sealedColumns {
+		rows, err := s.db.QueryContext(ctx, `SELECT `+c.key+`, `+c.col+` FROM `+c.table+` WHERE `+c.col+` != ''
+			AND `+c.col+` NOT LIKE 'enc1:%'`)
 		if err != nil {
 			return err
 		}
 		type plain struct {
-			user  int64
+			key   int64
 			value string
 		}
 		var todo []plain
 		for rows.Next() {
 			var p plain
-			if err := rows.Scan(&p.user, &p.value); err != nil {
+			if err := rows.Scan(&p.key, &p.value); err != nil {
 				rows.Close()
 				return err
 			}
@@ -95,7 +101,7 @@ func (s *Store) SealTokens(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			if _, err := s.db.ExecContext(ctx, `UPDATE user_settings SET `+col+` = ? WHERE user_id = ?`, v, p.user); err != nil {
+			if _, err := s.db.ExecContext(ctx, `UPDATE `+c.table+` SET `+c.col+` = ? WHERE `+c.key+` = ?`, v, p.key); err != nil {
 				return err
 			}
 		}

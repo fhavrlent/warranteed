@@ -211,6 +211,7 @@ func TestWherehousePhotosComeBack(t *testing.T) {
 				r := httptest.NewRequest(http.MethodDelete, target, nil)
 				r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 				w := httptest.NewRecorder()
+				r.SetPathValue("id", fmt.Sprint(f.conn))
 				f.srv.disconnectWherehouse(w, r)
 				if w.Code != http.StatusOK {
 					t.Fatalf("disconnect = %d %s", w.Code, w.Body)
@@ -293,7 +294,7 @@ func TestWherehousePhotosGoneThere(t *testing.T) {
 	f.wh.mu.Lock()
 	f.wh.rejectToken = true
 	f.wh.mu.Unlock()
-	if err := f.srv.settleWherehousePhotos(context.Background(), f.alice.ID, f.warrantyID, true); err == nil {
+	if err := f.settleLeaving(t); err == nil {
 		t.Error("settled without Wherehouse")
 	}
 	if ps := f.photos(t, f.warrantyID); len(ps) != 1 || ps[0].Storage != store.StorageWherehouse {
@@ -308,7 +309,7 @@ func TestWherehousePhotosGoneThere(t *testing.T) {
 	other.Photos = []map[string]int64{{"id": photo, "size": 3}}
 	f.wh.photos[photo] = []byte("not")
 	f.wh.mu.Unlock()
-	if err := f.srv.settleWherehousePhotos(context.Background(), f.alice.ID, f.warrantyID, true); err != nil {
+	if err := f.settleLeaving(t); err != nil {
 		t.Fatal(err)
 	}
 	if ps := f.photos(t, f.warrantyID); len(ps) != 0 {
@@ -335,7 +336,7 @@ func TestWherehouseLinkFollowsRestoredThing(t *testing.T) {
 	delete(f.wh.things, old)
 	f.wh.mu.Unlock()
 
-	if err := f.srv.adoptWherehouse(context.Background(), f.alice.ID, true); err != nil {
+	if err := f.srv.adoptWherehouse(context.Background(), f.alice.ID, f.client(t), true); err != nil {
 		t.Fatal(err)
 	}
 	f.srv.background.Wait()
@@ -382,14 +383,14 @@ func TestWherehousePhotosStayBackWhileDisconnecting(t *testing.T) {
 	// The sync runs while the pings are being turned off, after the photos
 	// came back and before the connection is forgotten.
 	f.wh.onHook = func() {
-		st, _ := f.srv.store.Settings(context.Background(), f.alice.ID)
-		if err := f.srv.sendToWherehouse(context.Background(), f.alice.ID, f.srv.wherehouseFor(st), f.warrantyID); err != nil {
+		if err := f.srv.sendToWherehouse(context.Background(), f.alice.ID, f.client(t), f.warrantyID); err != nil {
 			t.Errorf("sync = %v", err)
 		}
 	}
 	r := httptest.NewRequest(http.MethodDelete, "/api/settings/wherehouse", nil)
 	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 	w := httptest.NewRecorder()
+	r.SetPathValue("id", fmt.Sprint(f.conn))
 	f.srv.disconnectWherehouse(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("disconnect = %d %s", w.Code, w.Body)
@@ -438,4 +439,12 @@ func TestWherehousePhotoMadeADocument(t *testing.T) {
 	if !found {
 		t.Errorf("the receipt is gone: %+v", f.warranty(t, f.warrantyID).Attachments)
 	}
+}
+
+// settleLeaving settles the warranty's photos as disconnecting Alice's
+// connection does: they come back here.
+func (f *wherehouseFixture) settleLeaving(t *testing.T) error {
+	f.srv.wherehouseLeaving.Store(f.conn, true)
+	defer f.srv.wherehouseLeaving.Delete(f.conn)
+	return f.srv.settleWherehousePhotos(context.Background(), f.alice.ID, f.warrantyID)
 }

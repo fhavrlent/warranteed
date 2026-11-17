@@ -23,7 +23,12 @@ export const SplitDialog = ({ w, onClose }: { w: Warranty; onClose: () => void }
   const [serials, setSerials] = useState<string[]>([]);
   const canSplitItem = w.homebox !== null && (settings?.homeboxEnabled ?? false);
   const [homebox, setHomebox] = useState(canSplitItem);
-  const canSplitThing = w.wherehouse !== null && (settings?.wherehouseConnected ?? false);
+  // The thing is split by one's own connection to its household.
+  const canSplitThing =
+    w.wherehouse !== null &&
+    (settings?.wherehouseHouseholds ?? []).some(
+      (h) => !w.wherehouse?.household || !h.householdId || h.householdId === w.wherehouse.household,
+    );
   const [wherehouse, setWherehouse] = useState(canSplitThing);
   const [saving, setSaving] = useState(false);
   const n = Number(pieces);

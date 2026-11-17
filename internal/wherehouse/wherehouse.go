@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,6 +28,9 @@ type Client struct {
 	BaseURL string
 	Token   string
 	HTTP    *http.Client
+	// ConnID and HouseholdID say whose connection the token is and to
+	// which household (0: not known yet), for Warranteed's own use.
+	ConnID, HouseholdID int64
 }
 
 func New(baseURL, token string) *Client {
@@ -122,20 +126,37 @@ func Challenge(verifier string) string {
 }
 
 // ConnectURL is where to send someone to connect: they allow Warranteed
-// there, and come back to redirect with a code and state. The code is
-// swapped for a token only with the verifier the challenge was made from.
-func ConnectURL(publicURL, redirect, state, verifier string) string {
+// there for one or more households, and come back to redirect with a code
+// and state. The code is swapped for tokens only with the verifier the
+// challenge was made from. A household other than 0 is offered ticked.
+func ConnectURL(publicURL, redirect, state, verifier string, household int64) string {
 	q := url.Values{"app": {"Warranteed"}, "redirect_uri": {redirect}, "state": {state},
-		"code_challenge": {Challenge(verifier)}, "code_challenge_method": {"S256"}}
+		"code_challenge": {Challenge(verifier)}, "code_challenge_method": {"S256"}, "multiple": {"1"}}
+	if household != 0 {
+		q.Set("household", strconv.FormatInt(household, 10))
+	}
 	return strings.TrimSuffix(publicURL, "/") + "/connect?" + q.Encode()
 }
 
-// Exchange swaps the code from connecting for a token.
-func (c *Client) Exchange(ctx context.Context, code, redirect, verifier string) (*Connected, error) {
-	var out Connected
+// Exchange swaps the code from connecting for a token for each household
+// allowed.
+func (c *Client) Exchange(ctx context.Context, code, redirect, verifier string) ([]Connected, error) {
+	var out struct {
+		Connected
+		Tokens []Connected `json:"tokens"`
+	}
 	err := c.do(ctx, http.MethodPost, "/connect/token",
 		map[string]string{"code": code, "redirect_uri": redirect, "code_verifier": verifier}, &out)
-	return &out, err
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Tokens) > 0 {
+		return out.Tokens, nil
+	}
+	if out.Token != "" {
+		return []Connected{out.Connected}, nil
+	}
+	return nil, errors.New("wherehouse gave no token")
 }
 
 // RevokeToken deletes the token in Wherehouse. A token Wherehouse no longer
@@ -174,6 +195,21 @@ func (h *Household) Shared() bool {
 func (c *Client) Household(ctx context.Context) (*Household, error) {
 	var out Household
 	return &out, c.do(ctx, http.MethodGet, "/api/household", nil, &out)
+}
+
+// HouseholdChoice is a household of the token's owner, and whether this
+// app is connected to it.
+type HouseholdChoice struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Members   int    `json:"members"`
+	Connected bool   `json:"connected"`
+}
+
+// Households lists the households of the token's owner.
+func (c *Client) Households(ctx context.Context) ([]HouseholdChoice, error) {
+	var out []HouseholdChoice
+	return out, c.do(ctx, http.MethodGet, "/api/connect/households", nil, &out)
 }
 
 // User is the token's owner.
