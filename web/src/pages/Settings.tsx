@@ -313,6 +313,15 @@ const Paperless = ({ s }: { s: SettingsT }) => {
   const [token, setToken] = useState("");
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnect = async () => {
+    if (await update({ paperlessUrl: "", paperlessPublicUrl: "", paperlessToken: "" })) {
+      setUrl("");
+      setPublicUrl("");
+      setStatus(null);
+    }
+    setDisconnecting(false);
+  };
 
   const test = async () => {
     setTesting(true);
@@ -437,16 +446,7 @@ const Paperless = ({ s }: { s: SettingsT }) => {
               {t("common.save")}
             </Button>
             {(s.paperlessUrl || s.hasPaperlessToken) && (
-              <Button
-                variant="ghost"
-                onClick={async () => {
-                  if (await update({ paperlessUrl: "", paperlessPublicUrl: "", paperlessToken: "" })) {
-                    setUrl("");
-                    setPublicUrl("");
-                    setStatus(null);
-                  }
-                }}
-              >
+              <Button variant="ghost" onClick={() => setDisconnecting(true)}>
                 {t("settings.paperless.disconnect")}
               </Button>
             )}
@@ -575,6 +575,14 @@ const Paperless = ({ s }: { s: SettingsT }) => {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={disconnecting}
+        onOpenChange={setDisconnecting}
+        title={t("settings.paperless.disconnectTitle")}
+        description={t("settings.paperless.disconnectText")}
+        confirmLabel={t("settings.paperless.disconnect")}
+        onConfirm={() => void disconnect()}
+      />
     </Section>
   );
 };
@@ -585,6 +593,11 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
   const [token, setToken] = useState("");
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnect = async () => {
+    if (await update({ homeboxToken: "" })) setStatus(null);
+    setDisconnecting(false);
+  };
 
   const test = async () => {
     setTesting(true);
@@ -634,12 +647,7 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
               {t("common.save")}
             </Button>
             {s.hasHomeboxToken && (
-              <Button
-                variant="ghost"
-                onClick={async () => {
-                  if (await update({ homeboxToken: "" })) setStatus(null);
-                }}
-              >
+              <Button variant="ghost" onClick={() => setDisconnecting(true)}>
                 {t("settings.paperless.disconnect")}
               </Button>
             )}
@@ -668,6 +676,14 @@ const HomeBox = ({ s }: { s: SettingsT }) => {
           </label>
         </>
       )}
+      <ConfirmDialog
+        open={disconnecting}
+        onOpenChange={setDisconnecting}
+        title={t("settings.homebox.disconnectTitle")}
+        description={t("settings.homebox.disconnectText")}
+        confirmLabel={t("settings.paperless.disconnect")}
+        onConfirm={() => void disconnect()}
+      />
     </Section>
   );
 };
@@ -921,6 +937,7 @@ const Calendar = () => {
   const { data, isPending, isError, refetch } = useQuery({ queryKey: keys.calendar, queryFn: api.calendar });
   const [busy, setBusy] = useState(false);
   const [renewing, setRenewing] = useState(false);
+  const [turningOff, setTurningOff] = useState(false);
   const url = data?.url ?? null;
 
   const change = async (call: () => Promise<{ url: string | null }>, message: string) => {
@@ -933,6 +950,7 @@ const Calendar = () => {
     } finally {
       setBusy(false);
       setRenewing(false);
+      setTurningOff(false);
     }
   };
 
@@ -1003,11 +1021,7 @@ const Calendar = () => {
             <Button variant="ghost" disabled={busy} onClick={() => setRenewing(true)}>
               {t("settings.calendar.renew")}
             </Button>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void change(api.deleteCalendar, t("settings.calendar.removed"))}
-            >
+            <Button variant="ghost" disabled={busy} onClick={() => setTurningOff(true)}>
               {t("settings.calendar.remove")}
             </Button>
           </div>
@@ -1021,6 +1035,15 @@ const Calendar = () => {
         confirmLabel={t("settings.calendar.renewConfirm")}
         loading={busy}
         onConfirm={() => void change(api.renewCalendar, t("settings.calendar.renewed"))}
+      />
+      <ConfirmDialog
+        open={turningOff}
+        onOpenChange={setTurningOff}
+        title={t("settings.calendar.removeTitle")}
+        description={t("settings.calendar.removeText")}
+        confirmLabel={t("settings.calendar.remove")}
+        loading={busy}
+        onConfirm={() => void change(api.deleteCalendar, t("settings.calendar.removed"))}
       />
     </Section>
   );

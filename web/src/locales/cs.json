@@ -442,7 +442,9 @@
       "renewTitle": "Vytvořit nový odkaz na kalendář?",
       "renewText": "Současný odkaz přestane fungovat a kalendáře, které ho odebírají, se přestanou aktualizovat. Hodí se, když se odkaz dostal ven.",
       "renewConfirm": "Vytvořit nový odkaz",
-      "loadFailed": "Odkaz na kalendář se nepodařilo načíst."
+      "loadFailed": "Odkaz na kalendář se nepodařilo načíst.",
+      "removeTitle": "Vypnout odkaz na kalendář?",
+      "removeText": "Kalendáře, které ho odebírají, se přestanou aktualizovat. Po zapnutí vznikne nový odkaz, který je potřeba znovu odebírat."
     },
     "paperless": {
       "description": "Ukládejte účtenky a návody do archivu Paperless-ngx místo sem, nebo připojte dokumenty, které už tam máte.",
@@ -496,7 +498,9 @@
       "draftItemsWorthy": "Produkty, u kterých má záruka smysl",
       "draftItemsAll": "Každý produkt",
       "draftItemsWorthyHint": "Přístroje, spotřebiče, nářadí a podobně; jídlo, knihy, hudba a další věci, které nikdo nereklamuje, se vynechají.",
-      "draftItemsAllHint": "Koncept dostane každý produkt na dokladu, nejvýš 30; vynechá se jen doprava, slevy a poplatky."
+      "draftItemsAllHint": "Koncept dostane každý produkt na dokladu, nejvýš 30; vynechá se jen doprava, slevy a poplatky.",
+      "disconnectTitle": "Odpojit Paperless-ngx?",
+      "disconnectText": "Adresa a token Paperless se z Warranteed odeberou. Dokumenty zůstanou v Paperless, ale Warranteed je nezobrazí, neuloží tam nové ani nevytvoří koncepty, dokud token znovu nezadáte."
     },
     "homebox": {
       "description": "Udržujte inventář v HomeBoxu v souladu: přidejte produkt ze záruky jako položku, nebo ho propojte s položkou, která už tam je.",
@@ -507,7 +511,9 @@
       "connected": "Připojeno jako {{name}}",
       "saved": "Klíč k HomeBoxu uložen",
       "photosDefault": "Ukládat fotky produktu do HomeBoxu",
-      "photosDefaultHint": "U záruk propojených s položkou. Při každém nahrání můžete zvolit jinak; fotky u ostatních záruk se ukládají sem."
+      "photosDefaultHint": "U záruk propojených s položkou. Při každém nahrání můžete zvolit jinak; fotky u ostatních záruk se ukládají sem.",
+      "disconnectTitle": "Odpojit HomeBox?",
+      "disconnectText": "API klíč HomeBox se z Warranteed odebere. Položky zůstanou v HomeBox, ale fotky, které jste tam uložili, se nezobrazí a reklamace se nebudou kopírovat, dokud klíč znovu neuložíte."
     },
     "household": {
       "description_one": "Domácnost sdílí {{count}} člověk. Nové záruky se sdílejí automaticky; kteroukoli můžete nastavit jako soukromou.",
