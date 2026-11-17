@@ -75,6 +75,9 @@ type WherehouseLink struct {
 	Thing int64  `json:"thing"`
 	Label string `json:"label"`
 	Path  string `json:"path"`
+	// Household is the Wherehouse household the thing is in, 0 if not
+	// known yet.
+	Household int64 `json:"household"`
 }
 
 // UserRef names a user without exposing their details.
@@ -210,7 +213,8 @@ const warrantyCols = `w.id, w.product_name, w.brand, w.model, w.vendor, w.order_
 	w.warranty_months, w.warranty_end_date, w.is_lifetime, w.expires_on, w.price, w.currency, w.product_url,
 	w.notes, w.archived_at, w.created_at, w.updated_at, w.space_id, s.kind, w.user_id, COALESCE(u.name, ''),
 	w.homebox_id, w.homebox_asset_id, w.draft, w.date_sold, w.date_received, w.quantity,
-	w.voided_at, w.void_reason, w.wherehouse_thing, w.wherehouse_label, w.wherehouse_path`
+	w.voided_at, w.void_reason, w.wherehouse_thing, w.wherehouse_label, w.wherehouse_path,
+	COALESCE(w.wherehouse_household, 0)`
 
 const warrantyFrom = `warranties w JOIN spaces s ON s.id = w.space_id LEFT JOIN users u ON u.id = w.user_id`
 
@@ -224,7 +228,7 @@ func scanWarranty(row interface{ Scan(...any) error }) (*Warranty, error) {
 		&w.WarrantyMonths, &w.WarrantyEndDate, &w.IsLifetime, &w.ExpiresOn, &w.Price, &w.Currency,
 		&w.ProductURL, &w.Notes, &w.ArchivedAt, &w.CreatedAt, &w.UpdatedAt, &w.SpaceID, &w.SpaceKind,
 		&w.AddedBy.ID, &w.AddedBy.Name, &homeboxID, &homeboxAssetID, &w.Draft, &dates.Sold, &dates.Received, &w.Quantity,
-		&w.VoidedAt, &w.VoidReason, &whThing, &wh.Label, &wh.Path)
+		&w.VoidedAt, &w.VoidReason, &whThing, &wh.Label, &wh.Path, &wh.Household)
 	if err != nil {
 		return nil, err
 	}

@@ -26,18 +26,22 @@ func TestSealedTokens(t *testing.T) {
 	if err := s.SealTokens(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetWherehouseConnection(ctx, u, "wh-token", "Home"); err != nil {
+	conn, err := s.SaveWherehouseConn(ctx, u, 1, "Home", "wh-token")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetWherehouseHookSecret(ctx, u, "hook-secret"); err != nil {
+	if err := s.SetWherehouseHookSecret(ctx, conn, "hook-secret"); err != nil {
 		t.Fatal(err)
 	}
 	st, err = s.Settings(ctx, u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.PaperlessToken != "pl-token" || st.HomeBoxToken != "hb-token" || st.WherehouseToken != "wh-token" {
-		t.Errorf("tokens read back: %q %q %q", st.PaperlessToken, st.HomeBoxToken, st.WherehouseToken)
+	if st.PaperlessToken != "pl-token" || st.HomeBoxToken != "hb-token" {
+		t.Errorf("tokens read back: %q %q", st.PaperlessToken, st.HomeBoxToken)
+	}
+	if conns, err := s.WherehouseConns(ctx, u); err != nil || len(conns) != 1 || conns[0].Token != "wh-token" {
+		t.Errorf("wherehouse connections = %+v, %v", conns, err)
 	}
 	if hooks, err := s.WherehouseHooks(ctx); err != nil || len(hooks) != 1 || hooks[0].Secret != "hook-secret" {
 		t.Errorf("hooks = %+v, %v", hooks, err)
@@ -49,6 +53,9 @@ func TestSealedTokens(t *testing.T) {
 	s.SetKey(other)
 	if _, err := s.Settings(ctx, u); err == nil {
 		t.Error("tokens read with another key")
+	}
+	if _, err := s.WherehouseConns(ctx, u); err == nil {
+		t.Error("wherehouse token read with another key")
 	}
 	if _, err := s.WherehouseHooks(ctx); err == nil {
 		t.Error("ping secret read with another key")

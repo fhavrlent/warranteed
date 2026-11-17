@@ -98,7 +98,7 @@ func TestWherehouseClaimEntryNewerThanRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wh := f.srv.wherehouseFor(st)
+	wh := f.client(t)
 	before, err := wh.Get(ctx, wr.Wherehouse.Thing)
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestWherehouseRestoredThingKeepsClaimEntries(t *testing.T) {
 	restored.Maintenance[0].ID = f.wh.last
 	delete(f.wh.things, old)
 	f.wh.mu.Unlock()
-	if err := f.srv.adoptWherehouse(ctx, f.alice.ID, true); err != nil {
+	if err := f.srv.adoptWherehouse(ctx, f.alice.ID, f.client(t), true); err != nil {
 		t.Fatal(err)
 	}
 	f.srv.background.Wait()
@@ -236,11 +236,7 @@ func TestWherehouseDetailsChangedMeanwhile(t *testing.T) {
 	f.wh.things[thing].Notes = "On the desk"
 	f.wh.mu.Unlock()
 	stale := f.warranty(t, f.warrantyID)
-	st, err := f.srv.store.Settings(ctx, f.alice.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wh := f.srv.wherehouseFor(st)
+	wh := f.client(t)
 	th, err := wh.Get(ctx, thing)
 	if err != nil {
 		t.Fatal(err)
@@ -442,8 +438,7 @@ func TestWherehouseRestoredThingDocumentStaysADocument(t *testing.T) {
 	restored.Photos = []map[string]int64{{"id": f.wh.last, "size": int64(len(photoBytes))}}
 	delete(f.wh.things, old)
 	f.wh.mu.Unlock()
-	st, _ := f.srv.store.Settings(ctx, f.alice.ID)
-	th, err := f.srv.wherehouseFor(st).Get(ctx, restored.ID)
+	th, err := f.client(t).Get(ctx, restored.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

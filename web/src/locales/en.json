@@ -530,14 +530,16 @@
     },
     "wherehouse": {
       "description": "Keep warranted products in your Wherehouse inventory: where they are, with their warranty. Selling or archiving a thing there archives its warranty here.",
-      "connected": "Connected to the household “{{household}}”",
       "connect": "Connect to Wherehouse",
+      "connectOne": "Connect",
+      "chooseHouseholds": "Choose households",
+      "notConnectedHint": "Warranteed isn’t connected to these households yet. Connect one to keep its things’ warranties here too.",
       "connectedToast": "Connected to Wherehouse",
       "failed": "Couldn’t connect to Wherehouse. Try again.",
-      "disconnectTitle": "Disconnect Wherehouse?",
+      "disconnectTitle": "Disconnect “{{household}}”?",
       "revokeManually": "Disconnected, but Wherehouse couldn’t be reached to delete Warranteed’s access. Delete the token in Wherehouse under Settings → API tokens.",
-      "disconnectText": "Warranteed stops sending changes to Wherehouse and reading them from it. Without the option below, warranties stay linked, and connecting again carries on from there. Photos and documents kept only in Wherehouse come back here.",
-      "unlinkAll": "Also unlink all warranties",
+      "disconnectText": "Warranteed stops sending changes to this household and reading them from it. Without the option below, its warranties stay linked, and connecting it again carries on from there. Photos and documents kept only there come back here.",
+      "unlinkAll": "Also unlink its warranties",
       "unlinkAllHint": "Their things in Wherehouse keep the purchase details as their own. A warranty someone else still uses through their own connection stays linked.",
       "photosOnly": "Keep product photos only in Wherehouse",
       "photosOnlyHint": "For warranties linked to a thing: their photos are the thing's photos, kept there and not here as well, so there's one copy. Photos added or deleted on either side show on both. If a warranty is unlinked, you disconnect or turn this off, its photos come back here."
@@ -789,6 +791,8 @@
     "linkButton": "Link",
     "search": "Search Wherehouse",
     "noResults": "Nothing found",
-    "addOnConfirm": "Add to Wherehouse"
+    "addOnConfirm": "Add to Wherehouse",
+    "household": "Household",
+    "householdUnnamed": "Unnamed household"
   }
 }

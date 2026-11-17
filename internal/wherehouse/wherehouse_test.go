@@ -71,7 +71,7 @@ func TestConnectURLChallenge(t *testing.T) {
 	if len(v) < 43 || len(v) > 128 {
 		t.Fatalf("verifier is %d long", len(v))
 	}
-	u, err := url.Parse(ConnectURL("https://wh.example.test/", "https://w.example.test/cb", "st", v))
+	u, err := url.Parse(ConnectURL("https://wh.example.test/", "https://w.example.test/cb", "st", v, 5))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,8 @@ func TestConnectURLChallenge(t *testing.T) {
 	if got := Challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"); got != "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" {
 		t.Errorf("challenge = %s", got)
 	}
-	if q.Get("code_challenge") != Challenge(v) || q.Get("code_challenge_method") != "S256" || u.Path != "/connect" {
+	if q.Get("code_challenge") != Challenge(v) || q.Get("code_challenge_method") != "S256" || u.Path != "/connect" ||
+		q.Get("multiple") != "1" || q.Get("household") != "5" {
 		t.Errorf("connect URL = %s", u)
 	}
 }

@@ -4,13 +4,46 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { toast } from "sonner";
-import { api, errorMessage, type Warranty } from "@/lib/api";
-import { useInvalidate, usePrefs } from "@/lib/queries";
+import { api, errorMessage, type Warranty, type WherehouseConnection } from "@/lib/api";
+import { useHouseholdPick, useInvalidate, usePrefs } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { ConfirmDialog, Dialog } from "./ui/dialog";
 import { Field, Input, Select } from "./ui/input";
 import { Card } from "./ui/misc";
+
+/** Picks one of several connected households; nothing to pick with just one. */
+export const HouseholdSelect = ({
+  households,
+  value,
+  onChange,
+  className,
+  disabled,
+}: {
+  households: WherehouseConnection[];
+  value: number | undefined;
+  onChange: (id: number) => void;
+  className?: string;
+  disabled?: boolean;
+}) => {
+  const { t } = useTranslation();
+  if (households.length < 2) return null;
+  return (
+    <Select
+      value={value ?? ""}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className={className}
+      disabled={disabled}
+      aria-label={t("wherehouse.household")}
+    >
+      {households.map((h) => (
+        <option key={h.id} value={h.id}>
+          {h.name || t("wherehouse.householdUnnamed")}
+        </option>
+      ))}
+    </Select>
+  );
+};
 
 /** The warranty's thing in Wherehouse, or ways to add or link one. Hidden when the server has no Wherehouse. */
 export const WherehouseCard = ({ warranty }: { warranty: Warranty }) => {
@@ -22,6 +55,10 @@ export const WherehouseCard = ({ warranty }: { warranty: Warranty }) => {
   const [unlinking, setUnlinking] = useState(false);
   if (!settings?.wherehouseServerUrl) return null;
   const link = warranty.wherehouse;
+  // Which household it's in matters only with several.
+  const households = settings.wherehouseHouseholds;
+  const household =
+    link && households.length > 1 ? households.find((h) => h.householdId === link.household)?.name : undefined;
 
   const unlink = async () => {
     try {
@@ -45,6 +82,12 @@ export const WherehouseCard = ({ warranty }: { warranty: Warranty }) => {
             <span className="text-[13px] text-fg-subtle">{t("wherehouse.where")}</span>
             <span className="min-w-0 truncate text-right text-sm">{link.path || t("wherehouse.nowhere")}</span>
           </div>
+          {household && (
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[13px] text-fg-subtle">{t("wherehouse.household")}</span>
+              <span className="min-w-0 truncate text-right text-sm">{household}</span>
+            </div>
+          )}
           {link.label && (
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-[13px] text-fg-subtle">{t("wherehouse.label")}</span>
@@ -100,13 +143,18 @@ export const WherehouseCard = ({ warranty }: { warranty: Warranty }) => {
 const AddDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => void }) => {
   const { t } = useTranslation();
   const invalidate = useInvalidate();
-  const places = useQuery({ queryKey: ["wherehouse-places"], queryFn: api.wherehousePlaces, retry: false });
+  const { households, connection, pick } = useHouseholdPick();
+  const places = useQuery({
+    queryKey: ["wherehouse-places", connection],
+    queryFn: () => api.wherehousePlaces(connection),
+    retry: false,
+  });
   const [place, setPlace] = useState("");
   const [saving, setSaving] = useState(false);
   const add = async () => {
     setSaving(true);
     try {
-      await api.addToWherehouse(warranty.id, place ? Number(place) : null);
+      await api.addToWherehouse(warranty.id, place ? Number(place) : null, connection);
       toast.success(t("wherehouse.created"));
       onClose();
     } catch (e) {
@@ -134,6 +182,19 @@ const AddDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => v
         </>
       }
     >
+      {households.length > 1 && (
+        <Field label={t("wherehouse.household")} className="mb-4">
+          <HouseholdSelect
+            households={households}
+            value={connection}
+            disabled={saving}
+            onChange={(id) => {
+              pick(id);
+              setPlace("");
+            }}
+          />
+        </Field>
+      )}
       <Field label={t("wherehouse.place")} optional error={places.error ? errorMessage(places.error) : null}>
         <Select value={place} onChange={(e) => setPlace(e.target.value)} disabled={places.isLoading}>
           <option value="">{t("wherehouse.noPlace")}</option>
@@ -158,9 +219,10 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
     const timer = setTimeout(() => setQuery(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
+  const { households, connection, pick } = useHouseholdPick();
   const search = useQuery({
-    queryKey: ["wherehouse-search", query],
-    queryFn: () => api.searchWherehouse(query),
+    queryKey: ["wherehouse-search", query, connection],
+    queryFn: () => api.searchWherehouse(query, connection),
     retry: false,
   });
   const [picked, setPicked] = useState<number | null>(null);
@@ -170,7 +232,7 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
     if (picked === null || !pickedShown) return;
     setSaving(true);
     try {
-      await api.linkWherehouse(warranty.id, picked);
+      await api.linkWherehouse(warranty.id, picked, connection);
       toast.success(t("wherehouse.linked"));
       onClose();
     } catch (e) {
@@ -197,6 +259,19 @@ const LinkDialog = ({ warranty, onClose }: { warranty: Warranty; onClose: () => 
         </>
       }
     >
+      {households.length > 1 && (
+        <Field label={t("wherehouse.household")} className="mb-3">
+          <HouseholdSelect
+            households={households}
+            value={connection}
+            disabled={saving}
+            onChange={(id) => {
+              pick(id);
+              setPicked(null);
+            }}
+          />
+        </Field>
+      )}
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" />
         <Input

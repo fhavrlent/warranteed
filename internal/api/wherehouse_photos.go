@@ -33,14 +33,15 @@ func wherehousePhotosKey(wid int64) string { return "wh-files:" + strconv.Format
 // in the background.
 func (s *Server) settleWherehousePhotosLater(uid, wid int64) {
 	s.inBackground("wherehouse: settle photos", func(ctx context.Context) error {
-		return s.settleWherehousePhotos(ctx, uid, wid, false)
+		return s.settleWherehousePhotos(ctx, uid, wid)
 	})
 }
 
 // settleWherehousePhotos puts the warranty's photos where they belong: only
-// on its thing if uid keeps them only in Wherehouse, else here. With
-// leaving, uid is disconnecting, so they all come back here.
-func (s *Server) settleWherehousePhotos(ctx context.Context, uid, wid int64, leaving bool) error {
+// on its thing if uid keeps them only in Wherehouse and has a connection to
+// the thing's household, else here. A connection being disconnected
+// doesn't count, so they all come back here.
+func (s *Server) settleWherehousePhotos(ctx context.Context, uid, wid int64) error {
 	defer s.lockPhotos(wherehousePhotosKey(wid))()
 	wr, err := s.store.GetWarranty(ctx, uid, wid)
 	if errors.Is(err, store.ErrNotFound) {
@@ -53,11 +54,33 @@ func (s *Server) settleWherehousePhotos(ctx context.Context, uid, wid int64, lea
 	if err != nil {
 		return err
 	}
-	var wh *wherehouse.Client
-	if !leaving && !s.leavingWherehouse(uid) {
-		wh = s.wherehouseFor(st)
+	wh, err := s.ownWherehouse(ctx, uid, wr)
+	if err != nil {
+		return err
 	}
 	return s.settlePhotos(ctx, uid, st, wh, wr)
+}
+
+// ownWherehouse returns uid's connection to the household wr's thing is in,
+// nil if they have none or it's being disconnected.
+func (s *Server) ownWherehouse(ctx context.Context, uid int64, wr *store.Warranty) (*wherehouse.Client, error) {
+	conns, err := s.wherehouseConns(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	for _, wh := range conns {
+		if s.leavingWherehouse(wh) {
+			continue
+		}
+		err := s.thingHere(ctx, wh, wr)
+		if err == nil {
+			return wh, nil
+		}
+		if !wherehouseNotFound(err) {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 // settlePhotos does settleWherehousePhotos' work while holding its lock. wh
@@ -84,7 +107,7 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 	)
 	getReaders := func() ([]*wherehouse.Client, error) {
 		if readers == nil {
-			clients, _, err := s.wherehouseClients(ctx, uid, wr.ID)
+			clients, err := s.wherehouseReaders(ctx, uid, wr.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -434,7 +457,7 @@ func readWherehousePhoto(ctx context.Context, clients []*wherehouse.Client, id i
 // photo's preview,
 // through the viewer's connection or another one that can see the warranty.
 func (s *Server) proxyWherehousePhoto(w http.ResponseWriter, r *http.Request, a *store.Attachment, thumb, download bool) {
-	clients, _, err := s.wherehouseClients(r.Context(), userID(r), a.WarrantyID)
+	clients, err := s.wherehouseReaders(r.Context(), userID(r), a.WarrantyID)
 	if err != nil {
 		fail(w, err)
 		return
@@ -479,7 +502,7 @@ func (s *Server) proxyWherehousePhoto(w http.ResponseWriter, r *http.Request, a 
 
 // settleAllWherehousePhotos settles the photos of every warranty uid can see
 // that is linked or has photos in Wherehouse, e.g. after the setting changed.
-func (s *Server) settleAllWherehousePhotos(ctx context.Context, uid int64, leaving bool) error {
+func (s *Server) settleAllWherehousePhotos(ctx context.Context, uid int64) error {
 	states, err := s.store.WherehouseStates(ctx, uid)
 	if err != nil {
 		return err
@@ -500,7 +523,7 @@ func (s *Server) settleAllWherehousePhotos(ctx context.Context, uid int64, leavi
 			continue
 		}
 		seen[id] = true
-		if err := s.settleWherehousePhotos(ctx, uid, id, leaving); err != nil {
+		if err := s.settleWherehousePhotos(ctx, uid, id); err != nil {
 			errs = append(errs, err)
 		}
 	}

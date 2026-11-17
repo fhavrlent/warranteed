@@ -592,7 +592,7 @@ func (s *Server) confirmWarranty(w http.ResponseWriter, r *http.Request) {
 	if in.Wherehouse {
 		if _, busy := s.homeboxBusy.LoadOrStore(wherehouseKey(id), true); !busy {
 			defer s.homeboxBusy.Delete(wherehouseKey(id))
-			if wr, err = s.addDraftToWherehouse(r.Context(), uid, id); err != nil {
+			if wr, err = s.addDraftToWherehouse(r.Context(), uid, id, connParam(r)); err != nil {
 				fail(w, err)
 				return
 			}
@@ -602,9 +602,10 @@ func (s *Server) confirmWarranty(w http.ResponseWriter, r *http.Request) {
 }
 
 // addDraftToWherehouse makes a thing for a confirmed draft, with no place
-// yet, unless it's linked already. The warranty is confirmed either way; the
+// yet, in the household of the connection conn (0: the person's first),
+// unless it's linked already. The warranty is confirmed either way; the
 // person can add it to Wherehouse again from its page.
-func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id int64) (*store.Warranty, error) {
+func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id, conn int64) (*store.Warranty, error) {
 	wr, err := s.store.GetWarranty(ctx, uid, id)
 	if err != nil || wr.Wherehouse != nil {
 		return wr, err
@@ -613,9 +614,9 @@ func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id int64) (*stor
 	if err != nil {
 		return nil, err
 	}
-	wh := s.wherehouseFor(st)
-	if wh == nil {
-		return wr, nil
+	wh, err := s.pickWherehouse(ctx, uid, conn)
+	if err != nil || wh == nil {
+		return wr, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()

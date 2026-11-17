@@ -38,9 +38,11 @@ type settingsResponse struct {
 	HasHomeBoxToken  bool   `json:"hasHomeboxToken"`
 	HomeBoxEnabled   bool   `json:"homeboxEnabled"`
 	// WherehouseServerURL is where browsers open the server's Wherehouse,
-	// empty if none; WherehouseConnected says this person connected to it.
-	WherehouseServerURL string `json:"wherehouseServerUrl"`
-	WherehouseConnected bool   `json:"wherehouseConnected"`
+	// empty if none; WherehouseConnected says this person connected to it,
+	// to the households in WherehouseHouseholds.
+	WherehouseServerURL  string                `json:"wherehouseServerUrl"`
+	WherehouseConnected  bool                  `json:"wherehouseConnected"`
+	WherehouseHouseholds []wherehouseHousehold `json:"wherehouseHouseholds"`
 	// Names of the custom fields links are written to in Paperless.
 	PaperlessWarrantyField string `json:"paperlessWarrantyField"`
 	PaperlessHomeBoxField  string `json:"paperlessHomeboxField"`
@@ -65,7 +67,26 @@ func (s *Server) paperlessWebURL(st *store.Settings, admin bool) string {
 	return pc.BaseURL
 }
 
-func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsResponse {
+// wherehouseHousehold is a household the person is connected to: ID is the
+// connection's, which requests name, and HouseholdID Wherehouse's (0 if not
+// known yet).
+type wherehouseHousehold struct {
+	ID          int64  `json:"id"`
+	HouseholdID int64  `json:"householdId"`
+	Name        string `json:"name"`
+}
+
+func (s *Server) settingsResponse(ctx context.Context, uid int64, st *store.Settings, admin bool) (settingsResponse, error) {
+	households := []wherehouseHousehold{}
+	if s.cfg.Wherehouse.URL != "" {
+		conns, err := s.store.WherehouseConns(ctx, uid)
+		if err != nil {
+			return settingsResponse{}, err
+		}
+		for _, c := range conns {
+			households = append(households, wherehouseHousehold{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Household})
+		}
+	}
 	return settingsResponse{
 		Settings:               st,
 		HasPaperlessToken:      st.PaperlessToken != "",
@@ -83,12 +104,22 @@ func (s *Server) settingsResponse(st *store.Settings, admin bool) settingsRespon
 		HasHomeBoxToken:        st.HomeBoxToken != "",
 		HomeBoxEnabled:         s.homeboxFor(st) != nil,
 		WherehouseServerURL:    s.cfg.Wherehouse.PublicURL,
-		WherehouseConnected:    s.wherehouseFor(st) != nil,
+		WherehouseConnected:    len(households) > 0,
+		WherehouseHouseholds:   households,
 		PaperlessWarrantyField: s.cfg.Paperless.WarrantyField,
 		PaperlessHomeBoxField:  s.cfg.Paperless.HomeBoxField,
 		DraftSources:           s.draftSources(),
 		WebhookEnabled:         s.cfg.Paperless.WebhookSecret != "" && s.cfg.Paperless.URL != "",
+	}, nil
+}
+
+func (s *Server) writeSettings(w http.ResponseWriter, r *http.Request, st *store.Settings) {
+	res, err := s.settingsResponse(r.Context(), userID(r), st, isAdmin(r))
+	if err != nil {
+		fail(w, err)
+		return
 	}
+	writeJSON(w, 200, res)
 }
 
 // paperlessFor returns the Paperless client a user is allowed to use.
@@ -148,7 +179,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		st.BrowserLanguage = lang
 	}
-	writeJSON(w, 200, s.settingsResponse(st, isAdmin(r)))
+	s.writeSettings(w, r, st)
 }
 
 type settingsInput struct {
@@ -280,17 +311,23 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			defer s.background.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
-			if err := s.settleAllWherehousePhotos(ctx, uid, false); err != nil {
+			if err := s.settleAllWherehousePhotos(ctx, uid); err != nil {
 				slog.Warn("wherehouse: move photos", "err", err)
 			}
 			if on {
 				// Photos the things already had come here too, though
 				// nothing changed there to bring them.
-				s.sendAllToWherehouse(ctx, uid)
+				conns, err := s.wherehouseConns(ctx, uid)
+				if err != nil {
+					slog.Warn("wherehouse: move photos", "err", err)
+				}
+				for _, wh := range conns {
+					s.sendAllToWherehouse(ctx, uid, wh)
+				}
 			}
 		}()
 	}
-	writeJSON(w, 200, s.settingsResponse(st, isAdmin(r)))
+	s.writeSettings(w, r, st)
 }
 
 func (s *Server) notifyPolicy() notify.Policy {

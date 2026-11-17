@@ -12,15 +12,19 @@ import (
 // link, and the claims' entries there with it. What was last seen of the
 // thing before is forgotten too, so another thing starts afresh.
 func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *WherehouseLink) error {
-	var thing any
+	var thing, household any
 	label, path := "", ""
 	if link != nil {
 		thing, label, path = link.Thing, link.Label, link.Path
+		if link.Household != 0 {
+			household = link.Household
+		}
 	}
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE warranties AS w SET wherehouse_thing = ?, wherehouse_label = ?, wherehouse_path = ?,
-			wherehouse_unlinked = wherehouse_unlinked AND ? IS NULL, wherehouse_fields = '', updated_at = ?
-		WHERE `+visibleTo+` AND w.id = ?`, thing, label, path, thing, now(), userID, id)
+			wherehouse_household = ?, wherehouse_unlinked = wherehouse_unlinked AND ? IS NULL, wherehouse_fields = '',
+			updated_at = ?
+		WHERE `+visibleTo+` AND w.id = ?`, thing, label, path, household, thing, now(), userID, id)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
 		return ErrThingTaken
 	}
@@ -145,62 +149,141 @@ func (s *Store) SetWherehouseSeen(ctx context.Context, warrantyID int64, label, 
 	return err
 }
 
-// SetWherehouseConnection saves or (with an empty token) forgets a person's
-// Wherehouse connection.
-func (s *Store) SetWherehouseConnection(ctx context.Context, userID int64, token, household string) error {
+// WherehouseConn is a person's connection to one Wherehouse household.
+type WherehouseConn struct {
+	ID, UserID int64
+	// HouseholdID is 0 for a connection made before households were
+	// recorded, until it's asked.
+	HouseholdID int64
+	Household   string
+	Token       string
+	// Since is how far its changes were read.
+	Since string
+}
+
+const wherehouseConnCols = `id, user_id, household_id, household, token, since`
+
+func (s *Store) wherehouseConns(ctx context.Context, where string, args ...any) ([]WherehouseConn, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+wherehouseConnCols+` FROM wherehouse_connections `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WherehouseConn
+	for rows.Next() {
+		var c WherehouseConn
+		if err := rows.Scan(&c.ID, &c.UserID, &c.HouseholdID, &c.Household, &c.Token, &c.Since); err != nil {
+			return nil, err
+		}
+		if c.Token, err = s.open(c.Token); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// WherehouseConns lists a person's Wherehouse connections, oldest first.
+func (s *Store) WherehouseConns(ctx context.Context, userID int64) ([]WherehouseConn, error) {
+	return s.wherehouseConns(ctx, `WHERE user_id = ? ORDER BY id`, userID)
+}
+
+// AllWherehouseConns lists everyone's Wherehouse connections.
+func (s *Store) AllWherehouseConns(ctx context.Context) ([]WherehouseConn, error) {
+	return s.wherehouseConns(ctx, `ORDER BY user_id, id`)
+}
+
+// WherehouseConnByID returns a connection, ErrNotFound if it's gone.
+func (s *Store) WherehouseConnByID(ctx context.Context, id int64) (*WherehouseConn, error) {
+	cs, err := s.wherehouseConns(ctx, `WHERE id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(cs) == 0 {
+		return nil, ErrNotFound
+	}
+	return &cs[0], nil
+}
+
+// WherehouseConnsFor lists the connections of the people sharing a
+// warranty, for reaching its thing: theirs in turn, oldest first.
+func (s *Store) WherehouseConnsFor(ctx context.Context, warrantyID int64) ([]WherehouseConn, error) {
+	return s.wherehouseConns(ctx, `WHERE user_id IN (SELECT sm.user_id FROM warranties w
+		JOIN space_members sm ON sm.space_id = w.space_id WHERE w.id = ?) ORDER BY user_id, id`, warrantyID)
+}
+
+// SaveWherehouseConn saves a person's connection to a household, in place
+// of one they had to it, and returns its ID. Its changes are read afresh.
+func (s *Store) SaveWherehouseConn(ctx context.Context, userID, householdID int64, household, token string) (int64, error) {
 	token, err := s.seal(token)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_token = ?, wherehouse_household = ?, wherehouse_since = '',
-		wherehouse_hook_secret = '' WHERE user_id = ?`, token, household, userID)
+	var id int64
+	err = s.db.QueryRowContext(ctx, `INSERT INTO wherehouse_connections (user_id, household_id, household, token)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (user_id, household_id) WHERE household_id != 0 DO UPDATE SET household = excluded.household,
+			token = excluded.token, hook_secret = '', since = ''
+		RETURNING id`, userID, householdID, household, token).Scan(&id)
+	return id, err
+}
+
+// SetWherehouseConnHousehold records which household a connection made
+// before households were recorded is to. If the person has another
+// connection to it, that one stays and this one is deleted: merged says so.
+func (s *Store) SetWherehouseConnHousehold(ctx context.Context, id, householdID int64, household string) (merged bool, err error) {
+	_, err = s.db.ExecContext(ctx, `UPDATE wherehouse_connections SET household_id = ?, household = ? WHERE id = ?`,
+		householdID, household, id)
+	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		_, err = s.db.ExecContext(ctx, `DELETE FROM wherehouse_connections WHERE id = ?`, id)
+		return err == nil, err
+	}
+	return false, err
+}
+
+// DeleteWherehouseConn forgets a connection.
+func (s *Store) DeleteWherehouseConn(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM wherehouse_connections WHERE id = ?`, id)
 	return err
 }
 
-// SetWherehouseSince records how far a person's Wherehouse changes were read.
-func (s *Store) SetWherehouseSince(ctx context.Context, userID int64, since string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_since = ? WHERE user_id = ?`, since, userID)
+// SetWherehouseSince records how far a connection's changes were read.
+func (s *Store) SetWherehouseSince(ctx context.Context, connID int64, since string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE wherehouse_connections SET since = ? WHERE id = ?`, since, connID)
 	return err
 }
 
-// WherehouseConnected lists everyone connected to Wherehouse.
-func (s *Store) WherehouseConnected(ctx context.Context) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM user_settings WHERE wherehouse_token != '' ORDER BY user_id`)
+// SetWherehouseHousehold records the household a warranty's thing is in,
+// when it wasn't known.
+func (s *Store) SetWherehouseHousehold(ctx context.Context, warrantyID, thing, household int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE warranties SET wherehouse_household = ?
+		WHERE id = ? AND wherehouse_thing = ? AND wherehouse_household IS NULL`, household, warrantyID, thing)
+	return err
+}
+
+// HouseholdLink is a warranty linked to a thing, with whose it is.
+type HouseholdLink struct {
+	ID, Owner, Thing int64
+}
+
+// LinkedInHousehold lists every warranty linked to a thing in a household,
+// whoever can see it.
+func (s *Store) LinkedInHousehold(ctx context.Context, household int64) ([]HouseholdLink, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, wherehouse_thing FROM warranties
+		WHERE wherehouse_thing IS NOT NULL AND wherehouse_household = ? ORDER BY id`, household)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []int64
+	var out []HouseholdLink
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var l HouseholdLink
+		if err := rows.Scan(&l.ID, &l.Owner, &l.Thing); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		out = append(out, l)
 	}
-	return ids, rows.Err()
-}
-
-// WherehouseUsers lists the people sharing a warranty who are connected to
-// Wherehouse, for updating its thing there.
-func (s *Store) WherehouseUsers(ctx context.Context, warrantyID int64) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sm.user_id FROM warranties w JOIN space_members sm ON sm.space_id = w.space_id
-		JOIN user_settings us ON us.user_id = sm.user_id
-		WHERE w.id = ? AND us.wherehouse_token != '' ORDER BY sm.user_id`, warrantyID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+	return out, rows.Err()
 }
 
 // ClaimEntry is a claim's Wherehouse maintenance entry and the thing it is on.
@@ -225,27 +308,27 @@ func (s *Store) SetClaimWherehouseEntry(ctx context.Context, claimID, thing, ent
 	return n > 0, err
 }
 
-// SetWherehouseHookSecret saves the secret a person's Wherehouse pings are
-// signed with.
-func (s *Store) SetWherehouseHookSecret(ctx context.Context, userID int64, secret string) error {
+// SetWherehouseHookSecret saves the secret a connection's pings are signed
+// with.
+func (s *Store) SetWherehouseHookSecret(ctx context.Context, connID int64, secret string) error {
 	secret, err := s.seal(secret)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE user_settings SET wherehouse_hook_secret = ? WHERE user_id = ?`, secret, userID)
+	_, err = s.db.ExecContext(ctx, `UPDATE wherehouse_connections SET hook_secret = ? WHERE id = ?`, secret, connID)
 	return err
 }
 
-// WherehouseHook is a person's ping secret.
+// WherehouseHook is a connection's ping secret.
 type WherehouseHook struct {
-	UserID int64
-	Secret string
+	ConnID, UserID int64
+	Secret         string
 }
 
-// WherehouseHooks lists the ping secrets of everyone connected.
+// WherehouseHooks lists the ping secrets of every connection.
 func (s *Store) WherehouseHooks(ctx context.Context) ([]WherehouseHook, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT user_id, wherehouse_hook_secret FROM user_settings
-		WHERE wherehouse_token != '' AND wherehouse_hook_secret != ''`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, hook_secret FROM wherehouse_connections
+		WHERE hook_secret != ''`)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +336,7 @@ func (s *Store) WherehouseHooks(ctx context.Context) ([]WherehouseHook, error) {
 	var out []WherehouseHook
 	for rows.Next() {
 		var h WherehouseHook
-		if err := rows.Scan(&h.UserID, &h.Secret); err != nil {
+		if err := rows.Scan(&h.ConnID, &h.UserID, &h.Secret); err != nil {
 			return nil, err
 		}
 		if h.Secret, err = s.open(h.Secret); err != nil {
@@ -277,13 +360,15 @@ type WherehouseState struct {
 	ID        int64
 	Thing     *int64
 	HomeBoxID string
+	// Household is the household the thing is in, 0 if not known yet.
+	Household int64
 }
 
 // WherehouseStates lists the confirmed warranties someone can see that are
 // linked to Wherehouse or to HomeBox.
 func (s *Store) WherehouseStates(ctx context.Context, userID int64) ([]WherehouseState, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT w.id, w.wherehouse_thing, w.homebox_id FROM warranties w
-		WHERE `+visibleTo+` AND NOT w.draft
+	rows, err := s.db.QueryContext(ctx, `SELECT w.id, w.wherehouse_thing, w.homebox_id, COALESCE(w.wherehouse_household, 0)
+		FROM warranties w WHERE `+visibleTo+` AND NOT w.draft
 			AND (w.wherehouse_thing IS NOT NULL OR (w.homebox_id != '' AND NOT w.wherehouse_unlinked)) ORDER BY w.id`, userID)
 	if err != nil {
 		return nil, err
@@ -292,7 +377,7 @@ func (s *Store) WherehouseStates(ctx context.Context, userID int64) ([]Wherehous
 	var out []WherehouseState
 	for rows.Next() {
 		var st WherehouseState
-		if err := rows.Scan(&st.ID, &st.Thing, &st.HomeBoxID); err != nil {
+		if err := rows.Scan(&st.ID, &st.Thing, &st.HomeBoxID, &st.Household); err != nil {
 			return nil, err
 		}
 		out = append(out, st)
@@ -549,4 +634,16 @@ func (s *Store) WherehouseShared(ctx context.Context, id int64) (bool, error) {
 func (s *Store) NotOnWherehouseThing(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE attachments SET wherehouse_attachment = NULL, wherehouse_seen = '' WHERE id = ?`, id)
 	return err
+}
+
+// WherehouseHouseholdOf returns the household a warranty's thing is in, 0 if
+// not known or not linked.
+func (s *Store) WherehouseHouseholdOf(ctx context.Context, warrantyID int64) (int64, error) {
+	var h int64
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(wherehouse_household, 0) FROM warranties WHERE id = ?`,
+		warrantyID).Scan(&h)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return h, err
 }

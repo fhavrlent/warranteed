@@ -318,7 +318,7 @@ func TestWherehouseAllInStepAtStart(t *testing.T) {
 		Status: store.StatusReady, AddedBy: &f.alice.ID}); err != nil {
 		t.Fatal(err)
 	}
-	f.srv.sendAllToWherehouse(context.Background(), f.alice.ID)
+	f.srv.sendAllToWherehouse(context.Background(), f.alice.ID, f.client(t))
 	if th := f.wh.get(thing); len(th.Attachments) != 2 || th.Attachments[1]["kind"] != "other" {
 		t.Errorf("thing documents = %+v", th.Attachments)
 	}
