@@ -84,6 +84,7 @@ func run() error {
 
 	go srv.PollPaperless(ctx)
 	go srv.SyncWherehouse(ctx)
+	go srv.PushWherehouse(ctx)
 	go notifier.Run(ctx)
 	go func() {
 		t := time.NewTicker(6 * time.Hour)

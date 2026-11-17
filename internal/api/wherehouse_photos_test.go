@@ -212,7 +212,7 @@ func TestWherehousePhotosComeBack(t *testing.T) {
 				r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 				w := httptest.NewRecorder()
 				f.srv.disconnectWherehouse(w, r)
-				if w.Code != http.StatusNoContent {
+				if w.Code != http.StatusOK {
 					t.Fatalf("disconnect = %d %s", w.Code, w.Body)
 				}
 				f.srv.background.Wait()
@@ -391,7 +391,7 @@ func TestWherehousePhotosStayBackWhileDisconnecting(t *testing.T) {
 	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 	w := httptest.NewRecorder()
 	f.srv.disconnectWherehouse(w, r)
-	if w.Code != http.StatusNoContent {
+	if w.Code != http.StatusOK {
 		t.Fatalf("disconnect = %d %s", w.Code, w.Body)
 	}
 	f.srv.background.Wait()

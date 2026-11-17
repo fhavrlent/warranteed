@@ -698,8 +698,11 @@ const Wherehouse = ({ s }: { s: SettingsT }) => {
   const disconnect = async () => {
     setDisconnecting(true);
     try {
-      await api.disconnectWherehouse(unlinkAll);
+      const res = await api.disconnectWherehouse(unlinkAll);
       setAsking(false);
+      // Wherehouse couldn't be told: its token is deleted there by hand.
+      if (res.revokeManually)
+        toast.warning(t("settings.wherehouse.revokeManually"), { duration: Infinity, closeButton: true });
       await qc.invalidateQueries();
     } catch (e) {
       toast.error(errorMessage(e));

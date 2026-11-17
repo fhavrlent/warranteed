@@ -39,8 +39,9 @@ type fakeThing struct {
 	Attachments  []map[string]any         `json:"attachments"`
 	Links        []map[string]string      `json:"links"`
 	Kind         map[string]any           `json:"kind"`
-	// app is the warranty it's linked to, or "".
-	app string
+	// app is the warranty it's linked to, or "", and link what it was told.
+	app  string
+	link wherehouse.Link
 }
 
 // fakeWherehouse keeps things in memory, the way Wherehouse's API answers
@@ -71,6 +72,15 @@ type fakeWherehouse struct {
 	failGets int
 	// onHook runs while pings are being turned on or off, before the answer.
 	onHook func()
+	// revoked is set once the token was deleted.
+	revoked bool
+	// members is how many people are in the household; 0 is one.
+	members int
+	// challenge is the PKCE challenge of the last connect, and code the code
+	// it hands back.
+	challenge, code string
+	// patches are the bodies of the thing edits, in order.
+	patches []map[string]any
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -85,6 +95,16 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	if f.rejectToken {
 		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		return
+	}
+	if r.URL.Path == "/connect/token" {
+		var in map[string]string
+		json.NewDecoder(r.Body).Decode(&in)
+		if in["code"] != f.code || in["code_verifier"] == "" || wherehouse.Challenge(in["code_verifier"]) != f.challenge {
+			http.Error(w, `{"error":"invalid code"}`, http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"token": "wh-token-2", "household": map[string]any{"id": 1, "name": "Home"}})
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
@@ -122,18 +142,31 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			send(t)
 		case http.MethodPut:
+			// Not for a connected app's token.
+			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		case http.MethodPatch:
 			var in map[string]any
 			json.NewDecoder(r.Body).Decode(&in)
-			if _, ok := in["tags"]; ok {
-				http.Error(w, "tags are names", http.StatusBadRequest)
-				return
+			f.patches = append(f.patches, in)
+			for k, v := range in {
+				switch k {
+				case "quantity":
+					t.Quantity = int(v.(float64))
+				case "name":
+					t.Name, _ = v.(string)
+				case "manufacturer":
+					t.Manufacturer, _ = v.(string)
+				case "model":
+					t.Model, _ = v.(string)
+				case "serial":
+					t.Serial, _ = v.(string)
+				case "notes":
+					t.Notes, _ = v.(string)
+				default:
+					http.Error(w, "unknown "+k, http.StatusBadRequest)
+					return
+				}
 			}
-			t.Quantity = int(in["quantity"].(float64))
-			t.Name, _ = in["name"].(string)
-			t.Manufacturer, _ = in["manufacturer"].(string)
-			t.Model, _ = in["model"].(string)
-			t.Serial, _ = in["serial"].(string)
-			t.Notes, _ = in["notes"].(string)
 			send(t)
 		case http.MethodDelete:
 			delete(f.things, id)
@@ -156,12 +189,16 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		var l wherehouse.Link
 		json.NewDecoder(r.Body).Decode(&l)
+		if t.app != "" && t.app != l.ExternalID {
+			http.Error(w, `{"error":"linked to another warranty"}`, http.StatusConflict)
+			return
+		}
 		for _, o := range f.things {
 			if o.app == l.ExternalID {
 				o.app = ""
 			}
 		}
-		t.app = l.ExternalID
+		t.app, t.link = l.ExternalID, l
 		send(t)
 	case len(parts) == 3 && parts[0] == "apps":
 		for _, t := range f.things {
@@ -302,6 +339,16 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.mu.Lock()
 		}
 		w.WriteHeader(http.StatusNoContent)
+	case r.URL.Path == "/api/token" && r.Method == http.MethodDelete:
+		f.revoked = true
+		f.rejectToken = true
+		w.WriteHeader(http.StatusNoContent)
+	case r.URL.Path == "/api/household":
+		members := []map[string]any{}
+		for i := range max(f.members, 1) {
+			members = append(members, map[string]any{"id": i + 1})
+		}
+		send(map[string]any{"id": 1, "name": "Home", "members": members})
 	case r.URL.Path == "/api/paperless":
 		if f.paperless == "" {
 			http.NotFound(w, r)
@@ -685,8 +732,15 @@ func TestWherehouseDisconnect(t *testing.T) {
 		r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 		w := httptest.NewRecorder()
 		f.srv.disconnectWherehouse(w, r)
-		if w.Code != http.StatusNoContent {
+		if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"revokeManually":false}` {
 			t.Fatalf("disconnect = %d %s", w.Code, w.Body)
+		}
+		// The token is deleted there.
+		f.wh.mu.Lock()
+		revoked := f.wh.revoked
+		f.wh.mu.Unlock()
+		if !revoked {
+			t.Error("the token is left in Wherehouse")
 		}
 		wr := f.warranty(t, f.warrantyID)
 		th := f.wh.get(thing)
@@ -727,8 +781,11 @@ func TestWherehouseDisconnectFromGone(t *testing.T) {
 				r = r.WithContext(auth.WithUser(r.Context(), f.alice))
 				w := httptest.NewRecorder()
 				f.srv.disconnectWherehouse(w, r)
-				if w.Code != http.StatusNoContent {
-					t.Fatalf("disconnect = %d %s", w.Code, w.Body)
+				// A token refused is gone already; one Wherehouse can't
+				// be told about is to be deleted there by hand.
+				want := fmt.Sprintf(`{"revokeManually":%v}`, how == "unreachable")
+				if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != want {
+					t.Fatalf("disconnect = %d %s, want %s", w.Code, w.Body, want)
 				}
 				st, err := f.srv.store.Settings(context.Background(), f.alice.ID)
 				if err != nil {
@@ -742,5 +799,66 @@ func TestWherehouseDisconnectFromGone(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Connecting sends a PKCE challenge, and swaps the code with its verifier,
+// which only this browser's cookie has.
+func TestWherehouseConnectPKCE(t *testing.T) {
+	f := newWherehouseFixture(t)
+	w := f.call(t, f.srv.connectWherehouse, http.MethodPost, ``)
+	if w.Code != 200 {
+		t.Fatalf("connect = %d %s", w.Code, w.Body)
+	}
+	var out struct{ URL string }
+	json.Unmarshal(w.Body.Bytes(), &out)
+	u, err := url.Parse(out.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if q.Get("code_challenge_method") != "S256" || len(q.Get("code_challenge")) != 43 || q.Get("state") == "" {
+		t.Fatalf("connect URL = %s", out.URL)
+	}
+	cookies := w.Result().Cookies()
+	var verifier string
+	for _, c := range cookies {
+		if c.Name == wherehouseVerifierCookie {
+			verifier = c.Value
+		}
+	}
+	if len(verifier) < 43 || len(verifier) > 128 || wherehouse.Challenge(verifier) != q.Get("code_challenge") {
+		t.Fatalf("verifier %q doesn't match the challenge", verifier)
+	}
+	f.wh.mu.Lock()
+	f.wh.challenge, f.wh.code = q.Get("code_challenge"), "the-code"
+	f.wh.mu.Unlock()
+
+	callback := func(drop string) string {
+		r := httptest.NewRequest(http.MethodGet, "/wherehouse/callback?code=the-code&state="+q.Get("state"), nil)
+		for _, c := range cookies {
+			if c.Name != drop {
+				r.AddCookie(c)
+			}
+		}
+		r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+		w := httptest.NewRecorder()
+		f.srv.wherehouseCallback(w, r)
+		f.srv.background.Wait()
+		return w.Header().Get("Location")
+	}
+	// Without the verifier, the code is worth nothing.
+	if to := callback(wherehouseVerifierCookie); !strings.Contains(to, "wherehouse=state") {
+		t.Errorf("without the verifier, back to %s", to)
+	}
+	if to := callback(""); !strings.Contains(to, "wherehouse=connected") {
+		t.Fatalf("back to %s", to)
+	}
+	st, err := f.srv.store.Settings(context.Background(), f.alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.WherehouseToken != "wh-token-2" {
+		t.Errorf("token = %q", st.WherehouseToken)
 	}
 }

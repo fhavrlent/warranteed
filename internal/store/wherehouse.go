@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 )
 
 // SetWherehouse links a warranty to a Wherehouse thing; nil removes the
@@ -20,6 +21,9 @@ func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *Where
 		`UPDATE warranties AS w SET wherehouse_thing = ?, wherehouse_label = ?, wherehouse_path = ?,
 			wherehouse_unlinked = wherehouse_unlinked AND ? IS NULL, wherehouse_fields = '', updated_at = ?
 		WHERE `+visibleTo+` AND w.id = ?`, thing, label, path, thing, now(), userID, id)
+	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return ErrThingTaken
+	}
 	if err != nil {
 		return err
 	}
@@ -27,6 +31,90 @@ func (s *Store) SetWherehouse(ctx context.Context, userID, id int64, link *Where
 		return ErrNotFound
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE claims SET wherehouse_entry = NULL, wherehouse_seen = '' WHERE warranty_id = ?`, id)
+	return err
+}
+
+// ErrThingTaken is linking a warranty to a thing another warranty has.
+var ErrThingTaken = errors.New("the wherehouse thing is linked to another warranty")
+
+// ThingTakenBy returns the warranty other than except that is linked to
+// thing, or 0. Its name is given only if userID can see it.
+func (s *Store) ThingTakenBy(ctx context.Context, userID, thing, except int64) (int64, string, error) {
+	var id int64
+	var name string
+	err := s.db.QueryRowContext(ctx, `SELECT w.id, CASE WHEN `+visibleTo+` THEN w.product_name ELSE '' END
+		FROM warranties w WHERE w.wherehouse_thing = ? AND w.id != ?`, userID, thing, except).Scan(&id, &name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", nil
+	}
+	return id, name, err
+}
+
+// execer runs a statement, in a transaction or not.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// queueWherehousePush records that a linked warranty's details are to be
+// sent to its thing; a warranty not linked has nothing to send.
+func queueWherehousePush(ctx context.Context, ex execer, userID, id int64) error {
+	_, err := ex.ExecContext(ctx, `INSERT INTO wherehouse_pushes (warranty_id, user_id, next_at)
+		SELECT id, ?, ? FROM warranties WHERE id = ? AND wherehouse_thing IS NOT NULL
+		ON CONFLICT (warranty_id) DO UPDATE SET user_id = excluded.user_id, seq = seq + 1, attempts = 0,
+			next_at = excluded.next_at`, userID, now(), id)
+	return err
+}
+
+// QueueWherehousePush records that a linked warranty's details are to be
+// sent to its thing, as userID.
+func (s *Store) QueueWherehousePush(ctx context.Context, userID, id int64) error {
+	return queueWherehousePush(ctx, s.db, userID, id)
+}
+
+// WherehousePush is a warranty whose details wait to be sent to its thing.
+type WherehousePush struct {
+	WarrantyID, UserID int64
+	// Seq tells this change from one made later.
+	Seq      int64
+	Attempts int
+}
+
+// WherehousePushes returns the pushes due by now, or with id only that
+// warranty's, due or not.
+func (s *Store) WherehousePushes(ctx context.Context, id int64) ([]WherehousePush, error) {
+	q := `SELECT warranty_id, user_id, seq, attempts FROM wherehouse_pushes WHERE next_at <= ? ORDER BY next_at`
+	args := []any{now()}
+	if id != 0 {
+		q, args = `SELECT warranty_id, user_id, seq, attempts FROM wherehouse_pushes WHERE warranty_id = ?`, []any{id}
+	}
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WherehousePush
+	for rows.Next() {
+		var p WherehousePush
+		if err := rows.Scan(&p.WarrantyID, &p.UserID, &p.Seq, &p.Attempts); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// DoneWherehousePush forgets a push Wherehouse took, unless the warranty
+// changed again meanwhile.
+func (s *Store) DoneWherehousePush(ctx context.Context, p WherehousePush) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM wherehouse_pushes WHERE warranty_id = ? AND seq = ?`, p.WarrantyID, p.Seq)
+	return err
+}
+
+// RetryWherehousePush tries a push again at a time, unless the warranty
+// changed again meanwhile, which tries at once.
+func (s *Store) RetryWherehousePush(ctx context.Context, p WherehousePush, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE wherehouse_pushes SET attempts = attempts + 1, next_at = ?
+		WHERE warranty_id = ? AND seq = ?`, at.UTC().Format(timeLayout), p.WarrantyID, p.Seq)
 	return err
 }
 

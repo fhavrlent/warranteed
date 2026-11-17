@@ -41,6 +41,12 @@ func wherehouseFail(w http.ResponseWriter, err error) {
 		writeMsg(w, http.StatusBadGateway, "server.wherehouseTokenRejected", nil)
 	case errors.As(err, &we) && we.NotFound():
 		writeMsg(w, http.StatusNotFound, "server.wherehouseThingGone", nil)
+	case errors.As(err, &we) && we.Conflict():
+		writeMsg(w, http.StatusConflict, "server.wherehouseThingTakenThere", nil)
+	case errors.Is(err, store.ErrThingTaken):
+		writeMsg(w, http.StatusConflict, "server.wherehouseThingTakenThere", nil)
+	case errors.Is(err, errPrivateShared):
+		writeMsg(w, http.StatusConflict, "server.wherehousePrivateShared", nil)
 	default:
 		writeErr(w, http.StatusBadGateway, err)
 	}
@@ -62,7 +68,10 @@ func (s *Server) userWherehouse(w http.ResponseWriter, r *http.Request) (*store.
 
 // ---- connecting ----
 
-const wherehouseStateCookie = "warranteed_wherehouse_state"
+const (
+	wherehouseStateCookie    = "warranteed_wherehouse_state"
+	wherehouseVerifierCookie = "warranteed_wherehouse_verifier"
+)
 
 func (s *Server) wherehouseCallbackURL() string {
 	return strings.TrimSuffix(s.cfg.AppURL.String(), "/") + "/wherehouse/callback"
@@ -78,21 +87,33 @@ func (s *Server) connectWherehouse(w http.ResponseWriter, r *http.Request) {
 	b := make([]byte, 16)
 	rand.Read(b)
 	state := hex.EncodeToString(b)
-	http.SetCookie(w, &http.Cookie{Name: wherehouseStateCookie, Value: state, Path: "/wherehouse/", MaxAge: 600,
-		HttpOnly: true, Secure: s.cfg.Secure(), SameSite: http.SameSiteLaxMode})
-	writeJSON(w, 200, map[string]string{"url": wherehouse.ConnectURL(s.cfg.Wherehouse.PublicURL, s.wherehouseCallbackURL(), state)})
+	// The code coming back is worth a token only with this verifier, which
+	// never leaves here but in swapping it.
+	verifier := wherehouse.NewVerifier()
+	for name, value := range map[string]string{wherehouseStateCookie: state, wherehouseVerifierCookie: verifier} {
+		http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/wherehouse/", MaxAge: 600,
+			HttpOnly: true, Secure: s.cfg.Secure(), SameSite: http.SameSiteLaxMode})
+	}
+	writeJSON(w, 200, map[string]string{"url": wherehouse.ConnectURL(s.cfg.Wherehouse.PublicURL, s.wherehouseCallbackURL(), state, verifier)})
 }
 
 // wherehouseCallback is where Wherehouse sends the browser back with a code,
 // which is swapped for the person's token.
 func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 	done := func(result string) {
-		http.SetCookie(w, &http.Cookie{Name: wherehouseStateCookie, Path: "/wherehouse/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.Secure()})
+		for _, name := range []string{wherehouseStateCookie, wherehouseVerifierCookie} {
+			http.SetCookie(w, &http.Cookie{Name: name, Path: "/wherehouse/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.Secure()})
+		}
 		http.Redirect(w, r, "/settings?wherehouse="+result+"#wherehouse", http.StatusSeeOther)
 	}
 	q := r.URL.Query()
 	c, err := r.Cookie(wherehouseStateCookie)
 	if err != nil || c.Value == "" || c.Value != q.Get("state") {
+		done("state")
+		return
+	}
+	v, err := r.Cookie(wherehouseVerifierCookie)
+	if err != nil || v.Value == "" {
 		done("state")
 		return
 	}
@@ -102,7 +123,7 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	got, err := wherehouse.New(s.cfg.Wherehouse.URL, "").Exchange(ctx, q.Get("code"), s.wherehouseCallbackURL())
+	got, err := wherehouse.New(s.cfg.Wherehouse.URL, "").Exchange(ctx, q.Get("code"), s.wherehouseCallbackURL(), v.Value)
 	if err != nil {
 		slog.Warn("wherehouse connect", "err", err)
 		done("failed")
@@ -141,13 +162,16 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 	done("connected")
 }
 
-// disconnectWherehouse forgets the person's connection. Links to things stay,
-// for whenever someone connects again.
+// disconnectWherehouse forgets the person's connection and deletes its token
+// in Wherehouse. Links to things stay, for whenever someone connects again.
+// If Wherehouse can't be told, it's forgotten here all the same, and the
+// answer says the token is to be deleted there by hand.
 func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 	// With ?unlink=1, warranties are unlinked too, both here and there,
 	// while the token still works.
 	unlink := r.URL.Query().Get("unlink") == "1"
 	uid := userID(r)
+	revokeManually := false
 	st, err := s.store.Settings(r.Context(), uid)
 	if err != nil {
 		fail(w, err)
@@ -179,12 +203,17 @@ func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 		if err := wh.RemoveHook(r.Context()); err != nil {
 			slog.Warn("wherehouse pings", "err", err)
 		}
+		// The token goes last: everything above still needs it.
+		if err := wh.RevokeToken(r.Context()); err != nil {
+			slog.Warn("wherehouse: delete the token there", "err", err)
+			revokeManually = true
+		}
 	}
 	if err := s.store.SetWherehouseConnection(r.Context(), uid, "", ""); err != nil {
 		fail(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, 200, map[string]bool{"revokeManually": revokeManually})
 }
 
 // leavingWherehouse reports whether uid is disconnecting from Wherehouse.
@@ -334,6 +363,21 @@ func (s *Server) linkWherehouseThing(w http.ResponseWriter, r *http.Request) {
 		writeMsg(w, http.StatusBadRequest, "server.wherehouseNeedsThing", nil)
 		return
 	}
+	// A thing belongs to one warranty.
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	other, name, err := s.store.ThingTakenBy(r.Context(), userID(r), in.ThingID, id)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if other != 0 {
+		if name == "" {
+			writeMsg(w, http.StatusConflict, "server.wherehouseThingTakenThere", nil)
+		} else {
+			writeMsg(w, http.StatusConflict, "server.wherehouseThingTaken", i18n.Args{"name": name})
+		}
+		return
+	}
 	s.linkWherehouse(w, r, false, func(context.Context, *wherehouse.Client, *store.Warranty) (int64, error) { return in.ThingID, nil })
 }
 
@@ -375,6 +419,11 @@ func (s *Server) linkWherehouse(w http.ResponseWriter, r *http.Request, created 
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
 	defer cancel()
+	// Asked before a thing is made for it.
+	if err := s.checkPrivate(ctx, wh, wr); err != nil {
+		wherehouseFail(w, err)
+		return
+	}
 	thing, err := pick(ctx, wh, wr)
 	if err != nil {
 		wherehouseFail(w, err)
@@ -423,19 +472,28 @@ func (s *Server) dropUnlinkedThing(uid, id int64, wh *wherehouse.Client, thing i
 // photos if it has none, and its claims in the maintenance log.
 func (s *Server) joinWherehouse(ctx context.Context, uid int64, st *store.Settings, wh *wherehouse.Client,
 	wr *store.Warranty, thing int64) error {
+	if err := s.checkPrivate(ctx, wh, wr); err != nil {
+		return err
+	}
 	t, err := wh.SetLink(ctx, thing, s.wherehouseLink(wr, st))
 	if err != nil {
 		return err
 	}
 	if err := s.store.SetWherehouse(ctx, uid, wr.ID, &store.WherehouseLink{Thing: t.ID, Label: t.Label, Path: t.PathText()}); err != nil {
-		// Not linked here, so not there either.
-		if err := wh.RemoveLink(ctx, t.ID); err != nil {
-			slog.Warn("wherehouse: remove a link not saved here", "thing", t.ID, "err", err)
+		// Not linked here, so not there either; but a thing another
+		// warranty here has keeps its link.
+		if !errors.Is(err, store.ErrThingTaken) {
+			if err := wh.RemoveLink(ctx, t.ID); err != nil {
+				slog.Warn("wherehouse: remove a link not saved here", "thing", t.ID, "err", err)
+			}
 		}
 		return err
 	}
 	// An edit made meanwhile found the warranty not linked yet and sent
 	// nothing; this sends the warranty as it is now.
+	if err := s.store.QueueWherehousePush(ctx, uid, wr.ID); err != nil {
+		return err
+	}
 	s.pushWherehouseLater(uid, wr.ID)
 	// A thing with photos of its own keeps them; the warranty's are taken
 	// as being there, and only photos added later are sent.
@@ -542,29 +600,124 @@ func wherehouseKey(id int64) string { return "wh:" + strconv.FormatInt(id, 10) }
 // or it's unlinked.
 func wherehousePushKey(id int64) string { return "wh-push:" + strconv.FormatInt(id, 10) }
 
-// pushWherehouseLater sends a linked warranty's changed details to its thing.
-// Pushes take turns and each reads the warranty once it's its turn, so an
-// older one can't land after a newer one.
+// pushWherehouseLater sends a linked warranty's changed details to its thing
+// now, as the push queued with the change says.
 func (s *Server) pushWherehouseLater(uid, warrantyID int64) {
 	// Its name and the other details the thing has too.
 	s.sendToWherehouseLater(uid, warrantyID)
 	s.inBackground("update wherehouse", func(ctx context.Context) error {
-		defer s.lockPhotos(wherehousePushKey(warrantyID))()
-		wr, err := s.store.GetWarranty(ctx, uid, warrantyID)
-		if err != nil || wr.Wherehouse == nil {
-			return err
+		return s.runWherehousePushes(ctx, warrantyID)
+	})
+}
+
+// PushWherehouse sends the warranty details waiting for Wherehouse: at
+// start, what waited while this was stopped, then every minute what's
+// due to be tried again.
+func (s *Server) PushWherehouse(ctx context.Context) {
+	if s.cfg.Wherehouse.URL == "" {
+		return
+	}
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
+	for {
+		if err := s.runWherehousePushes(ctx, 0); err != nil {
+			slog.Warn("update wherehouse", "err", err)
 		}
-		clients, st, err := s.wherehouseClients(ctx, uid, warrantyID)
-		if err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
 		}
-		for _, wh := range clients {
-			if _, err = wh.SetLink(ctx, wr.Wherehouse.Thing, s.wherehouseLink(wr, st)); err == nil {
+	}
+}
+
+// runWherehousePushes sends the pushes due, or with id that warranty's.
+func (s *Server) runWherehousePushes(ctx context.Context, id int64) error {
+	pushes, err := s.store.WherehousePushes(ctx, id)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, p := range pushes {
+		if ctx.Err() != nil {
+			break
+		}
+		errs = append(errs, s.pushWherehouse(ctx, p))
+	}
+	return errors.Join(errs...)
+}
+
+// pushWherehouse sends a warranty's purchase and warranty details to its
+// thing. The push is forgotten once Wherehouse took them, or tried again
+// later, a little later each time.
+func (s *Server) pushWherehouse(ctx context.Context, p store.WherehousePush) error {
+	// Pushes take turns and each reads the warranty once it's its turn, so
+	// an older one can't land after a newer one.
+	defer s.lockPhotos(wherehousePushKey(p.WarrantyID))()
+	if err := s.sendWherehouseLink(ctx, p); err != nil {
+		delay := min(time.Minute<<min(p.Attempts, 6), time.Hour)
+		if rerr := s.store.RetryWherehousePush(ctx, p, time.Now().Add(delay)); rerr != nil {
+			return rerr
+		}
+		return fmt.Errorf("warranty %d, again in %s: %w", p.WarrantyID, delay, err)
+	}
+	return s.store.DoneWherehousePush(ctx, p)
+}
+
+// sendWherehouseLink does a push's work. A warranty gone or unlinked has
+// nothing to send, and one Wherehouse won't take (its thing is gone or
+// another warranty's) is let go.
+func (s *Server) sendWherehouseLink(ctx context.Context, p store.WherehousePush) error {
+	wr, err := s.store.GetWarranty(ctx, p.UserID, p.WarrantyID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil || wr.Wherehouse == nil {
+		return err
+	}
+	clients, st, err := s.wherehouseClients(ctx, p.UserID, p.WarrantyID)
+	if err != nil {
+		return err
+	}
+	err = errNoWherehouse
+	for _, wh := range clients {
+		if err = s.checkPrivate(ctx, wh, wr); err != nil {
+			if errors.Is(err, errPrivateShared) {
+				slog.Warn("wherehouse: a private warranty isn't sent to a shared household", "warranty", wr.ID)
 				return nil
 			}
+			continue
 		}
+		if _, err = wh.SetLink(ctx, wr.Wherehouse.Thing, s.wherehouseLink(wr, st)); err == nil {
+			return nil
+		}
+		var we *wherehouse.Error
+		if errors.As(err, &we) && (we.Conflict() || we.NotFound()) {
+			slog.Warn("wherehouse: the thing won't take the warranty's details", "warranty", wr.ID, "err", err)
+			return nil
+		}
+	}
+	return err
+}
+
+// errPrivateShared is a warranty kept for its owner only ("Only me") meeting
+// a Wherehouse household that others share.
+var errPrivateShared = errors.New("a private warranty can't go to a shared Wherehouse household")
+
+// checkPrivate returns errPrivateShared if nothing of wr may go to wh's
+// household: wr is kept for its owner only and others share it.
+func (s *Server) checkPrivate(ctx context.Context, wh *wherehouse.Client, wr *store.Warranty) error {
+	if wr.SpaceKind != store.SpacePersonal {
+		return nil
+	}
+	h, err := wh.Household(ctx)
+	if err != nil {
 		return err
-	})
+	}
+	if h.Shared() {
+		return errPrivateShared
+	}
+	return nil
 }
 
 func (s *Server) unlinkWherehouse(w http.ResponseWriter, r *http.Request) {
@@ -641,9 +794,19 @@ func (s *Server) syncWherehouseClaim(ctx context.Context, uid, claimID int64) er
 	if err != nil {
 		return err
 	}
+	wr, err := s.store.GetWarranty(ctx, uid, c.WarrantyID)
+	if err != nil {
+		return err
+	}
 	m := s.claimMaintenance(c, st)
 	err = errors.New("no wherehouse connection")
 	for _, wh := range clients {
+		if err = s.checkPrivate(ctx, wh, wr); err != nil {
+			if errors.Is(err, errPrivateShared) {
+				return nil
+			}
+			continue
+		}
 		if entry != nil {
 			if err = wh.UpdateMaintenance(ctx, *entry, m); err == nil {
 				return s.store.SetClaimWherehouseSeen(ctx, claimID, entrySeen(m))
@@ -1119,6 +1282,16 @@ func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse
 	wr, err := s.store.GetWarranty(ctx, uid, wid)
 	if err != nil {
 		return err
+	}
+	// Nothing of a private warranty goes to, or comes from, a household
+	// others share, whatever let it be linked.
+	if wr.Wherehouse != nil {
+		if err := s.checkPrivate(ctx, wh, wr); errors.Is(err, errPrivateShared) {
+			slog.Warn("wherehouse: a private warranty isn't kept in step with a shared household", "warranty", wid)
+			return nil
+		} else if err != nil {
+			return err
+		}
 	}
 	st, err := s.store.Settings(ctx, uid)
 	if err != nil {

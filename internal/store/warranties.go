@@ -400,7 +400,11 @@ func (s *Store) UpdateWarranty(ctx context.Context, userID, id int64, in *Warran
 		return err
 	}
 	return s.withTx(ctx, func(tx *sql.Tx) error {
-		return updateWarranty(ctx, tx, userID, id, in, expires)
+		if err := updateWarranty(ctx, tx, userID, id, in, expires); err != nil {
+			return err
+		}
+		// Its thing in Wherehouse is told, once it can be.
+		return queueWherehousePush(ctx, tx, userID, id)
 	})
 }
 
@@ -449,6 +453,17 @@ func updateWarranty(ctx context.Context, tx *sql.Tx, userID, id int64, in *Warra
 		}
 		if cur.kind != SpacePersonal && kind == SpacePersonal && cur.addedBy != userID {
 			return invalid("onlyOwnerPrivate", i18n.Args{"name": cur.addedByName})
+		}
+		// What's kept only for its owner can't stay on a thing in a
+		// Wherehouse others may share.
+		if kind == SpacePersonal {
+			var linked bool
+			if err := tx.QueryRowContext(ctx, `SELECT wherehouse_thing IS NOT NULL FROM warranties WHERE id = ?`, id).Scan(&linked); err != nil {
+				return err
+			}
+			if linked {
+				return invalid("wherehousePrivateLinked", nil)
+			}
 		}
 	}
 	_, err = tx.ExecContext(ctx, `
@@ -659,16 +674,19 @@ func (s *Store) SetVoid(ctx context.Context, userID, id int64, void bool, reason
 	} else {
 		reason = ""
 	}
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE warranties AS w SET voided_at = ?, void_reason = ?, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
-		at, reason, now(), userID, id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx,
+			`UPDATE warranties AS w SET voided_at = ?, void_reason = ?, updated_at = ? WHERE `+visibleTo+` AND w.id = ?`,
+			at, reason, now(), userID, id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrNotFound
+		}
+		// Its thing in Wherehouse shows it's void, once it can be told.
+		return queueWherehousePush(ctx, tx, userID, id)
+	})
 }
 
 // DeleteWarranty deletes a warranty and returns its attachments, so the

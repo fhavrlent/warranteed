@@ -5,6 +5,9 @@ package wherehouse
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,6 +57,9 @@ func (e *Error) Unauthorized() bool { return e.Status == http.StatusUnauthorized
 
 func (e *Error) NotFound() bool { return e.Status == http.StatusNotFound }
 
+// Conflict reports that the thing is already linked to another warranty.
+func (e *Error) Conflict() bool { return e.Status == http.StatusConflict }
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var rd io.Reader
 	if body != nil {
@@ -102,18 +108,60 @@ type Connected struct {
 	} `json:"household"`
 }
 
+// NewVerifier makes a PKCE code verifier: 43 characters, random.
+func NewVerifier() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// Challenge is the PKCE code challenge for a verifier (S256).
+func Challenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 // ConnectURL is where to send someone to connect: they allow Warranteed
-// there, and come back to redirect with a code and state.
-func ConnectURL(publicURL, redirect, state string) string {
-	q := url.Values{"app": {"Warranteed"}, "redirect_uri": {redirect}, "state": {state}}
+// there, and come back to redirect with a code and state. The code is
+// swapped for a token only with the verifier the challenge was made from.
+func ConnectURL(publicURL, redirect, state, verifier string) string {
+	q := url.Values{"app": {"Warranteed"}, "redirect_uri": {redirect}, "state": {state},
+		"code_challenge": {Challenge(verifier)}, "code_challenge_method": {"S256"}}
 	return strings.TrimSuffix(publicURL, "/") + "/connect?" + q.Encode()
 }
 
 // Exchange swaps the code from connecting for a token.
-func (c *Client) Exchange(ctx context.Context, code, redirect string) (*Connected, error) {
+func (c *Client) Exchange(ctx context.Context, code, redirect, verifier string) (*Connected, error) {
 	var out Connected
-	err := c.do(ctx, http.MethodPost, "/connect/token", map[string]string{"code": code, "redirect_uri": redirect}, &out)
+	err := c.do(ctx, http.MethodPost, "/connect/token",
+		map[string]string{"code": code, "redirect_uri": redirect, "code_verifier": verifier}, &out)
 	return &out, err
+}
+
+// RevokeToken deletes the token in Wherehouse. A token Wherehouse no longer
+// takes is gone already.
+func (c *Client) RevokeToken(ctx context.Context) error {
+	err := c.do(ctx, http.MethodDelete, "/api/token", nil, nil)
+	var we *Error
+	if errors.As(err, &we) && we.Unauthorized() {
+		return nil
+	}
+	return err
+}
+
+// Household is the household the token works in.
+type Household struct {
+	ID      int64             `json:"id"`
+	Name    string            `json:"name"`
+	Members []json.RawMessage `json:"members"`
+}
+
+// Shared reports whether anyone else is in the household.
+func (h *Household) Shared() bool { return len(h.Members) > 1 }
+
+func (c *Client) Household(ctx context.Context) (*Household, error) {
+	var out Household
+	return &out, c.do(ctx, http.MethodGet, "/api/household", nil, &out)
 }
 
 // User is the token's owner.
@@ -297,21 +345,7 @@ func (c *Client) SetQuantity(ctx context.Context, id int64, quantity int) error 
 // SetDetails changes some of a thing's details (by their JSON names, e.g.
 // "name" or "serial"), keeping everything else as it is.
 func (c *Client) SetDetails(ctx context.Context, id int64, details map[string]any) error {
-	var t map[string]any
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/things/%d", id), nil, &t); err != nil {
-		return err
-	}
-	// Written back as they were read, apart from what the edit form sends
-	// differently: tags and fields left out stay as they are.
-	delete(t, "tags")
-	delete(t, "fields")
-	if k, ok := t["kind"].(map[string]any); ok {
-		t["kindId"] = k["id"]
-	}
-	for k, v := range details {
-		t[k] = v
-	}
-	return c.do(ctx, http.MethodPut, fmt.Sprintf("/api/things/%d", id), t, nil)
+	return c.do(ctx, http.MethodPatch, fmt.Sprintf("/api/things/%d", id), details, nil)
 }
 
 // UpdateAttachment changes a document's kind and name.
