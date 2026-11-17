@@ -135,7 +135,9 @@ func (s *Server) mirrorDocuments(ctx context.Context, uid int64, st *store.Setti
 	lang := st.EffectiveLanguage()
 	for i := range wr.Attachments {
 		a := &wr.Attachments[i]
-		if a.Kind == "photo" {
+		// A document there made a photo here stays its counterpart, or
+		// it would come back as a document.
+		if a.Kind == "photo" && a.WherehouseAttachment == nil {
 			continue
 		}
 		if a.PaperlessDocID != nil {
@@ -155,7 +157,7 @@ func (s *Server) mirrorDocuments(ctx context.Context, uid int64, st *store.Setti
 			}
 			continue
 		}
-		if a.Storage != store.StoragePaperless || a.PaperlessDocID == nil || a.Status != store.StatusReady {
+		if a.Kind == "photo" || a.Storage != store.StoragePaperless || a.PaperlessDocID == nil || a.Status != store.StatusReady {
 			continue
 		}
 		doc := *a.PaperlessDocID
@@ -339,7 +341,7 @@ func (s *Server) deleteOnThing(ctx context.Context, uid int64, a *store.Attachme
 // they're changed here, so a change there isn't taken for this one. It
 // returns how the document is seen there now, or "" if it isn't there.
 func (s *Server) updateOnThing(ctx context.Context, uid int64, a *store.Attachment, kind, filename string) (string, error) {
-	if a.WherehouseAttachment == nil || a.Kind == "photo" {
+	if a.WherehouseAttachment == nil {
 		return "", nil
 	}
 	wr, err := s.store.GetWarranty(ctx, uid, a.WarrantyID)

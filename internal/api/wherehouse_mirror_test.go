@@ -577,3 +577,48 @@ func TestRenameKeepsTypeChangedMeanwhile(t *testing.T) {
 		t.Errorf("kind %q, name %q; want manual, front.jpg", got.Kind, got.Filename)
 	}
 }
+
+// A document from the thing made a photo here stays one thing: it doesn't
+// come back as a document.
+func TestWherehouseDocumentMadeAPhoto(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.wh.mu.Lock()
+	f.wh.last++
+	file := f.wh.last
+	f.wh.files = map[int64][]byte{file: []byte(photoBytes)}
+	f.wh.things[thing].Attachments = append(f.wh.things[thing].Attachments,
+		map[string]any{"id": file, "kind": "other", "storage": "local", "filename": "front.jpg", "mimeType": "image/jpeg"})
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	var id int64
+	for _, a := range f.documents(t) {
+		if a.Filename == "front.jpg" {
+			id = a.ID
+		}
+	}
+	if id == 0 {
+		t.Fatalf("not here: %+v", f.documents(t))
+	}
+
+	r := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(`{"kind":"photo"}`))
+	r.SetPathValue("id", fmt.Sprint(id))
+	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+	w := httptest.NewRecorder()
+	f.srv.patchAttachment(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("make it a photo = %d %s", w.Code, w.Body)
+	}
+	f.changedThere(t, thing)
+	for _, a := range f.documents(t) {
+		if a.Filename == "front.jpg" {
+			t.Errorf("back as a document: %+v", a)
+		}
+	}
+	if ps := f.photos(t, f.warrantyID); len(ps) != 1 || ps[0].ID != id {
+		t.Errorf("photos = %+v", ps)
+	}
+}
