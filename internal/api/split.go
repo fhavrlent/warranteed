@@ -91,6 +91,10 @@ func (s *Server) splitWarranty(w http.ResponseWriter, r *http.Request) {
 			out.WherehouseError = err.Error()
 		}
 	}
+	// The original's details there lose the serial numbers split off.
+	s.inBackground("update wherehouse", func(ctx context.Context) error {
+		return s.runWherehousePushes(ctx, id)
+	})
 	// Photos kept on the original's thing go on the new one's, or come here.
 	s.settleWherehousePhotosLater(uid, newID)
 	if out.Warranty, err = s.store.GetWarranty(r.Context(), uid, newID); err != nil {

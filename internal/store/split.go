@@ -65,7 +65,11 @@ func (s *Store) SplitWarranty(ctx context.Context, userID, id int64, in *SplitIn
 			SELECT user_id, ?, threshold_days, expires_on, sent_at FROM reminders_sent WHERE warranty_id = ?`, newID, id); err != nil {
 			return err
 		}
-		return copyAttachments(ctx, tx, id, newID, localCopies)
+		if err := copyAttachments(ctx, tx, id, newID, localCopies); err != nil {
+			return err
+		}
+		// The original's thing still lists the serial numbers moved off.
+		return queueWherehousePush(ctx, tx, userID, id)
 	})
 	return newID, err
 }

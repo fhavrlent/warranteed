@@ -519,7 +519,7 @@ func (s *Server) joinWherehouse(ctx context.Context, uid int64, st *store.Settin
 	if err != nil {
 		return err
 	}
-	if err := s.matchClaimEntries(ctx, st, t, ids); err != nil {
+	if err := s.matchClaimEntries(ctx, st, t, wr.ID, ids); err != nil {
 		return err
 	}
 	for _, c := range ids {
@@ -538,7 +538,9 @@ func (s *Server) wherehouseLink(wr *store.Warranty, st *store.Settings) wherehou
 		PurchaseFrom:     wr.Vendor,
 		Currency:         strings.ToUpper(wr.Currency),
 		LifetimeWarranty: wr.IsLifetime,
-		WarrantyDetails:  warrantyDetails(wr, st),
+		// As long as Wherehouse takes it: a long list of serial numbers
+		// would be refused, and sent again and again.
+		WarrantyDetails: fitDetail("notes", warrantyDetails(wr, st)),
 	}
 	if wr.PurchaseDate != "" {
 		d := wr.PurchaseDate
@@ -1204,7 +1206,7 @@ func (s *Server) followMovedThing(ctx context.Context, uid, wid, old int64, t *w
 	if err != nil {
 		return err
 	}
-	return s.matchClaimEntries(ctx, st, t, ids)
+	return s.matchClaimEntries(ctx, st, t, wid, ids)
 }
 
 // moveFromHomeBox links a warranty to the thing its HomeBox item was copied
@@ -1225,10 +1227,32 @@ func (s *Server) moveFromHomeBox(ctx context.Context, uid int64, st *store.Setti
 // matchClaimEntries records the thing's maintenance entries that already
 // are the claims, by title, so they're written over instead of added
 // again: a maintenance log copied from HomeBox has them, as does a thing
-// linked before.
-func (s *Server) matchClaimEntries(ctx context.Context, st *store.Settings, t *wherehouse.Thing, claims []int64) error {
+// linked before. An entry on the thing that a claim of the warranty wid
+// already has stays that claim's, and isn't another's to take.
+func (s *Server) matchClaimEntries(ctx context.Context, st *store.Settings, t *wherehouse.Thing, wid int64, claims []int64) error {
+	all, err := s.store.ClaimIDs(ctx, wid)
+	if err != nil {
+		return err
+	}
 	taken := map[int64]bool{}
+	has := map[int64]bool{}
+	for _, cid := range all {
+		entry, _, err := s.store.ClaimWherehouse(ctx, cid)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if entry != nil && entryOn(t, *entry) != nil {
+			taken[*entry] = true
+			has[cid] = true
+		}
+	}
 	for _, cid := range claims {
+		if has[cid] {
+			continue
+		}
 		c, _, err := s.store.ClaimSync(ctx, cid)
 		if err != nil {
 			return err

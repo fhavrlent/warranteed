@@ -593,7 +593,7 @@ func (s *Server) mirrorClaims(ctx context.Context, uid int64, st *store.Settings
 	if len(missing) == 0 {
 		return nil
 	}
-	if err := s.matchClaimEntries(ctx, st, t, missing); err != nil {
+	if err := s.matchClaimEntries(ctx, st, t, wr.ID, missing); err != nil {
 		return err
 	}
 	for _, cid := range missing {

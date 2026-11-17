@@ -541,3 +541,96 @@ func TestWherehouseClaimEditSentAfterFailing(t *testing.T) {
 		t.Errorf("written %d more times", again-writes)
 	}
 }
+
+// Splitting off pieces with their serial numbers, with no thing made for
+// them, sends the original's details again: the numbers moved off are no
+// longer listed on its thing.
+func TestWherehouseSplitSendsOriginalDetails(t *testing.T) {
+	f := newWherehouseFixture(t)
+	in := f.input(t, nil)
+	in.Quantity, in.SerialNumbers = 3, []string{"SN-A1", "SN-B2", "SN-C3"}
+	if w := f.call(t, f.srv.updateWarranty, http.MethodPut, mustJSON(t, in)); w.Code != 200 {
+		t.Fatalf("update = %d %s", w.Code, w.Body)
+	}
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	if d := f.wh.get(thing).link.Purchase.WarrantyDetails; !strings.Contains(d, "SN-C3") {
+		t.Fatalf("details there before = %q", d)
+	}
+	w := f.call(t, f.srv.splitWarranty, http.MethodPost, `{"pieces":1,"serialNumbers":["SN-C3"],"wherehouse":false}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("split = %d %s", w.Code, w.Body)
+	}
+	f.srv.background.Wait()
+	if d := f.wh.get(thing).link.Purchase.WarrantyDetails; strings.Contains(d, "SN-C3") || !strings.Contains(d, "SN-B2") {
+		t.Errorf("details there after = %q", d)
+	}
+	if p, err := f.srv.store.WherehousePushes(context.Background(), f.warrantyID); err != nil || len(p) != 0 {
+		t.Errorf("pushes = %+v, %v", p, err)
+	}
+}
+
+// A claim whose copy failed is matched by title only to an entry no other
+// claim has: one with the same title already synced keeps its entry.
+func TestWherehouseMissingClaimLeavesOthersEntry(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ctx := context.Background()
+	first, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Flickers", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, first.ID)
+	f.srv.background.Wait()
+	f.changedThere(t, thing)
+	firstEntry, _, _ := f.srv.store.ClaimWherehouse(ctx, first.ID)
+	if firstEntry == nil {
+		t.Fatal("first claim not sent")
+	}
+
+	f.wh.mu.Lock()
+	f.wh.rejectToken = true
+	f.wh.mu.Unlock()
+	second, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Flickers", ReportedOn: "2026-05-01", Notes: "Again"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, second.ID)
+	f.srv.background.Wait()
+	f.wh.mu.Lock()
+	f.wh.rejectToken = false
+	f.wh.mu.Unlock()
+
+	f.changedThere(t, thing)
+	secondEntry, _, _ := f.srv.store.ClaimWherehouse(ctx, second.ID)
+	if secondEntry == nil || *secondEntry == *firstEntry {
+		t.Fatalf("second claim's entry = %v, the first's %d", secondEntry, *firstEntry)
+	}
+	if th := f.wh.get(thing); len(th.Maintenance) != 2 {
+		t.Errorf("maintenance there = %+v", th.Maintenance)
+	}
+	f.changedThere(t, thing)
+	if got, _ := f.srv.store.GetClaim(ctx, f.alice.ID, first.ID); got.ReportedOn != "2026-03-01" || got.Notes != "" {
+		t.Errorf("first claim = %+v", got)
+	}
+}
+
+// The details sent there fit what Wherehouse takes, however many serial
+// numbers the warranty lists.
+func TestWherehouseLinkDetailsFit(t *testing.T) {
+	f := newWherehouseFixture(t)
+	months := 24
+	wr := &store.Warranty{ProductName: "Lamp", WarrantyMonths: &months, Quantity: 3000}
+	for i := range 3000 {
+		wr.SerialNumbers = append(wr.SerialNumbers, fmt.Sprintf("SERIAL-%05d", i))
+	}
+	l := f.srv.wherehouseLink(wr, &store.Settings{})
+	if n := len([]rune(l.Purchase.WarrantyDetails)); n == 0 || n > 10_000 {
+		t.Errorf("details are %d characters", n)
+	}
+}
