@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.8.0 — 2026-11-17
+
+### Wherehouse
+
+- Warranties can be part of a [Wherehouse](https://github.com/fhavrlent/wherehouse) inventory. Set `WHEREHOUSE_URL`, then each person clicks **Connect to Wherehouse** under **Settings → Wherehouse** and allows it there. There's no key to copy.
+- **Add to Wherehouse** makes a thing for a warranty, in a place you pick or nowhere yet. **Link existing thing** finds one already there. Confirming a draft can add its product straight away.
+- The name, brand, model, serial numbers, quantity and notes are kept in step both ways. The purchase and warranty details stay in Warranteed, and Wherehouse shows them read-only.
+- Documents in Paperless, claims' documents included, are on both. Adding, deleting, renaming or changing the type of one on either side does the same on the other.
+- Product photos are copied to the thing. With **Keep product photos only in Wherehouse** on, they are the thing's photos instead, kept only there and shown from there.
+- Claims are entries in the thing's maintenance log. Editing or deleting an entry there changes or deletes the claim.
+- The warranty shows where the thing is and its label code, which you can search for. Selling or archiving the thing archives the warranty.
+- Wherehouse pings Warranteed when something changes, and Warranteed also checks every 10 minutes. Changes Wherehouse couldn't take while it was down are sent once it's back, after a restart too.
+- A thing belongs to one warranty. A warranty set to **Only me** stays out of a Wherehouse household others share.
+- Splitting off pieces of a linked warranty can make a thing for them too.
+- **Disconnect** also removes Warranteed's access in Wherehouse.
+
+### Upgrading
+
+Database migrations 0018 to 0025 run automatically on startup. If several warranties were linked to the same Wherehouse thing, the oldest keeps it and the others are unlinked.
+
+Connecting needs a Wherehouse that supports PKCE and gives connected apps their own limited access. Wherehouse pings only public addresses and the hosts listed in its `WHEREHOUSE_HOOK_ALLOWED_HOSTS`. If it can't reach Warranteed, changes still arrive within 10 minutes.
+
 ## v0.7.0 — 2026-11-03
 
 ### Repairs and claims
