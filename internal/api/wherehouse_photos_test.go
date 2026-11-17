@@ -119,7 +119,8 @@ func TestWherehousePhotosOnlyOneCopy(t *testing.T) {
 }
 
 // Copies sent before the setting was turned on are the ones already there:
-// nothing is sent twice, and the files here go.
+// nothing is sent twice, and the files here go. Photos the thing had of its
+// own come here too.
 func TestWherehousePhotosOnlyTurnedOn(t *testing.T) {
 	f := newWherehouseFixture(t)
 	f.addPhoto(t)
@@ -137,8 +138,16 @@ func TestWherehousePhotosOnlyTurnedOn(t *testing.T) {
 	f.wh.mu.Unlock()
 
 	f.photosOnly(t, true)
+	// Its own photo comes here too, kept there.
 	ps := f.photos(t, f.warrantyID)
-	if len(ps) != 1 || ps[0].Storage != store.StorageWherehouse || *ps[0].WherehousePhoto != th.Photos[1]["id"] {
+	got := map[int64]bool{}
+	for _, p := range ps {
+		if p.Storage != store.StorageWherehouse || p.WherehousePhoto == nil {
+			t.Fatalf("photos = %+v", ps)
+		}
+		got[*p.WherehousePhoto] = true
+	}
+	if len(ps) != 2 || !got[th.Photos[0]["id"]] || !got[th.Photos[1]["id"]] {
 		t.Fatalf("photos = %+v, thing's %+v", ps, th.Photos)
 	}
 	if len(f.wh.get(thing).Photos) != 2 {
@@ -151,11 +160,22 @@ func TestWherehousePhotosOnlyTurnedOn(t *testing.T) {
 	// Turned off, they come back here, and aren't sent there again.
 	f.photosOnly(t, false)
 	ps = f.photos(t, f.warrantyID)
-	if len(ps) != 1 || ps[0].Storage != store.StorageLocal || !f.fileThere(ps[0].LocalPath) {
+	if len(ps) != 2 {
 		t.Fatalf("photos after turning off = %+v", ps)
 	}
-	if code, body := f.photoFile(t, ps[0].ID, false); code != 200 || body != photoBytes {
-		t.Errorf("photo back here = %d %q", code, body)
+	bodies := map[string]bool{}
+	for _, p := range ps {
+		if p.Storage != store.StorageLocal || !f.fileThere(p.LocalPath) {
+			t.Fatalf("photos after turning off = %+v", ps)
+		}
+		code, body := f.photoFile(t, p.ID, false)
+		if code != 200 {
+			t.Fatalf("photo back here = %d", code)
+		}
+		bodies[body] = true
+	}
+	if !bodies[photoBytes] || !bodies[strings.Repeat("x", len(photoBytes))] {
+		t.Errorf("photos back here: %v", bodies)
 	}
 	f.srv.sendToWherehouseLater(f.alice.ID, f.warrantyID)
 	f.srv.background.Wait()
@@ -328,5 +348,21 @@ func TestWherehouseLinkFollowsRestoredThing(t *testing.T) {
 	}
 	if code, body := f.photoFile(t, ps[0].ID, false); code != 200 || body != photoBytes {
 		t.Errorf("photo = %d %q", code, body)
+	}
+}
+
+// Turned on with nothing here to send, the thing's photos still come here.
+func TestWherehousePhotosOnlyBringsTheThingsPhotos(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	id := f.photoThere(thing, photoBytes)
+
+	f.photosOnly(t, true)
+	ps := f.photos(t, f.warrantyID)
+	if len(ps) != 1 || ps[0].Storage != store.StorageWherehouse || *ps[0].WherehousePhoto != id {
+		t.Fatalf("photos = %+v", ps)
 	}
 }

@@ -482,6 +482,14 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// Changed on the thing it's on too, first. Read again once nothing
+	// else can be sending it there, so it's changed where it is now and
+	// what isn't being changed stays as that left it.
+	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
+	if a, err = s.store.GetAttachment(r.Context(), userID(r), id); err != nil {
+		fail(w, err)
+		return
+	}
 	kind, filename := a.Kind, a.Filename
 	if in.Kind != nil {
 		kind = *in.Kind
@@ -501,13 +509,6 @@ func (s *Server) patchAttachment(w http.ResponseWriter, r *http.Request) {
 			name += ext
 		}
 		filename = cleanFilename(name)
-	}
-	// Changed on the thing it's on too, first. Read again once nothing
-	// else can be sending it there, so it's changed where it is now.
-	defer s.lockPhotos(wherehousePhotosKey(a.WarrantyID))()
-	if a, err = s.store.GetAttachment(r.Context(), userID(r), id); err != nil {
-		fail(w, err)
-		return
 	}
 	seen, err := s.updateOnThing(r.Context(), userID(r), a, kind, filename)
 	if err != nil {

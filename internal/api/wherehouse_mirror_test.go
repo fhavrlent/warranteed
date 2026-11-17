@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fhavrlent/warranteed/internal/auth"
 	"github.com/fhavrlent/warranteed/internal/store"
@@ -540,5 +541,39 @@ func TestWherehouseClaimEntryNeverSeen(t *testing.T) {
 	}
 	if entries := f.wh.get(thing).Maintenance; len(entries) != 1 {
 		t.Errorf("entries = %+v", entries)
+	}
+}
+
+// A rename waiting for the documents to be brought in step keeps the type
+// they were given meanwhile.
+func TestRenameKeepsTypeChangedMeanwhile(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.addPhoto(t)
+	a := f.photos(t, f.warrantyID)[0]
+
+	unlock := f.srv.lockPhotos(wherehousePhotosKey(f.warrantyID))
+	done := make(chan *httptest.ResponseRecorder)
+	go func() {
+		r := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(`{"filename":"front"}`))
+		r.SetPathValue("id", fmt.Sprint(a.ID))
+		r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+		w := httptest.NewRecorder()
+		f.srv.patchAttachment(w, r)
+		done <- w
+	}()
+	time.Sleep(50 * time.Millisecond) // it's waiting for the lock
+	if err := f.srv.store.UpdateAttachment(context.Background(), a.ID, "manual", a.Filename); err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	if w := <-done; w.Code != http.StatusOK {
+		t.Fatalf("rename = %d %s", w.Code, w.Body)
+	}
+	got, err := f.srv.store.GetAttachment(context.Background(), f.alice.ID, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != "manual" || got.Filename != "front.jpg" {
+		t.Errorf("kind %q, name %q; want manual, front.jpg", got.Kind, got.Filename)
 	}
 }

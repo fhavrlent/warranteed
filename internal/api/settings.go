@@ -274,7 +274,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if st.WherehousePhotosOnly != photosOnly {
 		// Photos move to Wherehouse, or come back here.
-		uid := userID(r)
+		uid, on := userID(r), st.WherehousePhotosOnly
 		s.background.Add(1)
 		go func() {
 			defer s.background.Done()
@@ -282,6 +282,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			if err := s.settleAllWherehousePhotos(ctx, uid, false); err != nil {
 				slog.Warn("wherehouse: move photos", "err", err)
+			}
+			if on {
+				// Photos the things already had come here too, though
+				// nothing changed there to bring them.
+				s.sendAllToWherehouse(ctx, uid)
 			}
 		}()
 	}
