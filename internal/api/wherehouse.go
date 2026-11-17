@@ -154,6 +154,10 @@ func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wh := s.wherehouseFor(st); wh != nil {
+		// Nothing sends photos there again until the connection is gone,
+		// not even a sync waiting for a warranty's photos meanwhile.
+		s.wherehouseLeaving.Store(uid, true)
+		defer s.wherehouseLeaving.Delete(uid)
 		// Photos kept only in Wherehouse come back here while the
 		// connection still reads them. Ones Wherehouse can't hand over
 		// stay as they are, shown through anyone else's connection, and
@@ -181,6 +185,12 @@ func (s *Server) disconnectWherehouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// leavingWherehouse reports whether uid is disconnecting from Wherehouse.
+func (s *Server) leavingWherehouse(uid int64) bool {
+	_, ok := s.wherehouseLeaving.Load(uid)
+	return ok
 }
 
 // unlinkAllWherehouse unlinks the warranties someone can see from their
@@ -1103,6 +1113,9 @@ func (s *Server) sendToWherehouseLater(uid, wid int64) {
 func (s *Server) sendToWherehouse(ctx context.Context, uid int64, wh *wherehouse.Client, wid int64) error {
 	// One at a time per warranty, so a photo isn't sent twice.
 	defer s.lockPhotos(wherehousePhotosKey(wid))()
+	if s.leavingWherehouse(uid) {
+		return nil // their photos are coming back here
+	}
 	wr, err := s.store.GetWarranty(ctx, uid, wid)
 	if err != nil {
 		return err

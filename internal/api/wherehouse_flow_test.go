@@ -69,6 +69,8 @@ type fakeWherehouse struct {
 	// failGets fails that many reads of a thing, as when Wherehouse doesn't
 	// answer in time.
 	failGets int
+	// onHook runs while pings are being turned on or off, before the answer.
+	onHook func()
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -293,6 +295,12 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t.Links = append(t.Links, map[string]string{"url": in["url"]})
 		w.WriteHeader(http.StatusCreated)
 	case r.URL.Path == "/api/hook":
+		if hook := f.onHook; hook != nil {
+			// Let it reach this Wherehouse meanwhile.
+			f.mu.Unlock()
+			hook()
+			f.mu.Lock()
+		}
 		w.WriteHeader(http.StatusNoContent)
 	case r.URL.Path == "/api/paperless":
 		if f.paperless == "" {

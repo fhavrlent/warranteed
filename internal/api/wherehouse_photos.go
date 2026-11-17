@@ -54,7 +54,7 @@ func (s *Server) settleWherehousePhotos(ctx context.Context, uid, wid int64, lea
 		return err
 	}
 	var wh *wherehouse.Client
-	if !leaving {
+	if !leaving && !s.leavingWherehouse(uid) {
 		wh = s.wherehouseFor(st)
 	}
 	return s.settlePhotos(ctx, uid, st, wh, wr)

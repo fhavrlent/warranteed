@@ -40,6 +40,9 @@ type Server struct {
 	// next sync tries again although Wherehouse's changes were read past
 	// them.
 	wherehouseRetry sync.Map
+	// wherehouseLeaving marks people disconnecting from Wherehouse, whose
+	// photos are coming back here and mustn't be sent there again.
+	wherehouseLeaving sync.Map
 	// photoLocks has a mutex per warranty whose photos are being sent to HomeBox.
 	photoLocks sync.Map
 	// backlinks tracks link updates running in the background.

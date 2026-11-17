@@ -366,3 +366,37 @@ func TestWherehousePhotosOnlyBringsTheThingsPhotos(t *testing.T) {
 		t.Fatalf("photos = %+v", ps)
 	}
 }
+
+// A sync while disconnecting doesn't send the photos that came back here
+// to Wherehouse again.
+func TestWherehousePhotosStayBackWhileDisconnecting(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.photosOnly(t, true)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	if f.photos(t, f.warrantyID)[0].Storage != store.StorageWherehouse {
+		t.Fatal("not moved to Wherehouse")
+	}
+	// The sync runs while the pings are being turned off, after the photos
+	// came back and before the connection is forgotten.
+	f.wh.onHook = func() {
+		st, _ := f.srv.store.Settings(context.Background(), f.alice.ID)
+		if err := f.srv.sendToWherehouse(context.Background(), f.alice.ID, f.srv.wherehouseFor(st), f.warrantyID); err != nil {
+			t.Errorf("sync = %v", err)
+		}
+	}
+	r := httptest.NewRequest(http.MethodDelete, "/api/settings/wherehouse", nil)
+	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+	w := httptest.NewRecorder()
+	f.srv.disconnectWherehouse(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("disconnect = %d %s", w.Code, w.Body)
+	}
+	f.srv.background.Wait()
+	ps := f.photos(t, f.warrantyID)
+	if len(ps) != 1 || ps[0].Storage != store.StorageLocal || !f.fileThere(ps[0].LocalPath) {
+		t.Fatalf("photos = %+v", ps)
+	}
+}
