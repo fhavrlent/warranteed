@@ -85,14 +85,23 @@ func TestConnectURLChallenge(t *testing.T) {
 	}
 }
 
-// A household is shared when anyone else is in it.
+// A household is shared when anyone else is in it, as listed or counted;
+// one that can't be told is taken as shared.
 func TestHouseholdShared(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id":1,"name":"Home","members":[{"id":1},{"id":2}]}`))
-	}))
-	defer srv.Close()
-	h, err := New(srv.URL, "t").Household(context.Background())
-	if err != nil || !h.Shared() {
-		t.Errorf("household = %+v, %v", h, err)
+	for body, shared := range map[string]bool{
+		`{"id":1,"name":"Home","members":[{"userId":1},{"userId":2}]}`: true,
+		`{"id":1,"name":"Home","members":[{"userId":1}]}`:              false,
+		`{"id":1,"name":"Home","members":2}`:                           true,
+		`{"id":1,"name":"Home","members":1}`:                           false,
+		`{"id":1,"name":"Home"}`:                                       true,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		}))
+		h, err := New(srv.URL, "t").Household(context.Background())
+		srv.Close()
+		if err != nil || h.Shared() != shared {
+			t.Errorf("%s: shared = %v, %v", body, h.Shared(), err)
+		}
 	}
 }

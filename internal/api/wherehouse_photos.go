@@ -68,6 +68,15 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 		thing = wr.Wherehouse.Thing
 	}
 	there := wh != nil && thing != 0 && st.WherehousePhotosOnly
+	// A private warranty's photos don't go to a household others share;
+	// ones kept there come back here.
+	if there {
+		if err := s.checkPrivate(ctx, wh, wr); errors.Is(err, errPrivateShared) {
+			there = false
+		} else if err != nil {
+			return err
+		}
+	}
 	var (
 		readers []*wherehouse.Client
 		have    []photoThere // the thing's photos, read once

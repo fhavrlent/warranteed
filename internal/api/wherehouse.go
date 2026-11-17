@@ -158,6 +158,8 @@ func (s *Server) wherehouseCallback(w http.ResponseWriter, r *http.Request) {
 		if err := s.settleAllWherehousePhotos(ctx, uid, false); err != nil {
 			slog.Warn("wherehouse: settle photos", "err", err)
 		}
+		// What changed while disconnected, claims among it, goes there.
+		s.sendAllToWherehouse(ctx, uid)
 	}()
 	done("connected")
 }

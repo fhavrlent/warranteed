@@ -316,3 +316,65 @@ func TestWherehouseDetailsPatchOnlyChanged(t *testing.T) {
 		t.Errorf("thing = %+v", th)
 	}
 }
+
+// Keeping photos only in Wherehouse doesn't send a private warranty's
+// photos to a household that others joined since it was linked.
+func TestWherehousePrivatePhotosStayHome(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.makePrivate(t)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.wh.mu.Lock()
+	f.wh.things[thing].Photos = nil // the copy sent while the household was hers alone
+	f.wh.mu.Unlock()
+	f.members(2)
+	f.photosOnly(t, true)
+	ps := f.photos(t, f.warrantyID)
+	if len(ps) != 1 || ps[0].Storage != store.StorageLocal || !f.fileThere(ps[0].LocalPath) {
+		t.Errorf("photos = %+v", ps)
+	}
+	if th := f.wh.get(thing); len(th.Photos) != 0 {
+		t.Errorf("sent there: %+v", th.Photos)
+	}
+}
+
+// A claim whose copy there failed when it was made is sent with the next
+// sync.
+func TestWherehouseClaimSentAfterFailing(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.wh.mu.Lock()
+	f.wh.rejectToken = true
+	f.wh.mu.Unlock()
+	ctx := context.Background()
+	c, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Flickers", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, c.ID)
+	f.srv.background.Wait()
+	if entry, _, _ := f.srv.store.ClaimWherehouse(ctx, c.ID); entry != nil {
+		t.Fatal("sent while Wherehouse refused")
+	}
+	f.wh.mu.Lock()
+	f.wh.rejectToken = false
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	if th := f.wh.get(thing); len(th.Maintenance) != 1 {
+		t.Errorf("maintenance there = %+v", th.Maintenance)
+	}
+	if entry, _, _ := f.srv.store.ClaimWherehouse(ctx, c.ID); entry == nil {
+		t.Error("no entry recorded")
+	}
+	// Not sent twice.
+	f.changedThere(t, thing)
+	if th := f.wh.get(thing); len(th.Maintenance) != 1 {
+		t.Errorf("maintenance there after another sync = %+v", th.Maintenance)
+	}
+}

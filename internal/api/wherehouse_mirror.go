@@ -570,8 +570,34 @@ func (s *Server) mirrorClaims(ctx context.Context, uid int64, st *store.Settings
 	if err != nil {
 		return err
 	}
+	// Claims with no entry there, e.g. as their copy failed with Wherehouse
+	// out of reach, are sent now: to the entry already there by title, as
+	// one copied from HomeBox, or as a new one.
+	var missing []int64
 	for _, cid := range ids {
+		entry, thing, err := s.store.ClaimWherehouse(ctx, cid)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if entry == nil && thing != nil && *thing == t.ID {
+			missing = append(missing, cid)
+			continue
+		}
 		if err := s.mirrorClaim(ctx, uid, st, wh, t, cid); err != nil {
+			return err
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	if err := s.matchClaimEntries(ctx, st, t, missing); err != nil {
+		return err
+	}
+	for _, cid := range missing {
+		if err := s.syncWherehouseClaim(ctx, uid, cid); err != nil {
 			return err
 		}
 	}

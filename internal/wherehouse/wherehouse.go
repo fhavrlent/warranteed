@@ -151,13 +151,25 @@ func (c *Client) RevokeToken(ctx context.Context) error {
 
 // Household is the household the token works in.
 type Household struct {
-	ID      int64             `json:"id"`
-	Name    string            `json:"name"`
-	Members []json.RawMessage `json:"members"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// Members lists who is in it, or counts them.
+	Members json.RawMessage `json:"members"`
 }
 
-// Shared reports whether anyone else is in the household.
-func (h *Household) Shared() bool { return len(h.Members) > 1 }
+// Shared reports whether anyone else is in the household. Members it can't
+// tell are taken as others.
+func (h *Household) Shared() bool {
+	var list []json.RawMessage
+	if json.Unmarshal(h.Members, &list) == nil && list != nil {
+		return len(list) > 1
+	}
+	var n int
+	if json.Unmarshal(h.Members, &n) == nil {
+		return n > 1
+	}
+	return true
+}
 
 func (c *Client) Household(ctx context.Context) (*Household, error) {
 	var out Household
