@@ -107,7 +107,7 @@ func (s *Server) settlePhotos(ctx context.Context, uid int64, st *store.Settings
 	)
 	getReaders := func() ([]*wherehouse.Client, error) {
 		if readers == nil {
-			clients, _, err := s.wherehouseClients(ctx, uid, wr.ID)
+			clients, err := s.wherehouseReaders(ctx, uid, wr.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -457,7 +457,7 @@ func readWherehousePhoto(ctx context.Context, clients []*wherehouse.Client, id i
 // photo's preview,
 // through the viewer's connection or another one that can see the warranty.
 func (s *Server) proxyWherehousePhoto(w http.ResponseWriter, r *http.Request, a *store.Attachment, thumb, download bool) {
-	clients, _, err := s.wherehouseClients(r.Context(), userID(r), a.WarrantyID)
+	clients, err := s.wherehouseReaders(r.Context(), userID(r), a.WarrantyID)
 	if err != nil {
 		fail(w, err)
 		return

@@ -673,6 +673,20 @@ func (s *Server) wherehouseLink(wr *store.Warranty, st *store.Settings) wherehou
 // Once the thing's household is known, only connections to it (or to a
 // household not known yet) are given. The settings are the person's.
 func (s *Server) wherehouseClients(ctx context.Context, uid, warrantyID int64) ([]*wherehouse.Client, *store.Settings, error) {
+	return s.wherehouseClientsIn(ctx, uid, warrantyID, false)
+}
+
+// wherehouseReaders are the connections to read a warranty's photos and
+// documents kept in Wherehouse with, in any household: one kept on a thing
+// the warranty was linked to before may be in another household than its
+// thing now. Those first are connections to the thing's household.
+func (s *Server) wherehouseReaders(ctx context.Context, uid, warrantyID int64) ([]*wherehouse.Client, error) {
+	clients, _, err := s.wherehouseClientsIn(ctx, uid, warrantyID, true)
+	return clients, err
+}
+
+func (s *Server) wherehouseClientsIn(ctx context.Context, uid, warrantyID int64, anyHousehold bool) ([]*wherehouse.Client,
+	*store.Settings, error) {
 	st, err := s.store.Settings(ctx, uid)
 	if err != nil {
 		return nil, nil, err
@@ -692,16 +706,22 @@ func (s *Server) wherehouseClients(ctx context.Context, uid, warrantyID int64) (
 	if err != nil {
 		return nil, nil, err
 	}
-	var out []*wherehouse.Client
+	var out, elsewhere []*wherehouse.Client
 	seen := map[int64]bool{}
 	for _, c := range append(own, others...) {
-		if seen[c.ID] || (household != 0 && c.HouseholdID != 0 && c.HouseholdID != household) {
+		if seen[c.ID] {
 			continue
 		}
 		seen[c.ID] = true
+		if household != 0 && c.HouseholdID != 0 && c.HouseholdID != household {
+			if anyHousehold {
+				elsewhere = append(elsewhere, s.connClient(c))
+			}
+			continue
+		}
 		out = append(out, s.connClient(c))
 	}
-	return out, st, nil
+	return append(out, elsewhere...), st, nil
 }
 
 // wherehouseKey marks a warranty being added to or linked with Wherehouse.
@@ -1190,26 +1210,21 @@ func (s *Server) connFailed(ctx context.Context, c *store.WherehouseConn, err er
 			return nil // someone may still reach it
 		}
 	}
-	ids, err := s.store.LinkedInHousehold(ctx, c.UserID, c.HouseholdID)
+	// Nobody can reach it: every warranty linked there is unlinked, whoever
+	// it's visible to, since no connection will sync them any more.
+	links, err := s.store.LinkedInHousehold(ctx, c.HouseholdID)
 	if err != nil {
 		return err
 	}
-	for _, wid := range ids {
-		if h, err := s.store.WherehouseHouseholdOf(ctx, wid); err != nil || h != c.HouseholdID {
-			continue
-		}
-		var thing int64
-		if wr, err := s.store.GetWarranty(ctx, c.UserID, wid); err == nil && wr.Wherehouse != nil {
-			thing = wr.Wherehouse.Thing
-		}
-		if err := s.store.SetWherehouse(ctx, c.UserID, wid, nil); err != nil {
+	for _, l := range links {
+		if err := s.store.SetWherehouse(ctx, l.Owner, l.ID, nil); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
 		// Photos kept only there can't be reached any more.
-		if err := s.store.ForgetWherehousePhotos(ctx, wid, thing); err != nil {
+		if err := s.store.ForgetWherehousePhotos(ctx, l.ID, l.Thing); err != nil {
 			return err
 		}
-		slog.Info("wherehouse link dropped: its household can't be reached", "warranty", wid)
+		slog.Info("wherehouse link dropped: its household can't be reached", "warranty", l.ID)
 	}
 	return nil
 }

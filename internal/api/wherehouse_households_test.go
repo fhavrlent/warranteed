@@ -251,3 +251,98 @@ func TestWherehouseHouseholdsListed(t *testing.T) {
 		t.Errorf("households = %d %+v", w.Code, list)
 	}
 }
+
+// personalWarranty adds a warranty only uid can see.
+func (f *wherehouseFixture) personalWarranty(t *testing.T, uid int64, name string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	spaces, err := f.srv.store.ListSpaces(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sp := range spaces {
+		if sp.Kind == store.SpacePersonal {
+			months := 24
+			id, err := f.srv.store.CreateWarranty(ctx, uid, &store.WarrantyInput{ProductName: name,
+				PurchaseDate: "2025-03-01", WarrantyMonths: &months, Quantity: 1, SpaceID: &sp.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return id
+		}
+	}
+	t.Fatal("no personal space")
+	return 0
+}
+
+// When a household is gone and the last connection to it fails, every
+// warranty linked there is unlinked, also ones only someone whose
+// connection failed earlier could see.
+func TestWherehouseGoneHouseholdUnlinksEveryones(t *testing.T) {
+	f := newWherehouseFixture(t)
+	ctx := context.Background()
+	bob, err := f.srv.store.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "bob", Name: "Bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.cottage(t)
+	if err := saveConn(ctx, f.srv.store, bob.ID, 3, "Cottage", "bob-cottage"); err != nil {
+		t.Fatal(err)
+	}
+	mine := f.personalWarranty(t, f.alice.ID, "Kettle")
+	his := f.personalWarranty(t, bob.ID, "Radio")
+	if err := f.srv.store.SetWherehouse(ctx, f.alice.ID, mine, &store.WherehouseLink{Thing: 50, Household: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.srv.store.SetWherehouse(ctx, bob.ID, his, &store.WherehouseLink{Thing: 51, Household: 3}); err != nil {
+		t.Fatal(err)
+	}
+	f.wh.mu.Lock()
+	f.wh.gone = map[string]bool{"cottage-token": true, "bob-cottage": true}
+	f.wh.mu.Unlock()
+	f.srv.syncWherehouseUser(ctx, f.alice.ID)
+	f.srv.background.Wait()
+	if wr := f.warranty(t, mine); wr.Wherehouse == nil {
+		t.Fatal("unlinked while Bob may still reach the household")
+	}
+	f.srv.syncWherehouseUser(ctx, bob.ID)
+	f.srv.background.Wait()
+	if wr := f.warranty(t, mine); wr.Wherehouse != nil {
+		t.Errorf("Alice's warranty is still linked: %+v", wr.Wherehouse)
+	}
+	if wr, err := f.srv.store.GetWarranty(ctx, bob.ID, his); err != nil || wr.Wherehouse != nil {
+		t.Errorf("Bob's warranty = %+v, %v", wr, err)
+	}
+}
+
+// A photo kept on a thing in one household still comes along when the
+// warranty is linked to a thing in another before it was settled.
+func TestWherehousePhotoFollowsToOtherHousehold(t *testing.T) {
+	f := newWherehouseFixture(t)
+	ctx := context.Background()
+	f.photosOnly(t, true)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	if ps := f.photos(t, f.warrantyID); len(ps) != 1 || ps[0].Storage != store.StorageWherehouse {
+		t.Fatalf("photos = %+v", ps)
+	}
+	f.cottage(t)
+	f.wh.mu.Lock()
+	f.wh.things[99] = &fakeThing{ID: 99, Name: "Lamp", Quantity: 1, household: 3}
+	f.wh.mu.Unlock()
+	if err := f.srv.store.SetWherehouse(ctx, f.alice.ID, f.warrantyID, &store.WherehouseLink{Thing: 99, Household: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.srv.settleWherehousePhotos(ctx, f.alice.ID, f.warrantyID); err != nil {
+		t.Fatal(err)
+	}
+	ps := f.photos(t, f.warrantyID)
+	if len(ps) != 1 || ps[0].Storage != store.StorageWherehouse || *ps[0].WherehouseThing != 99 {
+		t.Fatalf("photos = %+v", ps)
+	}
+	if th := f.wh.get(99); len(th.Photos) != 1 {
+		t.Errorf("new thing's photos = %+v", th.Photos)
+	}
+}

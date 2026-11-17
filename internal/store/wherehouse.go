@@ -261,25 +261,29 @@ func (s *Store) SetWherehouseHousehold(ctx context.Context, warrantyID, thing, h
 	return err
 }
 
-// LinkedInHousehold lists the warranties linked to a thing in a household,
-// or in one not known yet, that userID can see.
-func (s *Store) LinkedInHousehold(ctx context.Context, userID, household int64) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT w.id FROM warranties w WHERE `+visibleTo+`
-		AND w.wherehouse_thing IS NOT NULL AND (w.wherehouse_household = ? OR w.wherehouse_household IS NULL) ORDER BY w.id`,
-		userID, household)
+// HouseholdLink is a warranty linked to a thing, with whose it is.
+type HouseholdLink struct {
+	ID, Owner, Thing int64
+}
+
+// LinkedInHousehold lists every warranty linked to a thing in a household,
+// whoever can see it.
+func (s *Store) LinkedInHousehold(ctx context.Context, household int64) ([]HouseholdLink, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, wherehouse_thing FROM warranties
+		WHERE wherehouse_thing IS NOT NULL AND wherehouse_household = ? ORDER BY id`, household)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []int64
+	var out []HouseholdLink
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var l HouseholdLink
+		if err := rows.Scan(&l.ID, &l.Owner, &l.Thing); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		out = append(out, l)
 	}
-	return ids, rows.Err()
+	return out, rows.Err()
 }
 
 // ClaimEntry is a claim's Wherehouse maintenance entry and the thing it is on.
