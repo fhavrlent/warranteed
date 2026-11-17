@@ -140,12 +140,12 @@ func (s *Server) mirrorDocuments(ctx context.Context, uid int64, st *store.Setti
 		if a.Kind == "photo" && a.WherehouseAttachment == nil {
 			continue
 		}
-		if a.PaperlessDocID != nil {
-			docsHere[*a.PaperlessDocID] = true
-		}
 		if onThing(a, thing) {
 			if ta := byID[*a.WherehouseAttachment]; ta != nil {
 				claimed[ta.ID] = true
+				if a.PaperlessDocID != nil {
+					docsHere[*a.PaperlessDocID] = true
+				}
 				if err := s.followDocument(ctx, a, ta); err != nil {
 					return err
 				}
@@ -156,6 +156,11 @@ func (s *Server) mirrorDocuments(ctx context.Context, uid int64, st *store.Setti
 				return err
 			}
 			continue
+		}
+		// Only documents that stay here keep the same one from coming in
+		// again; one dropped above may be back there under a new id.
+		if a.PaperlessDocID != nil {
+			docsHere[*a.PaperlessDocID] = true
 		}
 		if a.Kind == "photo" || a.Storage != store.StoragePaperless || a.PaperlessDocID == nil || a.Status != store.StatusReady {
 			continue

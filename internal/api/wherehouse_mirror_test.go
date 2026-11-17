@@ -622,3 +622,47 @@ func TestWherehouseDocumentMadeAPhoto(t *testing.T) {
 		t.Errorf("photos = %+v", ps)
 	}
 }
+
+// A Paperless document attached again there under a new id stays here.
+func TestWherehouseDocumentAttachedAgain(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.wh.paperless = "http://paperless:8000/"
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.wh.mu.Lock()
+	f.wh.last++
+	first := f.wh.last
+	f.wh.things[thing].Attachments = append(f.wh.things[thing].Attachments,
+		map[string]any{"id": first, "kind": "manual", "storage": "paperless", "paperlessDocId": int64(9),
+			"filename": "manual.pdf", "mimeType": "application/pdf"})
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	before := len(f.documents(t))
+
+	f.wh.mu.Lock()
+	f.wh.last++
+	again := f.wh.last
+	atts := f.wh.things[thing].Attachments
+	atts[len(atts)-1] = map[string]any{"id": again, "kind": "manual", "storage": "paperless", "paperlessDocId": int64(9),
+		"filename": "manual.pdf", "mimeType": "application/pdf"}
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	docs := f.documents(t)
+	if len(docs) != before {
+		t.Fatalf("documents = %+v, want %d", docs, before)
+	}
+	found := false
+	for _, d := range docs {
+		if d.PaperlessDocID != nil && *d.PaperlessDocID == 9 {
+			found = true
+			if d.WherehouseAttachment == nil || *d.WherehouseAttachment != again {
+				t.Errorf("document not tied to the new one there: %+v", d)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("document attached again there is gone: %+v", docs)
+	}
+}
