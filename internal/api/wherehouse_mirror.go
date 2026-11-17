@@ -60,9 +60,11 @@ func (s *Server) mirrorPhotos(ctx context.Context, uid int64, wr *store.Warranty
 	for _, p := range t.Photos {
 		there[p.ID] = true
 	}
+	// A photo kept there and made a document here is still its
+	// counterpart, or it would come back as a photo.
 	known := map[int64]bool{}
 	for _, a := range wr.Attachments {
-		if a.Kind != "photo" || a.Storage != store.StorageWherehouse || a.WherehousePhoto == nil ||
+		if a.Storage != store.StorageWherehouse || a.WherehousePhoto == nil ||
 			a.WherehouseThing == nil || *a.WherehouseThing != t.ID {
 			continue
 		}

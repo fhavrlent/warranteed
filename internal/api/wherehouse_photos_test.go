@@ -400,3 +400,42 @@ func TestWherehousePhotosStayBackWhileDisconnecting(t *testing.T) {
 		t.Fatalf("photos = %+v", ps)
 	}
 }
+
+// A photo kept in Wherehouse made a document here doesn't come back as a
+// photo too.
+func TestWherehousePhotoMadeADocument(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.photosOnly(t, true)
+	f.addPhoto(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ps := f.photos(t, f.warrantyID)
+	if len(ps) != 1 || ps[0].Storage != store.StorageWherehouse {
+		t.Fatalf("photos = %+v", ps)
+	}
+	id := ps[0].ID
+
+	r := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(`{"kind":"purchase"}`))
+	r.SetPathValue("id", fmt.Sprint(id))
+	r = r.WithContext(auth.WithUser(r.Context(), f.alice))
+	w := httptest.NewRecorder()
+	f.srv.patchAttachment(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("make it a receipt = %d %s", w.Code, w.Body)
+	}
+	f.changedThere(t, thing)
+	if ps := f.photos(t, f.warrantyID); len(ps) != 0 {
+		t.Errorf("back as a photo: %+v", ps)
+	}
+	found := false
+	for _, a := range f.warranty(t, f.warrantyID).Attachments {
+		if a.ID == id {
+			found = a.Kind == "purchase"
+		}
+	}
+	if !found {
+		t.Errorf("the receipt is gone: %+v", f.warranty(t, f.warrantyID).Attachments)
+	}
+}
