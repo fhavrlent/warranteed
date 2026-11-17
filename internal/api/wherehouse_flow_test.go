@@ -81,6 +81,11 @@ type fakeWherehouse struct {
 	challenge, code string
 	// patches are the bodies of the thing edits, in order.
 	patches []map[string]any
+	// strangers are tokens of another household, which finds none of
+	// these things.
+	strangers map[string]bool
+	// created counts the things made, deleted since or not.
+	created int
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -107,6 +112,11 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"token": "wh-token-2", "household": map[string]any{"id": 1, "name": "Home"}})
 		return
 	}
+	if f.strangers[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")] &&
+		(strings.HasPrefix(r.URL.Path, "/api/things/") || strings.HasPrefix(r.URL.Path, "/api/apps/")) {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
 	id, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 	thing := func(i int) *fakeThing {
@@ -123,6 +133,7 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Manufacturer, Model, Serial, Notes string
 		}
 		json.NewDecoder(r.Body).Decode(&in)
+		f.created++
 		t := f.add(in.Name, in.ParentID)
 		t.Quantity = in.Quantity
 		t.Manufacturer, t.Model, t.Serial, t.Notes = in.Manufacturer, in.Model, in.Serial, in.Notes

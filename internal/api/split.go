@@ -216,6 +216,11 @@ func (s *Server) splitWherehouseThing(reqCtx context.Context, uid int64, orig *s
 	}
 	ctx, cancel := context.WithTimeout(reqCtx, 2*time.Minute)
 	defer cancel()
+	// Nothing of a private warranty goes to a household others share,
+	// asked before a thing is made for the pieces split off.
+	if err := s.checkPrivate(ctx, wh, orig); err != nil {
+		return err
+	}
 	t, err := wh.Get(ctx, orig.Wherehouse.Thing)
 	if err != nil {
 		return err

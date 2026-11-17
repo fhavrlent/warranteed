@@ -681,25 +681,50 @@ func (s *Server) sendWherehouseLink(ctx context.Context, p store.WherehousePush)
 	if err != nil {
 		return err
 	}
-	err = errNoWherehouse
+	// People sharing a warranty may be connected to different households,
+	// so a connection that doesn't find the thing doesn't end it: the next
+	// one is tried. Only when none could, but none found it, is it let go.
+	var failed error
+	missing := false
 	for _, wh := range clients {
-		if err = s.checkPrivate(ctx, wh, wr); err != nil {
+		if err := s.checkPrivate(ctx, wh, wr); err != nil {
 			if errors.Is(err, errPrivateShared) {
 				slog.Warn("wherehouse: a private warranty isn't sent to a shared household", "warranty", wr.ID)
 				return nil
 			}
+			failed = err
 			continue
 		}
-		if _, err = wh.SetLink(ctx, wr.Wherehouse.Thing, s.wherehouseLink(wr, st)); err == nil {
+		_, err := wh.SetLink(ctx, wr.Wherehouse.Thing, s.wherehouseLink(wr, st))
+		if err == nil {
 			return nil
 		}
 		var we *wherehouse.Error
-		if errors.As(err, &we) && (we.Conflict() || we.NotFound()) {
-			slog.Warn("wherehouse: the thing won't take the warranty's details", "warranty", wr.ID, "err", err)
+		if errors.As(err, &we) && we.Conflict() {
+			// The household that has the thing linked it to another
+			// warranty, which no other connection can change: the link here
+			// is gone, and the warranty shows it's no longer on the thing.
+			slog.Warn("wherehouse link dropped: the thing is linked to another warranty there", "warranty", wr.ID)
+			if err := s.store.SetWherehouse(ctx, p.UserID, wr.ID, nil); err != nil {
+				return err
+			}
+			s.settleWherehousePhotosLater(p.UserID, wr.ID)
 			return nil
 		}
+		if errors.As(err, &we) && we.NotFound() {
+			missing = true
+			continue
+		}
+		failed = err
 	}
-	return err
+	if failed != nil {
+		return failed
+	}
+	if missing {
+		slog.Warn("wherehouse: no connection finds the warranty's thing", "warranty", wr.ID)
+		return nil
+	}
+	return errNoWherehouse
 }
 
 // errPrivateShared is a warranty kept for its owner only ("Only me") meeting

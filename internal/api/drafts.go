@@ -20,6 +20,7 @@ import (
 	"github.com/fhavrlent/warranteed/internal/paperless"
 	"github.com/fhavrlent/warranteed/internal/receipts"
 	"github.com/fhavrlent/warranteed/internal/store"
+	"github.com/fhavrlent/warranteed/internal/wherehouse"
 )
 
 // Drafts from Paperless: a Paperless workflow ("Document added", usually
@@ -618,7 +619,13 @@ func (s *Server) addDraftToWherehouse(ctx context.Context, uid, id int64) (*stor
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	t, err := wh.Create(ctx, newThing(wr, nil))
+	// Asked before a thing is made: a private draft's details never reach
+	// a household others share.
+	err = s.checkPrivate(ctx, wh, wr)
+	var t *wherehouse.Thing
+	if err == nil {
+		t, err = wh.Create(ctx, newThing(wr, nil))
+	}
 	if err == nil {
 		if err = s.joinWherehouse(ctx, uid, st, wh, wr, t.ID); err != nil {
 			s.dropUnlinkedThing(uid, id, wh, t.ID)

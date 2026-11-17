@@ -378,3 +378,111 @@ func TestWherehouseClaimSentAfterFailing(t *testing.T) {
 		t.Errorf("maintenance there after another sync = %+v", th.Maintenance)
 	}
 }
+
+// A private draft confirmed while its owner's household is shared makes no
+// thing there: nothing of it reaches the household.
+func TestWherehousePrivateDraftMakesNoThing(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.makePrivate(t)
+	f.members(2)
+	wr, err := f.srv.addDraftToWherehouse(context.Background(), f.alice.ID, f.warrantyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wr.Wherehouse != nil {
+		t.Errorf("linked: %+v", wr.Wherehouse)
+	}
+	f.srv.background.Wait()
+	f.wh.mu.Lock()
+	n := f.wh.created
+	f.wh.mu.Unlock()
+	if n != 0 {
+		t.Errorf("%d things made there", n)
+	}
+}
+
+// Splitting a private warranty linked before others joined its household
+// makes no thing there for the pieces split off.
+func TestWherehousePrivateSplitMakesNoThing(t *testing.T) {
+	f := newWherehouseFixture(t)
+	f.makePrivate(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	orig := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.members(2)
+	w := f.call(t, f.srv.splitWarranty, http.MethodPost, `{"pieces":1,"serialNumbers":[],"wherehouse":true}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("split = %d %s", w.Code, w.Body)
+	}
+	f.wh.mu.Lock()
+	n := f.wh.created
+	f.wh.mu.Unlock()
+	if n != 1 {
+		t.Errorf("%d things made there, want only the original", n)
+	}
+	if th := f.wh.get(orig); th.Quantity != 2 {
+		t.Errorf("original quantity changed to %d", th.Quantity)
+	}
+}
+
+// A push by someone connected to another household, which doesn't find
+// the thing, goes through the connection of someone whose household has it.
+func TestWherehousePushTriesTheOwnersConnection(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ctx := context.Background()
+	bob, err := f.srv.store.UpsertUser(ctx, store.UpsertUser{Issuer: "test", Subject: "bob", Name: "Bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.srv.store.SetWherehouseConnection(ctx, bob.ID, "bob-token", "Elsewhere"); err != nil {
+		t.Fatal(err)
+	}
+	f.wh.mu.Lock()
+	f.wh.strangers = map[string]bool{"bob-token": true}
+	f.wh.mu.Unlock()
+	in := f.input(t, nil)
+	in.Vendor = "Bob's shop"
+	if err := f.srv.store.UpdateWarranty(ctx, bob.ID, f.warrantyID, in); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.pushWherehouseLater(bob.ID, f.warrantyID)
+	f.srv.background.Wait()
+	if th := f.wh.get(thing); th.link.Purchase == nil || th.link.Purchase.PurchaseFrom != "Bob's shop" {
+		t.Errorf("thing told %+v", th.link.Purchase)
+	}
+	if p, err := f.srv.store.WherehousePushes(ctx, f.warrantyID); err != nil || len(p) != 0 {
+		t.Errorf("pushes = %+v, %v", p, err)
+	}
+}
+
+// A thing linked to another warranty in Wherehouse meanwhile isn't this
+// one's any more: the push unlinks it here, so it shows.
+func TestWherehousePushTakenThereUnlinks(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	f.wh.mu.Lock()
+	f.wh.things[thing].app = "someone else's"
+	f.wh.mu.Unlock()
+	in := f.input(t, nil)
+	in.Vendor = "Elsewhere"
+	if w := f.call(t, f.srv.updateWarranty, http.MethodPut, mustJSON(t, in)); w.Code != 200 {
+		t.Fatalf("update = %d %s", w.Code, w.Body)
+	}
+	if wr := f.warranty(t, f.warrantyID); wr.Wherehouse != nil {
+		t.Errorf("still linked: %+v", wr.Wherehouse)
+	}
+	if th := f.wh.get(thing); th.app != "someone else's" {
+		t.Errorf("the other warranty's link changed: %q", th.app)
+	}
+	if p, err := f.srv.store.WherehousePushes(context.Background(), f.warrantyID); err != nil || len(p) != 0 {
+		t.Errorf("pushes = %+v, %v", p, err)
+	}
+}
