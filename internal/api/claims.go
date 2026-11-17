@@ -63,9 +63,14 @@ func (s *Server) deleteClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := userID(r)
+	// Holding the Wherehouse lock, a copy finishing meanwhile can't save an
+	// entry after it's read here.
+	unlockWh := s.lockPhotos(claimKey(id) + ":wh")
+	whEntry, _, _ := s.store.ClaimWherehouse(r.Context(), id)
 	unlock := s.lockPhotos(claimKey(id))
 	c, err := s.store.DeleteClaim(r.Context(), uid, id)
 	unlock()
+	unlockWh()
 	if err != nil {
 		fail(w, err)
 		return
@@ -73,6 +78,20 @@ func (s *Server) deleteClaim(w http.ResponseWriter, r *http.Request) {
 	if c.HomeBoxEntry != "" {
 		s.inBackground("remove claim from homebox", func(ctx context.Context) error {
 			return s.removeClaimEntry(ctx, uid, c.WarrantyID, c.HomeBoxEntry)
+		})
+	}
+	if whEntry != nil {
+		s.inBackground("remove claim from wherehouse", func(ctx context.Context) error {
+			clients, _, err := s.wherehouseClients(ctx, uid, c.WarrantyID)
+			if err != nil {
+				return err
+			}
+			for _, wh := range clients {
+				if err = wh.DeleteMaintenance(ctx, *whEntry); err == nil {
+					return nil
+				}
+			}
+			return err
 		})
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -96,6 +115,9 @@ func (s *Server) inBackground(what string, fn func(context.Context) error) {
 func (s *Server) syncClaimLater(uid, claimID int64) {
 	s.inBackground("copy claim to homebox", func(ctx context.Context) error {
 		return s.syncClaim(ctx, uid, claimID)
+	})
+	s.inBackground("copy claim to wherehouse", func(ctx context.Context) error {
+		return s.syncWherehouseClaim(ctx, uid, claimID)
 	})
 }
 

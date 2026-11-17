@@ -156,6 +156,28 @@ func (s *Store) UpdateClaim(ctx context.Context, userID, id int64, in *ClaimInpu
 	return s.GetClaim(ctx, userID, id)
 }
 
+// UpdateClaimIfUnchanged is UpdateClaim for a claim changed from what it
+// was, was. It reports false, changing nothing, if the claim isn't was any
+// more: it was changed meanwhile.
+func (s *Store) UpdateClaimIfUnchanged(ctx context.Context, userID, id int64, was *Claim, in *ClaimInput) (bool, error) {
+	if err := in.Normalize(); err != nil {
+		return false, err
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE claims AS c SET title = ?, status = ?, reported_on = ?, resolved_on = ?, case_number = ?, cost = ?,
+			notes = ?, updated_at = ?
+		WHERE c.id = ? AND c.warranty_id IN (SELECT w.id FROM warranties w WHERE `+visibleTo+`)
+			AND c.title = ? AND c.status = ? AND c.reported_on = ? AND c.resolved_on IS ? AND c.case_number = ?
+			AND c.cost IS ? AND c.notes = ?`,
+		in.Title, in.Status, in.ReportedOn, in.ResolvedOn, in.CaseNumber, in.Cost, in.Notes, now(), id, userID,
+		was.Title, was.Status, was.ReportedOn, was.ResolvedOn, was.CaseNumber, was.Cost, was.Notes)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // DeleteClaim deletes a claim and returns it, so its HomeBox entry can go
 // too. Its documents stay on the warranty.
 func (s *Store) DeleteClaim(ctx context.Context, userID, id int64) (*Claim, error) {

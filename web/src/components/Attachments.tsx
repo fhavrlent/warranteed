@@ -24,6 +24,7 @@ import {
   type Attachment,
   type AttachmentKind,
   type PaperlessDoc,
+  type Storage,
   type Warranty,
 } from "@/lib/api";
 import { DOCUMENT_KINDS, kindIcon, kindLabel, kindsFor } from "@/lib/documents";
@@ -35,19 +36,26 @@ import { Input, Select } from "./ui/input";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/menu";
 import { UploadDialog } from "./UploadDialog";
 
-/** Marks a file kept in Paperless or HomeBox rather than here. */
-const StorageMark = ({ storage, className }: { storage: "paperless" | "homebox"; className?: string }) => {
+const storageMarks = {
+  paperless: { name: "Paperless", title: "attachments.inPaperless", color: "bg-emerald-600" },
+  homebox: { name: "HomeBox", title: "attachments.inHomebox", color: "bg-sky-600" },
+  wherehouse: { name: "Wherehouse", title: "attachments.inWherehouse", color: "bg-violet-600" },
+} as const;
+
+/** Marks a file kept in Paperless, HomeBox or Wherehouse rather than here. */
+const StorageMark = ({ storage, className }: { storage: Exclude<Storage, "local">; className?: string }) => {
   const { t } = useTranslation();
+  const mark = storageMarks[storage];
   return (
     <span
-      title={storage === "paperless" ? t("attachments.inPaperless") : t("attachments.inHomebox")}
+      title={t(mark.title)}
       className={cn(
         "inline-flex h-4.5 items-center rounded px-1 text-[10px] font-semibold tracking-wide text-white uppercase",
-        storage === "paperless" ? "bg-emerald-600" : "bg-sky-600",
+        mark.color,
         className,
       )}
     >
-      {storage === "paperless" ? "Paperless" : "HomeBox"}
+      {mark.name}
     </span>
   );
 };
@@ -277,10 +285,14 @@ export const AttachmentsPanel = ({ warranty }: { warranty: Warranty }) => {
         }
         description={
           toDelete?.storage === "paperless"
-            ? t("attachments.unlinkText")
+            ? toDelete.onWherehouse
+              ? t("attachments.unlinkTextWherehouse")
+              : t("attachments.unlinkText")
             : toDelete?.storage === "homebox"
               ? t("attachments.removeText")
-              : t("attachments.deleteText", { name: toDelete?.filename ?? "" })
+              : toDelete?.onWherehouse
+                ? t("attachments.removeTextWherehouse")
+                : t("attachments.deleteText", { name: toDelete?.filename ?? "" })
         }
         onConfirm={async () => {
           if (!toDelete) return;
@@ -413,13 +425,15 @@ const AttachmentCard = ({
   );
 };
 
-/** Renames the file as shown here; the extension is kept and Paperless and HomeBox are untouched. */
+/** Renames the file as shown here and on the Wherehouse thing; the extension is kept and Paperless and HomeBox are untouched. */
 const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () => void; onRenamed: () => void }) => {
   const { t } = useTranslation();
   const dot = a.filename.lastIndexOf(".");
   const ext = dot > 0 ? a.filename.slice(dot) : "";
   const [name, setName] = useState(ext ? a.filename.slice(0, dot) : a.filename);
   const [saving, setSaving] = useState(false);
+  // Photos keep their own names in Wherehouse.
+  const onWherehouse = a.onWherehouse && a.kind !== "photo";
 
   const save = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -443,10 +457,12 @@ const RenameDialog = ({ a, onClose, onRenamed }: { a: Attachment; onClose: () =>
       title={t("attachments.renameTitle")}
       description={
         a.storage === "paperless"
-          ? t("attachments.renamePaperless")
-          : a.storage === "homebox"
-            ? t("attachments.renameHomebox")
-            : undefined
+          ? t(onWherehouse ? "attachments.renamePaperlessWherehouse" : "attachments.renamePaperless")
+          : onWherehouse
+            ? t("attachments.renameWherehouse")
+            : a.storage === "homebox"
+              ? t("attachments.renameHomebox")
+              : undefined
       }
       footer={
         <>

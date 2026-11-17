@@ -232,6 +232,7 @@ export const Warranties = () => {
           ...w.tags.map((tg) => tg.name),
           // The asset ID on a HomeBox label finds the warranty too.
           w.homebox?.assetId ?? "",
+          w.wherehouse?.label ?? "",
         ].join("\u0000"),
       );
       scores.set(w.id, score);

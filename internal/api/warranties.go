@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/fhavrlent/warranteed/internal/auth"
@@ -76,6 +77,7 @@ func (s *Server) updateWarranty(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.pushWherehouseLater(userID(r), id)
 	wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
 	if err != nil {
 		fail(w, err)
@@ -94,11 +96,44 @@ func (s *Server) deleteWarranty(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	files, err := s.store.DeleteWarranty(r.Context(), userID(r), id)
+	// A push waiting meanwhile would link the thing again after it's
+	// unlinked, so pushes wait until that's done. A claim's copy finishing
+	// meanwhile can't save an entry after the entries are read here.
+	unlockPush := s.lockPhotos(wherehousePushKey(id))
+	claims, err := s.store.ClaimIDs(r.Context(), id)
 	if err != nil {
+		unlockPush()
 		fail(w, err)
 		return
 	}
+	var unlockClaims []func()
+	for _, c := range claims {
+		unlockClaims = append(unlockClaims, s.lockPhotos(claimKey(c)+":wh"))
+	}
+	unlock := func() {
+		for _, u := range unlockClaims {
+			u()
+		}
+	}
+	// Who can reach its inventory is known only while it exists.
+	cleanUp, err := s.forgetInventory(r.Context(), userID(r), id)
+	if err != nil {
+		unlock()
+		unlockPush()
+		fail(w, err)
+		return
+	}
+	files, err := s.store.DeleteWarranty(r.Context(), userID(r), id)
+	unlock()
+	if err != nil {
+		unlockPush()
+		fail(w, err)
+		return
+	}
+	s.inBackground("remove deleted warranty from inventory", func(ctx context.Context) error {
+		defer unlockPush()
+		return cleanUp(ctx)
+	})
 	s.syncBacklinksLater(docs...)
 	for _, a := range files {
 		s.removeFiles(&a)
@@ -142,6 +177,7 @@ func (s *Server) voidWarranty(void bool) http.HandlerFunc {
 			fail(w, err)
 			return
 		}
+		s.pushWherehouseLater(userID(r), id)
 		wr, err := s.store.GetWarranty(r.Context(), userID(r), id)
 		if err != nil {
 			fail(w, err)

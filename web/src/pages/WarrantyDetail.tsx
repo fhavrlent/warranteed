@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { AttachmentsPanel } from "@/components/Attachments";
 import { ClaimsPanel } from "@/components/Claims";
 import { HomeBoxCard } from "@/components/HomeBox";
+import { WherehouseCard } from "@/components/Wherehouse";
 import { CoverageBar, StatusBadge } from "@/components/Status";
 import { TagChip } from "@/components/Tags";
 import { SplitDialog } from "@/components/SplitDialog";
@@ -40,8 +41,10 @@ export const WarrantyDetail = () => {
   const { t } = useTranslation();
   const id = Number(useParams().id);
   const { data: w, isLoading, error } = useWarranty(id);
-  const { soonDays, fmtDate, fmtMoney } = usePrefs();
+  const { soonDays, fmtDate, fmtMoney, settings } = usePrefs();
   const [editing, setEditing] = useState(false);
+  // Confirming a draft also adds its product to Wherehouse, unless unticked.
+  const [toWherehouse, setToWherehouse] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [splitting, setSplitting] = useState(false);
@@ -69,9 +72,11 @@ export const WarrantyDetail = () => {
 
   const confirm = async () => {
     try {
-      await api.confirmWarranty(w.id);
+      const add = toWherehouse && !!settings?.wherehouseConnected;
+      const confirmed = await api.confirmWarranty(w.id, add);
       invalidate();
       toast.success(t("detail.confirmed"));
+      if (add && confirmed.wherehouse === null) toast.error(t("detail.confirmedNotInWherehouse"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -154,7 +159,18 @@ export const WarrantyDetail = () => {
                 <p className="text-sm font-medium">{t("detail.draftTitle")}</p>
                 <p className="text-[13px] text-fg-muted">{t("detail.draftText")}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {settings?.wherehouseConnected && !w.wherehouse && (
+                  <label className="flex items-center gap-2 text-[13px] text-fg-muted">
+                    <input
+                      type="checkbox"
+                      checked={toWherehouse}
+                      onChange={(e) => setToWherehouse(e.target.checked)}
+                      className="size-4 accent-[var(--primary)]"
+                    />
+                    {t("wherehouse.addOnConfirm")}
+                  </label>
+                )}
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                   <Pencil /> {t("detail.edit")}
                 </Button>
@@ -367,6 +383,7 @@ export const WarrantyDetail = () => {
           </Card>
 
           <HomeBoxCard warranty={w} />
+          <WherehouseCard warranty={w} />
 
           {w.notes && (
             <Card className="p-4">
