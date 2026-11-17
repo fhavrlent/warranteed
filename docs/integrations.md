@@ -141,7 +141,11 @@ What to know:
 [Wherehouse](https://github.com/fhavrlent/wherehouse) is a household inventory made to go with Warranteed.
 
 1. Set `WHEREHOUSE_URL` to where Warranteed reaches Wherehouse, and `WHEREHOUSE_PUBLIC_URL` if browsers use another address. Restart.
-2. Each person opens **Settings → Wherehouse → Connect to Wherehouse**, picks a household there and allows it. Wherehouse sends them back connected. To disconnect for good, delete the "Warranteed" token in Wherehouse under **Settings → API tokens**.
+2. Each person opens **Settings → Wherehouse → Connect to Wherehouse**, picks a household there and allows it. Wherehouse sends them back connected. **Disconnect** deletes Warranteed's token in Wherehouse; if Wherehouse can't be reached then, Warranteed disconnects anyway and says so, and the "Warranteed" token is to be deleted in Wherehouse under **Settings → API tokens**.
+
+Connecting needs a Wherehouse that takes PKCE and gives connected apps their own limited access; older ones refuse the connection.
+
+A thing is linked to one warranty at a time: linking another warranty to it is refused, with the name of the warranty that has it when you can see that one. A warranty set to **Only me** can't be linked to a thing in a household others share in Wherehouse, and a linked warranty can't be set to **Only me**: unlink it first. What was copied to Wherehouse stays there, to be removed there. If others join the household after a private warranty was linked, nothing more of it is sent there, photos kept only in Wherehouse included.
 
 Linked warranties and things share their details by who owns what:
 
@@ -152,7 +156,7 @@ Linked warranties and things share their details by who owns what:
 | Claims | Warranteed, as entries in the thing's maintenance log: editing or deleting the entry there changes or deletes the claim |
 | Where the thing is, its photos, kind, tags, label, custom fields, insurance and sale | Wherehouse: the warranty shows where it is and its label code |
 
-Warranteed sends changes as they happen. When connecting, it asks Wherehouse to ping `/hooks/wherehouse` whenever something changes there; the ping is signed and carries no data, and Warranteed then reads Wherehouse's changes straight away. It also reads them every 10 minutes, in case a ping got lost or Warranteed's address can't be reached from Wherehouse (connections made before pings existed get them after reconnecting). A thing sold or archived there archives its warranty, a deleted one is unlinked.
+Warranteed sends changes as they happen. Purchase and warranty details Wherehouse couldn't take, because it was down or out of reach, wait in Warranteed's database and are sent once it's back, after a restart too; a claim whose entry couldn't be added is added at the next sync. When connecting, it asks Wherehouse to ping `/hooks/wherehouse` whenever something changes there; the ping is signed and carries no data, and Warranteed then reads Wherehouse's changes straight away. Wherehouse pings only public addresses and the hosts in its `WHEREHOUSE_HOOK_ALLOWED_HOSTS`. Warranteed also reads the changes every 10 minutes, in case a ping got lost or Warranteed's address can't be reached from Wherehouse (connections made before pings existed get them after reconnecting). A thing sold or archived there archives its warranty, a deleted one is unlinked.
 
 The brand is Wherehouse's manufacturer, and the thing's name is the brand and product name; a name changed in Wherehouse becomes the product name here. Several serial numbers are one comma-separated serial number there. When a warranty and a thing are first brought in step, each keeps its own details, but what the thing lacks is filled in from the warranty: empty details, and serial numbers after the first. After that, if a detail changed on both sides before they were brought in step, the warranty's value wins. Wherehouse's custom fields and Warranteed's tags, product link and order number aren't shared.
 

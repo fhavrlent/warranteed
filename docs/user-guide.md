@@ -115,6 +115,8 @@ With Wherehouse connected (**Settings → Wherehouse**), a warranty can be part 
 - **Photos** are copied to the thing, including ones you add later. Copies are separate: deleting one leaves the other. With **Keep product photos only in Wherehouse** on, the photos are the thing's photos instead, and adding or deleting one on either side does the same on the other.
 - **Claims** are entries in the thing's maintenance log. Editing an entry in Wherehouse changes the claim, and deleting it deletes the claim. Other maintenance entries stay in Wherehouse.
 - The warranty shows where the thing is and its label code. Selling or archiving the thing in Wherehouse archives the warranty.
+- A thing belongs to one warranty. A warranty set to **Only me** can't be linked to a thing in a Wherehouse household others share, and a linked warranty has to be unlinked before you set it to **Only me**. What was already copied to Wherehouse stays there; remove it in Wherehouse.
+- **Disconnect** under **Settings → Wherehouse** also removes Warranteed's access in Wherehouse. If Wherehouse can't be reached then, delete the "Warranteed" token there yourself, under **Settings → API tokens**.
 
 See the [integration guide](integrations.md#wherehouse) for setting it up and the details.
 
