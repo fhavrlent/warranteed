@@ -86,6 +86,8 @@ type fakeWherehouse struct {
 	strangers map[string]bool
 	// created counts the things made, deleted since or not.
 	created int
+	// entryWrites counts maintenance entries written over.
+	entryWrites int
 }
 
 func (f *fakeWherehouse) add(name string, parent *int64) *fakeThing {
@@ -245,6 +247,7 @@ func (f *fakeWherehouse) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				} else {
 					json.NewDecoder(r.Body).Decode(&t.Maintenance[i])
 					t.Maintenance[i].ID = id
+					f.entryWrites++
 				}
 				return
 			}

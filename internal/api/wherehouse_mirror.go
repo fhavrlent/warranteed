@@ -658,6 +658,19 @@ func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings,
 	}
 	now := entrySeen(*m)
 	if seen == now {
+		// Unchanged there. A change made here that didn't get there, e.g.
+		// with Wherehouse out of reach, is sent again: the claim no longer
+		// reads as its entry, nor as what was last written.
+		c, _, err := s.store.ClaimSync(ctx, cid)
+		if err != nil {
+			return err
+		}
+		if in := s.claimFromEntry(c, *m); claimDiffers(&in, c) && entrySeen(s.claimMaintenance(c, st)) != seen {
+			slog.Info("wherehouse: a claim changed here is sent again", "claim", cid)
+			s.inBackground("copy claim to wherehouse", func(ctx context.Context) error {
+				return s.syncWherehouseClaim(ctx, uid, cid)
+			})
+		}
 		return nil
 	}
 	if seen != "" {
@@ -665,10 +678,7 @@ func (s *Server) mirrorClaim(ctx context.Context, uid int64, st *store.Settings,
 		if err != nil {
 			return err
 		}
-		in := s.claimFromEntry(c, *m)
-		if changed := in.Title != c.Title || in.Status != c.Status || in.ReportedOn != c.ReportedOn ||
-			!sameDate(in.ResolvedOn, c.ResolvedOn) || in.CaseNumber != c.CaseNumber || !sameCost(in.Cost, c.Cost) ||
-			in.Notes != c.Notes; changed {
+		if in := s.claimFromEntry(c, *m); claimDiffers(&in, c) {
 			if ok, err := s.store.UpdateClaimIfUnchanged(ctx, uid, cid, c, &in); err != nil {
 				// Something it can't be, e.g. no title: it's left as it is.
 				slog.Warn("wherehouse: a claim's entry changed there", "claim", cid, "err", err)
@@ -694,6 +704,13 @@ func entryOn(t *wherehouse.Thing, id int64) *wherehouse.Maintenance {
 		}
 	}
 	return nil
+}
+
+// claimDiffers is whether the claim in reads differently from c.
+func claimDiffers(in *store.ClaimInput, c *store.Claim) bool {
+	return in.Title != c.Title || in.Status != c.Status || in.ReportedOn != c.ReportedOn ||
+		!sameDate(in.ResolvedOn, c.ResolvedOn) || in.CaseNumber != c.CaseNumber || !sameCost(in.Cost, c.Cost) ||
+		in.Notes != c.Notes
 }
 
 func sameDate(a, b *string) bool  { return (a == nil) == (b == nil) && (a == nil || *a == *b) }

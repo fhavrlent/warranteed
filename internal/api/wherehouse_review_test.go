@@ -486,3 +486,58 @@ func TestWherehousePushTakenThereUnlinks(t *testing.T) {
 		t.Errorf("pushes = %+v, %v", p, err)
 	}
 }
+
+// A claim edited here while Wherehouse was out of reach gets there with the
+// next sync, though its entry there didn't change; and only once.
+func TestWherehouseClaimEditSentAfterFailing(t *testing.T) {
+	f := newWherehouseFixture(t)
+	if w := f.call(t, f.srv.addToWherehouse, http.MethodPost, `{}`); w.Code != 200 {
+		t.Fatalf("add = %d %s", w.Code, w.Body)
+	}
+	thing := f.warranty(t, f.warrantyID).Wherehouse.Thing
+	ctx := context.Background()
+	c, err := f.srv.store.CreateClaim(ctx, f.alice.ID, f.warrantyID, &store.ClaimInput{Title: "Flickers", ReportedOn: "2026-03-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, c.ID)
+	f.srv.background.Wait()
+	f.changedThere(t, thing)
+
+	f.wh.mu.Lock()
+	f.wh.rejectToken = true
+	f.wh.mu.Unlock()
+	if _, err := f.srv.store.UpdateClaim(ctx, f.alice.ID, c.ID, &store.ClaimInput{Title: "Flickers and hums", ReportedOn: "2026-03-01"}); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.syncClaimLater(f.alice.ID, c.ID)
+	f.srv.background.Wait()
+	if th := f.wh.get(thing); th.Maintenance[0].Title != "Warranty claim: Flickers" {
+		t.Fatalf("sent while Wherehouse refused: %+v", th.Maintenance)
+	}
+	f.wh.mu.Lock()
+	f.wh.rejectToken = false
+	f.wh.mu.Unlock()
+
+	f.changedThere(t, thing)
+	f.srv.background.Wait()
+	th := f.wh.get(thing)
+	if len(th.Maintenance) != 1 || th.Maintenance[0].Title != "Warranty claim: Flickers and hums" {
+		t.Errorf("maintenance there = %+v", th.Maintenance)
+	}
+	if got, _ := f.srv.store.GetClaim(ctx, f.alice.ID, c.ID); got.Title != "Flickers and hums" {
+		t.Errorf("claim here = %+v", got)
+	}
+	// Sent, it isn't sent again.
+	f.wh.mu.Lock()
+	writes := f.wh.entryWrites
+	f.wh.mu.Unlock()
+	f.changedThere(t, thing)
+	f.changedThere(t, thing)
+	f.wh.mu.Lock()
+	again := f.wh.entryWrites
+	f.wh.mu.Unlock()
+	if again != writes {
+		t.Errorf("written %d more times", again-writes)
+	}
+}
