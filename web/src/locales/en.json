@@ -412,7 +412,9 @@
       "renewTitle": "Get a new calendar link?",
       "renewText": "The current link stops working, so calendars subscribed to it stop updating. Use this if the link got out.",
       "renewConfirm": "Get a new link",
-      "loadFailed": "Couldn’t load your calendar link."
+      "loadFailed": "Couldn’t load your calendar link.",
+      "removeTitle": "Turn off the calendar link?",
+      "removeText": "Calendars subscribed to it stop updating. Turning it on again gives a new link, to be subscribed to again."
     },
     "paperless": {
       "description": "Store receipts and manuals in your Paperless-ngx archive instead of here, or link documents that are already there.",
@@ -460,7 +462,9 @@
       "draftItemsWorthy": "Products worth a warranty",
       "draftItemsAll": "Every product",
       "draftItemsWorthyHint": "Devices, appliances, tools and the like; food, books, music and other things nobody claims a warranty on are left out.",
-      "draftItemsAllHint": "Every product on the document gets a draft, up to 30; only delivery, discounts and fees are left out."
+      "draftItemsAllHint": "Every product on the document gets a draft, up to 30; only delivery, discounts and fees are left out.",
+      "disconnectTitle": "Disconnect Paperless-ngx?",
+      "disconnectText": "Your Paperless address and token are removed from Warranteed. Documents stay in Paperless, but Warranteed can't show them, store new ones there or make drafts until you enter the token again."
     },
     "homebox": {
       "description": "Keep your inventory in HomeBox in step: add a warranty's product as an item, or link it to one that's already there.",
@@ -471,7 +475,9 @@
       "connected": "Connected as {{name}}",
       "saved": "HomeBox key saved",
       "photosDefault": "Store product photos in HomeBox by default",
-      "photosDefaultHint": "For warranties linked to an item. You can still choose for each upload; photos on other warranties are stored here."
+      "photosDefaultHint": "For warranties linked to an item. You can still choose for each upload; photos on other warranties are stored here.",
+      "disconnectTitle": "Disconnect HomeBox?",
+      "disconnectText": "Your HomeBox API key is removed from Warranteed. Items stay in HomeBox, but photos you stored there can't be shown and claims aren't copied until you save a key again."
     },
     "household": {
       "description_one": "{{count}} person shares the household. New warranties are shared by default; you can make any of them private.",
