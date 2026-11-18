@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.9.0 — 2026-11-18
+
+### Wherehouse: several households
+
+- Warranteed can connect to more than one Wherehouse household, say a cottage as well as home, each with its own connection. Tick the households on Wherehouse's connect page.
+- **Settings → Wherehouse** lists each connected household with its own **Disconnect**, and **Choose households** connects more. Households not connected yet, new ones included, are listed with a **Connect** button.
+- **Add to Wherehouse**, **Link existing thing** and confirming a draft ask which household when there are several, starting with the last one picked. The warranty shows which household its thing is in.
+- A household Warranteed lost access to can be connected again, and Wherehouse replaces the old token.
+- Disconnecting a household unlinks only its own warranties.
+- A household deleted in Wherehouse, or one you left, is disconnected on its own. Its warranties are unlinked unless someone else here is still connected to it.
+
+### Settings
+
+- Turning off the calendar link, and disconnecting Paperless or HomeBox, now ask first.
+
+### Upgrading
+
+Database migration 0026 runs automatically on startup. It moves the existing Wherehouse connection into the new list of connections, and Warranteed fills in its household at the first sync.
+
+Several households need Wherehouse v0.2.0 or later. With an older Wherehouse, Warranteed connects one household as before.
+
 ## v0.8.0 — 2026-11-17
 
 ### Wherehouse
