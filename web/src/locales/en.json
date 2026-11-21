@@ -5,7 +5,6 @@
     "delete": "Delete",
     "close": "Close",
     "optional": "optional",
-    "dialog": "Dialog",
     "copy": "Copy {{label}}",
     "copied": "Copied",
     "retry": "Try again",
@@ -30,7 +29,8 @@
     "light": "Light",
     "dark": "Dark",
     "auto": "Auto",
-    "system": "System"
+    "system": "System",
+    "systemNow": "Your system is currently in {{scheme}} mode."
   },
   "login": {
     "tagline": "Every receipt, warranty and expiry date in one place.",

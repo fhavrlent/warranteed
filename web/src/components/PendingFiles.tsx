@@ -11,12 +11,15 @@ export const PendingFileList = ({
   files,
   onChange,
   showMissing = false,
+  errorId,
   toPaperless = false,
 }: {
   files: PendingFile[];
   onChange: (files: PendingFile[]) => void;
   /** Highlight files that still need a type. */
   showMissing?: boolean;
+  /** The message saying which files still need a type. */
+  errorId?: string;
   /** Documents are headed to Paperless; flag the ones it can't take. */
   toPaperless?: boolean;
 }) => {
@@ -48,6 +51,7 @@ export const PendingFileList = ({
             <Select
               aria-label={t("upload.typeOf", { name: p.file.name })}
               aria-invalid={missing || undefined}
+              aria-describedby={missing ? errorId : undefined}
               value={p.kind ?? ""}
               onChange={(e) =>
                 onChange(files.map((x) => (x.id === p.id ? { ...x, kind: e.target.value as AttachmentKind } : x)))

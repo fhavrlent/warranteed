@@ -5,7 +5,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { applyLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { useMe, useSaveSettings, useSettingsQuery } from "@/lib/queries";
-import { applyTheme, watchSystemTheme, type Theme } from "@/lib/theme";
+import { applyTheme, watchOtherTabs, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./ui/menu";
@@ -50,8 +50,8 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
   const theme = settings?.theme;
   useEffect(() => {
     if (theme) applyTheme(theme);
-    return watchSystemTheme(() => theme ?? "system");
   }, [theme]);
+  useEffect(watchOtherTabs, []);
 
   const setTheme = (theme: Theme) => {
     applyTheme(theme);

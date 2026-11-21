@@ -1,5 +1,6 @@
 import * as M from "@radix-ui/react-dropdown-menu";
 import type { ReactNode } from "react";
+import { usePortalContainer } from "@/lib/topLayer";
 import { cn } from "@/lib/utils";
 
 export const Menu = M.Root;
@@ -14,7 +15,7 @@ export const MenuContent = ({
   align?: "start" | "end";
   className?: string;
 }) => (
-  <M.Portal>
+  <M.Portal container={usePortalContainer()}>
     <M.Content
       align={align}
       sideOffset={6}

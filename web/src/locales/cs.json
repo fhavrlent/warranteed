@@ -5,7 +5,6 @@
     "delete": "Smazat",
     "close": "Zavřít",
     "optional": "nepovinné",
-    "dialog": "Dialog",
     "copy": "Kopírovat: {{label}}",
     "copied": "Zkopírováno",
     "retry": "Zkusit znovu",
@@ -30,7 +29,8 @@
     "light": "Světlý",
     "dark": "Tmavý",
     "auto": "Auto",
-    "system": "Podle systému"
+    "system": "Podle systému",
+    "systemNow": "Systém je teď v {{scheme}} režimu."
   },
   "login": {
     "tagline": "Všechny účtenky, záruky a jejich konce na jednom místě.",
