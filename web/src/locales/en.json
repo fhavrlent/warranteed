@@ -5,7 +5,6 @@
     "delete": "Delete",
     "close": "Close",
     "optional": "optional",
-    "dialog": "Dialog",
     "copy": "Copy {{label}}",
     "copied": "Copied",
     "retry": "Try again",
