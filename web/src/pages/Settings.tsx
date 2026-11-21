@@ -45,7 +45,7 @@ import {
   useTags,
   useWarranties,
 } from "@/lib/queries";
-import { applyTheme } from "@/lib/theme";
+import { applyTheme, useSystemScheme } from "@/lib/theme";
 import { CURRENCIES, cn } from "@/lib/utils";
 import { tagDot } from "@/lib/warranty";
 
@@ -128,6 +128,7 @@ const useAutoSave = (s: SettingsT) => {
 
 const Display = ({ s }: { s: SettingsT }) => {
   const { t } = useTranslation();
+  const system = useSystemScheme();
   const update = useAutoSave(s);
   const [soon, setSoon] = useState(String(s.expiringSoonDays));
   const sample = todayISO();
@@ -197,7 +198,10 @@ const Display = ({ s }: { s: SettingsT }) => {
           </div>
         </Field>
       </div>
-      <Field label={t("settings.display.theme")}>
+      <Field
+        label={t("settings.display.theme")}
+        hint={s.theme === "system" ? t("theme.systemNow", { scheme: t(`theme.${system}`).toLowerCase() }) : undefined}
+      >
         <Segmented
           value={s.theme}
           onChange={(theme) => {

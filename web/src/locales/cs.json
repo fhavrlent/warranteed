@@ -30,7 +30,8 @@
     "light": "Světlý",
     "dark": "Tmavý",
     "auto": "Auto",
-    "system": "Podle systému"
+    "system": "Podle systému",
+    "systemNow": "Systém je teď v {{scheme}} režimu."
   },
   "login": {
     "tagline": "Všechny účtenky, záruky a jejich konce na jednom místě.",

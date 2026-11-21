@@ -49,18 +49,18 @@ export const displayName = (w: Warranty): string => {
 
 /** Tailwind classes per tag colour (kept as literal strings so Tailwind sees them). */
 export const tagClasses: Record<string, string> = {
-  slate: "bg-slate-500/12 text-slate-700 dark:text-slate-300",
-  red: "bg-red-500/12 text-red-700 dark:text-red-300",
-  orange: "bg-orange-500/12 text-orange-700 dark:text-orange-300",
-  amber: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
-  lime: "bg-lime-500/15 text-lime-800 dark:text-lime-300",
-  emerald: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
-  teal: "bg-teal-500/12 text-teal-700 dark:text-teal-300",
-  sky: "bg-sky-500/12 text-sky-700 dark:text-sky-300",
-  indigo: "bg-indigo-500/12 text-indigo-700 dark:text-indigo-300",
-  violet: "bg-violet-500/12 text-violet-700 dark:text-violet-300",
-  pink: "bg-pink-500/12 text-pink-700 dark:text-pink-300",
-  rose: "bg-rose-500/12 text-rose-700 dark:text-rose-300",
+  slate: "bg-slate-500/12 text-[light-dark(var(--color-slate-700),var(--color-slate-300))]",
+  red: "bg-red-500/12 text-[light-dark(var(--color-red-700),var(--color-red-300))]",
+  orange: "bg-orange-500/12 text-[light-dark(var(--color-orange-700),var(--color-orange-300))]",
+  amber: "bg-amber-500/15 text-[light-dark(var(--color-amber-800),var(--color-amber-300))]",
+  lime: "bg-lime-500/15 text-[light-dark(var(--color-lime-800),var(--color-lime-300))]",
+  emerald: "bg-emerald-500/12 text-[light-dark(var(--color-emerald-700),var(--color-emerald-300))]",
+  teal: "bg-teal-500/12 text-[light-dark(var(--color-teal-700),var(--color-teal-300))]",
+  sky: "bg-sky-500/12 text-[light-dark(var(--color-sky-700),var(--color-sky-300))]",
+  indigo: "bg-indigo-500/12 text-[light-dark(var(--color-indigo-700),var(--color-indigo-300))]",
+  violet: "bg-violet-500/12 text-[light-dark(var(--color-violet-700),var(--color-violet-300))]",
+  pink: "bg-pink-500/12 text-[light-dark(var(--color-pink-700),var(--color-pink-300))]",
+  rose: "bg-rose-500/12 text-[light-dark(var(--color-rose-700),var(--color-rose-300))]",
 };
 
 export const tagDot: Record<string, string> = {

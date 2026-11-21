@@ -5,6 +5,7 @@ import type { Tag } from "@/lib/api";
 import { useTags } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { tagClasses } from "@/lib/warranty";
+import { useFieldControl } from "@/lib/field";
 import { fieldBase } from "./ui/input";
 
 export const TagChip = ({
@@ -56,6 +57,7 @@ export const TagInput = ({
   const [focus, setFocus] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const control = useFieldControl({ id });
 
   const colorOf = (name: string) => allTags.find((t) => t.name.toLowerCase() === name.toLowerCase())?.color ?? "slate";
   const lower = value.map((v) => v.toLowerCase());
@@ -92,6 +94,7 @@ export const TagInput = ({
         ))}
         <input
           id={id}
+          {...control}
           ref={inputRef}
           value={text}
           placeholder={value.length ? "" : t("tags.placeholder")}
@@ -117,7 +120,7 @@ export const TagInput = ({
               setActive((a) => Math.max(a - 1, 0));
             }
           }}
-          className="h-6 min-w-24 flex-1 bg-transparent px-1.5 text-sm outline-none placeholder:text-fg-subtle"
+          className="h-6 min-w-24 flex-1 bg-transparent px-1.5 text-sm outline-none placeholder:text-fg-subtle pointer-coarse:text-base"
         />
       </div>
       {open && (

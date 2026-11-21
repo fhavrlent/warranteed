@@ -7,7 +7,9 @@ import { dateLocale } from "@/i18n";
 import { formatDate, fromISO, toISO, weekStartsOn } from "@/lib/dates";
 import { parseUserDate } from "@/lib/parseDate";
 import { usePrefs } from "@/lib/queries";
+import { usePortalContainer } from "@/lib/topLayer";
 import { cn } from "@/lib/utils";
+import { useFieldControl } from "@/lib/field";
 import { fieldBase } from "./ui/input";
 
 // Calendar dropdown range.
@@ -26,6 +28,8 @@ export const DateInput = ({
   invalid,
   placeholder,
   autoFocus,
+  "aria-label": ariaLabel,
+  "aria-describedby": describedBy,
 }: {
   value: string | null;
   onChange: (iso: string | null) => void;
@@ -33,6 +37,8 @@ export const DateInput = ({
   invalid?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  "aria-label"?: string;
+  "aria-describedby"?: string;
 }) => {
   const { t } = useTranslation();
   const { dateFormat } = usePrefs();
@@ -62,6 +68,13 @@ export const DateInput = ({
     }
   };
 
+  const portalContainer = usePortalContainer();
+  const control = useFieldControl({
+    id,
+    "aria-label": ariaLabel,
+    "aria-describedby": describedBy,
+    "aria-invalid": invalid || bad ? true : undefined,
+  });
   const selected = value ? fromISO(value) : undefined;
   const sample = formatDate("2025-12-31", dateFormat);
 
@@ -75,7 +88,10 @@ export const DateInput = ({
           inputMode="text"
           autoComplete="off"
           placeholder={placeholder ?? sample}
+          aria-label={ariaLabel}
+          aria-describedby={describedBy}
           aria-invalid={invalid || bad ? true : undefined}
+          {...control}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
@@ -98,7 +114,7 @@ export const DateInput = ({
         </P.Trigger>
       </div>
       {bad && <p className="mt-1 text-xs text-bad">{t("date.useFormat", { sample })}</p>}
-      <P.Portal>
+      <P.Portal container={portalContainer}>
         <P.Content
           align="end"
           sideOffset={6}

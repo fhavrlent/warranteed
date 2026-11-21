@@ -24,6 +24,7 @@ import {
   type Warranty,
 } from "@/lib/api";
 import { todayISO } from "@/lib/dates";
+import { useFormErrors } from "@/lib/field";
 import { paperlessAccepts } from "@/lib/documents";
 import { formatPriceInput, parsePrice } from "@/lib/price";
 import { useInvalidate, usePrefs } from "@/lib/queries";
@@ -276,7 +277,7 @@ const ClaimDialog = ({
     cost: claim?.cost != null ? formatPriceInput(claim.cost) : "",
     notes: claim?.notes ?? "",
   }));
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const { errors, report } = useFormErrors();
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -288,8 +289,7 @@ const ClaimDialog = ({
     const cost = parsePrice(f.cost);
     if (Number.isNaN(cost)) e.cost = t("form.errPrice", { example: formatPriceInput(1379.5) });
     if (f.status !== "open" && f.resolvedOn && f.resolvedOn < f.reportedOn) e.resolvedOn = t("claims.errResolved");
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (!report(ev.currentTarget, e)) return;
 
     const input: ClaimInput = {
       title: f.title,

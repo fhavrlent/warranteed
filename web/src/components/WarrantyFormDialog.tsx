@@ -6,6 +6,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { api, errorMessage, type Warranty, type WarrantyInput } from "@/lib/api";
 import { durationLabel, fromISO, toISO, todayISO } from "@/lib/dates";
+import { useFormErrors } from "@/lib/field";
 import { useInvalidate, useMe, usePrefs, useSharing } from "@/lib/queries";
 import { storageFor, toPending, type PendingFile } from "@/lib/documents";
 import { formatPriceInput, parsePrice } from "@/lib/price";
@@ -76,7 +77,7 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
   const canMakePrivate = !warranty || warranty.spaceKind === "personal" || warranty.addedBy.id === me?.id;
   const paperless = settings?.paperlessEnabled ?? false;
   const [f, setF] = useState(() => initial(warranty, currency));
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const { errors, report } = useFormErrors();
   const [saving, setSaving] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
   // The serial row added last gets focus.
@@ -112,7 +113,7 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
           ? toISO(addMonths(fromISO(f.purchaseDate), months))
           : null;
 
-  const validate = () => {
+  const validate = (form: HTMLFormElement) => {
     const e: Record<string, string> = {};
     if (!f.productName.trim()) e.productName = t("form.errName");
     if (!f.purchaseDate) e.purchaseDate = t("form.errPurchaseDate");
@@ -125,13 +126,12 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
     if (Number.isNaN(parsePrice(f.price))) e.price = t("form.errPrice", { example: formatPriceInput(1379.5) });
     if (!quantity) e.quantity = t("form.errQuantity", { max: MAX_QUANTITY });
     if (files.some((p) => p.kind === null)) e.files = t("form.errFileTypes");
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    return report(form, e);
   };
 
   const submit = async (ev: SubmitEvent<HTMLFormElement>) => {
     ev.preventDefault();
-    if (!validate()) return;
+    if (!validate(ev.currentTarget)) return;
     const input: WarrantyInput = {
       productName: f.productName,
       brand: f.brand,
@@ -314,6 +314,7 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                     inputMode="numeric"
                     value={f.amount}
                     aria-invalid={!!errors.amount || undefined}
+                    aria-describedby={errors.amount ? "warrantyLengthError" : undefined}
                     onChange={(e) => set("amount", e.target.value.replace(/\D/g, ""))}
                     className="w-20 tabular-nums"
                   />
@@ -348,12 +349,20 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
             )}
             {f.mode === "date" && (
               <div className="max-w-56">
-                <DateInput value={f.endDate} onChange={(v) => set("endDate", v)} invalid={!!errors.endDate} />
+                <DateInput
+                  value={f.endDate}
+                  onChange={(v) => set("endDate", v)}
+                  invalid={!!errors.endDate}
+                  aria-label={t("form.modeDate")}
+                  aria-describedby={errors.endDate ? "warrantyLengthError" : undefined}
+                />
               </div>
             )}
             {f.mode === "lifetime" && <p className="text-sm text-fg-muted">{t("form.neverExpires")}</p>}
             {(errors.amount || errors.endDate) && (
-              <p className="mt-1.5 text-xs text-bad">{errors.amount || errors.endDate}</p>
+              <p id="warrantyLengthError" className="mt-1.5 text-xs text-bad">
+                {errors.amount || errors.endDate}
+              </p>
             )}
             {computedExpiry && !errors.endDate && (
               <p className="mt-2.5 text-[13px] text-fg-muted">
@@ -509,11 +518,16 @@ export const WarrantyFormDialog = ({ onOpenChange, warranty }: FormProps) => {
                   files={files}
                   onChange={setFiles}
                   showMissing={errors.files !== undefined}
+                  errorId={errors.files ? "filesError" : undefined}
                   toPaperless={toPaperless}
                 />
               </div>
             )}
-            {errors.files && <p className="mt-1.5 text-xs text-bad">{errors.files}</p>}
+            {errors.files && (
+              <p id="filesError" className="mt-1.5 text-xs text-bad">
+                {errors.files}
+              </p>
+            )}
           </section>
         )}
       </form>

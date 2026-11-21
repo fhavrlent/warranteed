@@ -30,7 +30,8 @@
     "light": "Light",
     "dark": "Dark",
     "auto": "Auto",
-    "system": "System"
+    "system": "System",
+    "systemNow": "Your system is currently in {{scheme}} mode."
   },
   "login": {
     "tagline": "Every receipt, warranty and expiry date in one place.",
