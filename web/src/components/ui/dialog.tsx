@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { modalClosed, modalOpened, TopLayerContext } from "@/lib/topLayer";
@@ -61,7 +61,8 @@ const Modal = ({
     };
     // The browser closed it anyway (a repeated Esc can't be cancelled): reopen if the caller still wants it.
     const onClose = () => {
-      if (!openRef.current) return;
+      // Ignore a close that is already undone, such as the one queued by StrictMode's extra effect cleanup.
+      if (!openRef.current || d.open) return;
       onOpenChangeRef.current(false);
       queueMicrotask(() => {
         if (openRef.current && d.isConnected && !d.open) d.showModal();
@@ -75,8 +76,14 @@ const Modal = ({
     };
   }, []);
 
-  // Light dismiss fallback: the press must start and end on the backdrop (the dialog itself).
+  // Light dismiss fallback: the press must start and end on the backdrop, outside the dialog's box
+  // (the dialog's own padding is also the dialog element, so the target alone can't tell).
   const pressedBackdropRef = useRef(false);
+  const onBackdrop = (e: MouseEvent<HTMLDialogElement>) => {
+    if (e.target !== e.currentTarget) return false;
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
 
   return createPortal(
     <dialog
@@ -85,15 +92,17 @@ const Modal = ({
       aria-describedby={describedBy}
       {...{ closedby: "any" }}
       onPointerDown={(e) => {
-        pressedBackdropRef.current = e.target === e.currentTarget;
+        pressedBackdropRef.current = onBackdrop(e);
       }}
       onClick={(e) => {
-        if (!nativeLightDismiss && pressedBackdropRef.current && e.target === e.currentTarget) onOpenChange(false);
+        if (!nativeLightDismiss && pressedBackdropRef.current && onBackdrop(e)) onOpenChange(false);
         pressedBackdropRef.current = false;
       }}
       className={cn(
         "m-auto w-[calc(100vw-2rem)] overflow-hidden overscroll-contain rounded-2xl border border-border bg-surface p-0 text-fg shadow-pop outline-none",
         "open:animate-pop-in backdrop:animate-fade-in backdrop:bg-black/40",
+        // Scroll over the backdrop must not reach the page: ::backdrop has to be a scroll container to contain it.
+        "backdrop:overflow-hidden backdrop:overscroll-contain",
         className,
       )}
     >
