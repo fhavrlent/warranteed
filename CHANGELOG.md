@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.10.0 — 2026-11-21
+
+### Forms
+
+- Every field is tied to its label, and its hint or error is read out with it, for screen readers and voice control.
+- Saving a form with mistakes moves focus to the first field that needs fixing.
+- On phones and tablets, fields use larger text, so iOS no longer zooms in when you tap one.
+
+### Theme
+
+- The **System** theme now works even before the app's scripts load, and **Settings → Display** says whether the system is in light or dark mode right now.
+- Changing the theme in one tab changes it in the other open tabs too.
+- Notifications follow the theme you picked, not only the system's.
+
+### Dialogs
+
+- Dialogs use the browser's built-in modal dialog. Esc and the back gesture close them, clicking outside closes them, and focus goes back to the button that opened them.
+- Scrolling over the dark area around a dialog no longer moves the page behind it, and the page's scrollbar no longer disappears while a dialog is open.
+- A delete confirmation starts on **Cancel**, so pressing Enter doesn't delete anything.
+- Notifications and date pickers shown while a dialog is open can be clicked.
+
+### Upgrading
+
+Nothing to do. Colours now rely on CSS `light-dark()`, available in browsers since 2024 (Chrome 123, Firefox 120, Safari 17.5).
+
 ## v0.9.0 — 2026-11-18
 
 ### Wherehouse: several households
