@@ -93,7 +93,7 @@ const Modal = ({
       }}
       className={cn(
         "m-auto w-[calc(100vw-2rem)] overflow-hidden overscroll-contain rounded-2xl border border-border bg-surface p-0 text-fg shadow-pop outline-none",
-        "open:animate-pop-in backdrop:bg-black/40 backdrop:animate-fade-in",
+        "open:animate-pop-in backdrop:animate-fade-in backdrop:bg-black/40",
         className,
       )}
     >
@@ -133,7 +133,7 @@ export const Dialog = ({
       labelledBy={titleId}
       describedBy={description ? descId : undefined}
       className={cn(
-        "max-h-[calc(100dvh-2rem)] flex-col open:flex backdrop:backdrop-blur-[2px]",
+        "max-h-[calc(100dvh-2rem)] flex-col backdrop:backdrop-blur-[2px] open:flex",
         widths[size],
         className,
       )}
@@ -189,13 +189,7 @@ export const ConfirmDialog = ({
   const titleId = useId();
   const descId = useId();
   return (
-    <Modal
-      open={open}
-      onOpenChange={onOpenChange}
-      labelledBy={titleId}
-      describedBy={descId}
-      className="max-w-sm p-6"
-    >
+    <Modal open={open} onOpenChange={onOpenChange} labelledBy={titleId} describedBy={descId} className="max-w-sm p-6">
       <h2 id={titleId} className="text-base font-semibold">
         {title}
       </h2>

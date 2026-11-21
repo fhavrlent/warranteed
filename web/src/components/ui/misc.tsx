@@ -39,7 +39,11 @@ export const Segmented = <T extends string>({
   className?: string;
   size?: "sm" | "md";
 }) => (
-  <div role="radiogroup" {...useFieldGroup()} className={cn("inline-flex w-fit rounded-lg bg-surface-3 p-0.5", className)}>
+  <div
+    role="radiogroup"
+    {...useFieldGroup()}
+    className={cn("inline-flex w-fit rounded-lg bg-surface-3 p-0.5", className)}
+  >
     {options.map((o) => (
       <button
         key={o.value}

@@ -49,7 +49,10 @@ export const Field = ({
   });
   const desc = error || hint ? `${id}-desc` : undefined;
   const invalid = !!error;
-  const info = useMemo(() => ({ id, labelId: `${id}-label`, descId: desc, invalid, claim }), [id, desc, invalid, claim]);
+  const info = useMemo(
+    () => ({ id, labelId: `${id}-label`, descId: desc, invalid, claim }),
+    [id, desc, invalid, claim],
+  );
   return (
     <FieldContext value={info}>
       <div className={cn("flex flex-col gap-1.5", className)}>

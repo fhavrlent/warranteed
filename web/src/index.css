@@ -50,9 +50,11 @@
   --life: light-dark(oklch(0.52 0.15 285), oklch(0.75 0.13 285));
   --life-soft: light-dark(oklch(0.95 0.035 285), oklch(0.3 0.06 285));
 
-  --shadow: 0 1px 2px light-dark(oklch(0.2 0.01 260 / 0.05), oklch(0 0 0 / 0.3)),
+  --shadow:
+    0 1px 2px light-dark(oklch(0.2 0.01 260 / 0.05), oklch(0 0 0 / 0.3)),
     0 1px 3px light-dark(oklch(0.2 0.01 260 / 0.05), transparent);
-  --shadow-lg: 0 10px 30px -10px light-dark(oklch(0.2 0.01 260 / 0.25), oklch(0 0 0 / 0.6)),
+  --shadow-lg:
+    0 10px 30px -10px light-dark(oklch(0.2 0.01 260 / 0.25), oklch(0 0 0 / 0.6)),
     0 2px 6px light-dark(oklch(0.2 0.01 260 / 0.08), transparent);
 
   /* Follows the system; the theme setting pins one through <meta name="color-scheme">. */
@@ -64,7 +66,6 @@
     color-scheme: dark;
   }
 }
-
 
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
